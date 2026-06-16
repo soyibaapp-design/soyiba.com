@@ -59,6 +59,7 @@ import {
 type PublicationsFeedProps = {
   session: SoyibaSession;
   openComposerSignal?: number;
+  onComposerOpenChange?: (open: boolean) => void;
 };
 
 type ImagePreview = {
@@ -84,7 +85,7 @@ type PublicationFormState = {
 
 const statsIconClass = 'h-5 w-5 shrink-0';
 
-export function PublicationsFeed({ session, openComposerSignal = 0 }: PublicationsFeedProps) {
+export function PublicationsFeed({ session, openComposerSignal = 0, onComposerOpenChange }: PublicationsFeedProps) {
   const [publications, setPublications] = useState<SoyibaPublication[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -159,6 +160,12 @@ export function PublicationsFeed({ session, openComposerSignal = 0 }: Publicatio
     const timeout = window.setTimeout(() => setNotice(''), 3600);
     return () => window.clearTimeout(timeout);
   }, [notice]);
+
+  useEffect(() => {
+    onComposerOpenChange?.(composerOpen);
+
+    return () => onComposerOpenChange?.(false);
+  }, [composerOpen, onComposerOpenChange]);
 
   function openCreateComposer() {
     setEditingPublication(null);
@@ -812,7 +819,7 @@ function PublicationComposerModal({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[70] flex items-end justify-center bg-[#0B1F5B]/32 px-3 pb-3 pt-10 backdrop-blur-sm min-[560px]:items-center"
+      className="fixed inset-0 z-[120] flex h-[100dvh] items-end justify-center overflow-hidden bg-[#0B1F5B]/32 px-3 pb-[calc(12px+env(safe-area-inset-bottom))] pt-[calc(12px+env(safe-area-inset-top))] backdrop-blur-sm min-[560px]:items-center"
       onMouseDown={onClose}
     >
       <motion.section
@@ -821,7 +828,7 @@ function PublicationComposerModal({
         initial={{ opacity: 0, y: 28, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: 24, scale: 0.98 }}
-        className="max-h-[calc(100vh-36px)] w-full max-w-xl overflow-hidden rounded-[20px] border border-white/80 bg-white shadow-[0_26px_70px_rgba(11,31,91,0.24)]"
+        className="flex max-h-full w-full max-w-xl flex-col overflow-hidden rounded-[20px] border border-white/80 bg-white shadow-[0_26px_70px_rgba(11,31,91,0.24)]"
         onMouseDown={(event) => event.stopPropagation()}
       >
         <header className="flex h-14 items-center justify-between border-b border-[#E3EAF5] px-4">
@@ -831,7 +838,7 @@ function PublicationComposerModal({
           </button>
         </header>
 
-        <div className="max-h-[calc(100vh-158px)] space-y-3 overflow-y-auto bg-[#F8FBFF] p-3.5">
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-[#F8FBFF] p-3.5">
           <div className="grid gap-3 min-[520px]:grid-cols-2">
             <SelectField label="Tipo" value={form.type} onChange={(value) => updateField('type', value as PublicationType)} options={typeOptions} />
             <TextField label="Titulo" value={form.title} onChange={(value) => updateField('title', value)} icon={FileText} />

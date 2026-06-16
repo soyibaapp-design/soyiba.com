@@ -24,6 +24,7 @@ export default function App() {
   const [session, setSession] = useState<SoyibaSession | null>(() => loadStoredSession());
   const [activeScreen, setActiveScreen] = useState<ScreenId>('inicio');
   const [publicationComposerSignal, setPublicationComposerSignal] = useState(0);
+  const [publicationComposerOpen, setPublicationComposerOpen] = useState(false);
 
   function handleSignedIn(nextSession: SoyibaSession) {
     handleSessionUpdated(nextSession);
@@ -52,7 +53,13 @@ export default function App() {
 
         <main className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 pb-[calc(112px+env(safe-area-inset-bottom))]">
           <AnimatePresence mode="wait">
-            {activeScreen === 'inicio' ? <InicioScreen session={session} openPublicationComposerSignal={publicationComposerSignal} /> : null}
+            {activeScreen === 'inicio' ? (
+              <InicioScreen
+                session={session}
+                openPublicationComposerSignal={publicationComposerSignal}
+                onPublicationComposerOpenChange={setPublicationComposerOpen}
+              />
+            ) : null}
             {activeScreen === 'eventos' ? <PlaceholderScreen key="eventos" icon={CalendarDays} title="Eventos" /> : null}
             {activeScreen === 'eco' ? <PlaceholderScreen key="eco" icon={UsersRound} title="Grupos ECO" /> : null}
             {activeScreen === 'donaciones' ? <PlaceholderScreen key="donaciones" icon={Heart} title="Donaciones" /> : null}
@@ -72,7 +79,7 @@ export default function App() {
           </AnimatePresence>
         </main>
 
-        <BottomNav activeTab={activeScreen} items={navigation} onChange={setActiveScreen} />
+        {publicationComposerOpen ? null : <BottomNav activeTab={activeScreen} items={navigation} onChange={setActiveScreen} />}
       </div>
     </div>
   );

@@ -8,9 +8,10 @@ import { getInicioSummary, type InicioMetric, type InicioNotice } from './inicio
 type InicioScreenProps = {
   session: SoyibaSession;
   openPublicationComposerSignal?: number;
+  onPublicationComposerOpenChange?: (open: boolean) => void;
 };
 
-export function InicioScreen({ session, openPublicationComposerSignal = 0 }: InicioScreenProps) {
+export function InicioScreen({ session, openPublicationComposerSignal = 0, onPublicationComposerOpenChange }: InicioScreenProps) {
   const [metrics, setMetrics] = useState<InicioMetric[]>([]);
   const [notices, setNotices] = useState<InicioNotice[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -80,7 +81,11 @@ export function InicioScreen({ session, openPublicationComposerSignal = 0 }: Ini
         ))}
       </section>
 
-      <PublicationsFeed session={session} openComposerSignal={openPublicationComposerSignal} />
+      <PublicationsFeed
+        session={session}
+        openComposerSignal={openPublicationComposerSignal}
+        onComposerOpenChange={onPublicationComposerOpenChange}
+      />
     </motion.section>
   );
 }
