@@ -87,6 +87,11 @@ export default function App() {
     setActiveScreen('eventos');
   }
 
+  function handleOpenEcoFromHome(publicationId: string) {
+    setPublicationToOpenId(publicationId);
+    setActiveScreen('eco');
+  }
+
   if (!session) {
     if (authMode || !publicationToOpenId) {
       return <AuthScreen onSignedIn={handleSignedIn} initialMode={authMode || undefined} />;
@@ -103,6 +108,7 @@ export default function App() {
         onNotificationsClick={() => setAuthMode('login')}
         onComposerOpenChange={setPublicationComposerOpen}
         onOpenEventFromHome={handleOpenEventFromHome}
+        onOpenEcoFromHome={handleOpenEcoFromHome}
         onPublicationOpened={() => undefined}
         onAuthRequired={setAuthMode}
       />
@@ -119,6 +125,7 @@ export default function App() {
       onNotificationsClick={() => setActiveScreen('perfil')}
       onComposerOpenChange={setPublicationComposerOpen}
       onOpenEventFromHome={handleOpenEventFromHome}
+      onOpenEcoFromHome={handleOpenEcoFromHome}
       onPublicationOpened={() => setPublicationToOpenId('')}
       onAuthRequired={setAuthMode}
       onNavigate={setActiveScreen}
@@ -142,6 +149,7 @@ function SoyibaShell({
   onNotificationsClick,
   onComposerOpenChange,
   onOpenEventFromHome,
+  onOpenEcoFromHome,
   onPublicationOpened,
   onAuthRequired,
   onNavigate,
@@ -158,6 +166,7 @@ function SoyibaShell({
   onNotificationsClick: () => void;
   onComposerOpenChange: (open: boolean) => void;
   onOpenEventFromHome: (publicationId: string) => void;
+  onOpenEcoFromHome: (publicationId: string) => void;
   onPublicationOpened: () => void;
   onAuthRequired?: (mode: AuthMode) => void;
   onNavigate?: (screen: ScreenId) => void;
@@ -178,6 +187,7 @@ function SoyibaShell({
                 openPublicationComposerSignal={publicationComposerSignal}
                 onPublicationComposerOpenChange={onComposerOpenChange}
                 onOpenEvent={onOpenEventFromHome}
+                onOpenEco={onOpenEcoFromHome}
                 openPublicationId={publicationToOpenId}
                 onPublicationOpened={onPublicationOpened}
                 publicMode={publicMode}

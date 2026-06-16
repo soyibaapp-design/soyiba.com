@@ -10,6 +10,7 @@ type InicioScreenProps = {
   openPublicationComposerSignal?: number;
   onPublicationComposerOpenChange?: (open: boolean) => void;
   onOpenEvent?: (publicationId: string) => void;
+  onOpenEco?: (publicationId: string) => void;
   openPublicationId?: string;
   onPublicationOpened?: () => void;
   publicMode?: boolean;
@@ -21,6 +22,7 @@ export function InicioScreen({
   openPublicationComposerSignal = 0,
   onPublicationComposerOpenChange,
   onOpenEvent,
+  onOpenEco,
   openPublicationId,
   onPublicationOpened,
   publicMode = false,
@@ -109,6 +111,7 @@ export function InicioScreen({
         openComposerSignal={openPublicationComposerSignal}
         onComposerOpenChange={onPublicationComposerOpenChange}
         onOpenEventFromHome={onOpenEvent}
+        onOpenEcoFromHome={onOpenEco}
         openPublicationId={openPublicationId}
         onPublicationOpened={onPublicationOpened}
         publicMode={publicMode}

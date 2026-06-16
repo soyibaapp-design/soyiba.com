@@ -33,6 +33,23 @@ export type PublicationEventDetails = {
   expired: boolean;
 };
 
+export type PublicationEcoDetails = {
+  day: string;
+  time: string;
+  host: string;
+  moderator: string;
+  phone: string;
+  address: string;
+  neighborhood: string;
+  city: string;
+  latitude: number | null;
+  longitude: number | null;
+  attendeesCount: number;
+  currentUserAttending: boolean;
+  validFrom: string;
+  validUntil: string;
+};
+
 export type SoyibaPublication = {
   id: string;
   type: PublicationType;
@@ -58,6 +75,7 @@ export type SoyibaPublication = {
   sharedCount: number;
   savedByCurrentUser: boolean;
   event: PublicationEventDetails;
+  eco: PublicationEcoDetails;
 };
 
 export type PublicationPayload = {
@@ -74,6 +92,20 @@ export type PublicationPayload = {
     validUntil: string;
     capacityTotal: number;
   };
+  eco?: {
+    day: string;
+    time: string;
+    host: string;
+    moderator: string;
+    phone: string;
+    address: string;
+    neighborhood: string;
+    city: string;
+    latitude: number | null;
+    longitude: number | null;
+    validFrom: string;
+    validUntil: string;
+  };
 };
 
 export type PublicationFeedOptions = {
@@ -85,6 +117,11 @@ export type ToggleEventGoingResult = {
   publication?: SoyibaPublication;
 };
 
+export type ToggleEcoAttendanceResult = {
+  attending: boolean;
+  publication?: SoyibaPublication;
+};
+
 type PublicationsResponse = {
   ok: boolean;
   publications?: unknown[];
@@ -92,6 +129,7 @@ type PublicationsResponse = {
   media?: unknown;
   saved?: boolean;
   going?: boolean;
+  attending?: boolean;
   error?: string;
 };
 
@@ -134,6 +172,7 @@ const localPublications: SoyibaPublication[] = [
     sharedCount: 12,
     savedByCurrentUser: false,
     event: emptyEventDetails(),
+    eco: emptyEcoDetails(),
   },
   {
     id: 'local-conferencia-iba',
@@ -180,6 +219,7 @@ const localPublications: SoyibaPublication[] = [
       currentUserGoing: false,
       expired: false,
     },
+    eco: emptyEcoDetails(),
   },
   {
     id: 'local-eco-centro',
@@ -209,6 +249,22 @@ const localPublications: SoyibaPublication[] = [
     sharedCount: 4,
     savedByCurrentUser: false,
     event: emptyEventDetails(),
+    eco: {
+      day: 'Viernes',
+      time: '7:00 p.m.',
+      host: 'Familia Gomez',
+      moderator: 'Laura Rojas',
+      phone: '573243339375',
+      address: 'Punto de encuentro confirmado por WhatsApp',
+      neighborhood: 'Centro',
+      city: 'Ibague',
+      latitude: 4.4389,
+      longitude: -75.2322,
+      attendeesCount: 12,
+      currentUserAttending: false,
+      validFrom: '',
+      validUntil: '',
+    },
   },
 ];
 
@@ -451,6 +507,61 @@ export async function toggleEventGoing(session: SoyibaSession, publicationId: st
   };
 }
 
+export async function toggleEcoAttendance(
+  session: SoyibaSession,
+  publicationId: string,
+  attending: boolean,
+): Promise<ToggleEcoAttendanceResult> {
+  const response = await callAppsScript<PublicationsResponse>(
+    'Publicaciones',
+    'toggleEcoAttendance',
+    {
+      publicationId,
+      attending,
+      user: getUserRequest(session.user),
+      token: session.token,
+    },
+    () => ({
+      ok: true,
+      attending,
+    }),
+  );
+
+  if (!response.ok) {
+    throw new Error(response.error || 'No fue posible actualizar la asistencia al Grupo ECO.');
+  }
+
+  const normalizedPublication = response.publication ? normalizePublication(response.publication) : undefined;
+
+  if (normalizedPublication) {
+    updateCachedPublication(session, publicationId, () => normalizedPublication);
+  } else {
+    updateCachedPublication(session, publicationId, (publication) => {
+      const nextAttending = Boolean(response.attending);
+      const delta =
+        nextAttending && !publication.eco.currentUserAttending
+          ? 1
+          : !nextAttending && publication.eco.currentUserAttending
+            ? -1
+            : 0;
+
+      return {
+        ...publication,
+        eco: {
+          ...publication.eco,
+          currentUserAttending: nextAttending,
+          attendeesCount: Math.max(0, publication.eco.attendeesCount + delta),
+        },
+      };
+    });
+  }
+
+  return {
+    attending: normalizedPublication?.eco.currentUserAttending ?? Boolean(response.attending),
+    publication: normalizedPublication,
+  };
+}
+
 export async function recordPublicationView(session: SoyibaSession, publicationId: string) {
   await callAppsScript<PublicationsResponse>(
     'Publicaciones',
@@ -686,6 +797,7 @@ function normalizePublication(value: unknown): SoyibaPublication {
     sharedCount: numberFrom(record.sharedCount || record.compartidos),
     savedByCurrentUser: isTrue(record.savedByCurrentUser || record.saved_by_current_user),
     event: normalizeEventDetails(record),
+    eco: normalizeEcoDetails(record),
   };
 }
 
@@ -725,6 +837,48 @@ function emptyEventDetails(): PublicationEventDetails {
     capacityTotal: 0,
     currentUserGoing: false,
     expired: false,
+  };
+}
+
+function normalizeEcoDetails(record: Record<string, unknown>): PublicationEcoDetails {
+  const eco = (record.eco && typeof record.eco === 'object' ? record.eco : {}) as Record<string, unknown>;
+
+  return {
+    day: stringFrom(valueFrom(eco.day, eco.diaEco, record.diaEco, record.dia_eco)),
+    time: stringFrom(valueFrom(eco.time, eco.horaEco, record.horaEco, record.hora_eco)),
+    host: stringFrom(valueFrom(eco.host, eco.anfitrion, record.anfitrion)),
+    moderator: stringFrom(valueFrom(eco.moderator, eco.moderador, record.moderador)),
+    phone: stringFrom(valueFrom(eco.phone, eco.telefonoContacto, record.telefonoContacto, record.telefono_contacto)),
+    address: stringFrom(valueFrom(eco.address, eco.direccion, record.direccion)),
+    neighborhood: stringFrom(valueFrom(eco.neighborhood, eco.barrio, record.barrio, record.sector)),
+    city: stringFrom(valueFrom(eco.city, eco.ciudad, record.ciudad)),
+    latitude: geoNumberFrom(valueFrom(eco.latitude, eco.latitud, record.latitud)),
+    longitude: geoNumberFrom(valueFrom(eco.longitude, eco.longitud, record.longitud)),
+    attendeesCount: numberFrom(valueFrom(eco.attendeesCount, eco.asistentes, record.attendeesCount, record.asistentes)),
+    currentUserAttending: isTrue(
+      valueFrom(eco.currentUserAttending, record.currentUserAttending, record.asistenciaEcoByCurrentUser, record.asistencia_eco_by_current_user),
+    ),
+    validFrom: stringFrom(valueFrom(eco.validFrom, eco.fechaInicioVigencia, record.fechaInicioVigencia)),
+    validUntil: stringFrom(valueFrom(eco.validUntil, eco.fechaFinVigencia, record.fechaFinVigencia)),
+  };
+}
+
+function emptyEcoDetails(): PublicationEcoDetails {
+  return {
+    day: '',
+    time: '',
+    host: '',
+    moderator: '',
+    phone: '',
+    address: '',
+    neighborhood: '',
+    city: '',
+    latitude: null,
+    longitude: null,
+    attendeesCount: 0,
+    currentUserAttending: false,
+    validFrom: '',
+    validUntil: '',
   };
 }
 
@@ -861,6 +1015,17 @@ function numberFrom(value: unknown) {
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
+function geoNumberFrom(value: unknown) {
+  const normalized = String(value ?? '').trim().replace(',', '.');
+
+  if (!normalized) {
+    return null;
+  }
+
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function getPublicationFeedCacheKey(session: SoyibaSession, options: PublicationFeedOptions) {
   return `${session.user.id || session.user.email || 'anon'}::${options.type || 'all'}`;
 }
@@ -934,6 +1099,7 @@ function clonePublication(publication: SoyibaPublication) {
     cta: { ...publication.cta },
     relatedLinks: publication.relatedLinks.map((item) => ({ ...item })),
     event: { ...publication.event },
+    eco: { ...publication.eco },
   };
 }
 

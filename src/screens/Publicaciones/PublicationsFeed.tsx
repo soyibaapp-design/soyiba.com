@@ -1,22 +1,30 @@
 import { useEffect, useMemo, useRef, useState, type TouchEvent } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
+  BookOpen,
   Bookmark,
   CalendarDays,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Clock3,
+  Compass,
   ExternalLink,
   Eye,
   FileText,
+  HeartHandshake,
+  House,
   ImageIcon,
   Link as LinkIcon,
   LoaderCircle,
   MapPin,
+  MapPinned,
   MessageCircle,
   MoreVertical,
   Music2,
+  Navigation,
   PencilLine,
+  Phone,
   Plus,
   RefreshCw,
   Search,
@@ -52,6 +60,7 @@ import {
   parseRelatedLinksInput,
   recordPublicationShare,
   recordPublicationView,
+  toggleEcoAttendance,
   serializeRelatedLinksInput,
   toggleEventGoing,
   togglePublicationSave,
@@ -63,6 +72,7 @@ import {
   type PublicationType,
   type SoyibaPublication,
 } from './publicaciones.service';
+import { SoyibaMap, type SoyibaMapMarker } from '../../components/SoyibaMap';
 
 type PublicationsFeedProps = {
   session: SoyibaSession;
@@ -75,6 +85,7 @@ type PublicationsFeedProps = {
   openPublicationId?: string;
   onPublicationOpened?: () => void;
   onOpenEventFromHome?: (publicationId: string) => void;
+  onOpenEcoFromHome?: (publicationId: string) => void;
   publicMode?: boolean;
   onAuthRequired?: (mode: 'login' | 'register') => void;
 };
@@ -103,6 +114,23 @@ type PublicationFormState = {
   eventValidFrom: string;
   eventValidUntil: string;
   eventCapacityTotal: string;
+  ecoDay: string;
+  ecoTime: string;
+  ecoHost: string;
+  ecoModerator: string;
+  ecoPhone: string;
+  ecoAddress: string;
+  ecoNeighborhood: string;
+  ecoCity: string;
+  ecoLatitude: string;
+  ecoLongitude: string;
+  ecoValidFrom: string;
+  ecoValidUntil: string;
+};
+
+type GeoPoint = {
+  latitude: number;
+  longitude: number;
 };
 
 const statsIconClass = 'h-5 w-5 shrink-0';
@@ -118,6 +146,7 @@ export function PublicationsFeed({
   openPublicationId,
   onPublicationOpened,
   onOpenEventFromHome,
+  onOpenEcoFromHome,
   publicMode = false,
   onAuthRequired,
 }: PublicationsFeedProps) {
@@ -135,6 +164,9 @@ export function PublicationsFeed({
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [goingBusyId, setGoingBusyId] = useState('');
+  const [ecoAttendanceBusyId, setEcoAttendanceBusyId] = useState('');
+  const [userLocation, setUserLocation] = useState<GeoPoint | null>(null);
+  const [locationStatus, setLocationStatus] = useState<'idle' | 'requesting' | 'ready' | 'blocked' | 'unsupported'>('idle');
   const [notice, setNotice] = useState('');
   const lastComposerSignal = useRef(0);
   const lastOpenPublicationId = useRef('');
@@ -160,8 +192,12 @@ export function PublicationsFeed({
       }
     }
 
+    if (variant === 'eco') {
+      items = sortEcoPublicationsByDistance(items, userLocation);
+    }
+
     return items;
-  }, [eventStatusFilter, publications, searchTerm, variant]);
+  }, [eventStatusFilter, publications, searchTerm, userLocation, variant]);
   const activeDetailPublication = useMemo(
     () => publications.find((publication) => publication.id === activePublicationId) || null,
     [activePublicationId, publications],
@@ -204,6 +240,48 @@ export function PublicationsFeed({
       isMounted = false;
     };
   }, [filterType, session]);
+
+  useEffect(() => {
+    if (variant !== 'eco') {
+      return;
+    }
+
+    if (!navigator.geolocation) {
+      setLocationStatus('unsupported');
+      return;
+    }
+
+    let cancelled = false;
+    setLocationStatus('requesting');
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        if (cancelled) {
+          return;
+        }
+
+        setUserLocation({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        });
+        setLocationStatus('ready');
+      },
+      () => {
+        if (!cancelled) {
+          setLocationStatus('blocked');
+        }
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 5 * 60 * 1000,
+        timeout: 9000,
+      },
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [variant]);
 
   useEffect(() => {
     if (!canCreate || openComposerSignal === lastComposerSignal.current) {
@@ -398,6 +476,49 @@ export function PublicationsFeed({
     }
   }
 
+  async function handleToggleEcoAttendance(publication: SoyibaPublication) {
+    if (publicMode) {
+      onAuthRequired?.('login');
+      return;
+    }
+
+    if (publication.type !== 'Grupo ECO') {
+      return;
+    }
+
+    const nextAttending = !publication.eco.currentUserAttending;
+    const optimisticEco = {
+      ...publication.eco,
+      currentUserAttending: nextAttending,
+      attendeesCount: Math.max(0, publication.eco.attendeesCount + (nextAttending ? 1 : -1)),
+    };
+
+    setEcoAttendanceBusyId(publication.id);
+    updatePublicationState(publication.id, { eco: optimisticEco });
+
+    try {
+      const result = await toggleEcoAttendance(session, publication.id, nextAttending);
+
+      if (result.publication) {
+        setPublications((current) =>
+          sortPublications(current.map((item) => (item.id === result.publication?.id ? mergeServerPublication(result.publication, item) : item))),
+        );
+      } else {
+        updatePublicationState(publication.id, {
+          eco: {
+            ...optimisticEco,
+            currentUserAttending: result.attending,
+          },
+        });
+      }
+    } catch (attendanceError) {
+      setError(attendanceError instanceof Error ? attendanceError.message : 'No fue posible actualizar la asistencia al Grupo ECO.');
+      updatePublicationState(publication.id, { eco: publication.eco });
+    } finally {
+      setEcoAttendanceBusyId('');
+    }
+  }
+
   async function handleShare(publication: SoyibaPublication) {
     if (publicMode) {
       return;
@@ -458,6 +579,8 @@ export function PublicationsFeed({
             onSearchToggle={() => setSearchOpen((current) => !current)}
             onSearchChange={setSearchTerm}
           />
+        ) : variant === 'eco' ? (
+          <EcoHeader title={feedTitle} subtitle={feedSubtitle} locationStatus={locationStatus} userLocation={userLocation} />
         ) : (
           <div className="min-w-0">
             <h2 className="text-[19px] font-black leading-6 text-[#0B1F5B]">{feedTitle}</h2>
@@ -483,6 +606,10 @@ export function PublicationsFeed({
 
       {notice ? (
         <div className="rounded-[14px] border border-[#BFD0EA] bg-[#EAF2FF] px-4 py-3 text-xs font-black text-[#0B1F5B]">{notice}</div>
+      ) : null}
+
+      {variant === 'eco' && !isLoading && visiblePublications.length ? (
+        <EcoMapPanel publications={visiblePublications} userLocation={userLocation} locationStatus={locationStatus} onOpen={setActivePublicationId} />
       ) : null}
 
       {isLoading ? (
@@ -516,6 +643,20 @@ export function PublicationsFeed({
               onToggleGoing={() => handleToggleGoing(publication)}
               onAuthRequired={onAuthRequired}
             />
+          ) : variant === 'eco' ? (
+            <EcoGroupCard
+              key={publication.id}
+              publication={publication}
+              distanceKm={getEcoDistanceKm(publication, userLocation)}
+              menuOpen={activeMenuId === publication.id}
+              canManage={!publicMode && canManagePublication(session.user, publication)}
+              publicMode={publicMode}
+              onMenuToggle={() => setActiveMenuId((current) => (current === publication.id ? '' : publication.id))}
+              onOpen={() => setActivePublicationId(publication.id)}
+              onShare={() => handleShare(publication)}
+              onEdit={() => openEditComposer(publication)}
+              onDelete={() => handleDeletePublication(publication)}
+            />
           ) : (
             <PublicationCard
               key={publication.id}
@@ -529,6 +670,7 @@ export function PublicationsFeed({
               onDelete={() => handleDeletePublication(publication)}
               onToggleSave={() => handleToggleSave(publication)}
               onOpenEvent={publication.type === 'Evento' && onOpenEventFromHome ? () => onOpenEventFromHome(publication.id) : undefined}
+              onOpenEco={publication.type === 'Grupo ECO' && onOpenEcoFromHome ? () => onOpenEcoFromHome(publication.id) : undefined}
               onOpenDetails={() => setActivePublicationId(publication.id)}
               onAuthRequired={onAuthRequired}
               onOpenImage={(preview) => setImagePreview(preview)}
@@ -559,16 +701,30 @@ export function PublicationsFeed({
 
       <AnimatePresence>
         {activeDetailPublication ? (
-          <PublicationDetailsModal
-            publication={activeDetailPublication}
-            goingBusy={goingBusyId === activeDetailPublication.id}
-            publicMode={publicMode}
-            onClose={() => setActivePublicationId('')}
-            onShare={() => handleShare(activeDetailPublication)}
-            onToggleGoing={() => handleToggleGoing(activeDetailPublication)}
-            onAuthRequired={onAuthRequired}
-            onOpenImage={(preview) => setImagePreview(preview)}
-          />
+          activeDetailPublication.type === 'Grupo ECO' ? (
+            <EcoGroupModal
+              publication={activeDetailPublication}
+              attendingBusy={ecoAttendanceBusyId === activeDetailPublication.id}
+              publicMode={publicMode}
+              userLocation={userLocation}
+              onClose={() => setActivePublicationId('')}
+              onShare={() => handleShare(activeDetailPublication)}
+              onToggleAttendance={() => handleToggleEcoAttendance(activeDetailPublication)}
+              onAuthRequired={onAuthRequired}
+              onOpenImage={(preview) => setImagePreview(preview)}
+            />
+          ) : (
+            <PublicationDetailsModal
+              publication={activeDetailPublication}
+              goingBusy={goingBusyId === activeDetailPublication.id}
+              publicMode={publicMode}
+              onClose={() => setActivePublicationId('')}
+              onShare={() => handleShare(activeDetailPublication)}
+              onToggleGoing={() => handleToggleGoing(activeDetailPublication)}
+              onAuthRequired={onAuthRequired}
+              onOpenImage={(preview) => setImagePreview(preview)}
+            />
+          )
         ) : null}
       </AnimatePresence>
     </section>
@@ -656,6 +812,229 @@ function EventsHeader({
         </label>
       ) : null}
     </div>
+  );
+}
+
+function EcoHeader({
+  title,
+  subtitle,
+  locationStatus,
+  userLocation,
+}: {
+  title: string;
+  subtitle: string;
+  locationStatus: 'idle' | 'requesting' | 'ready' | 'blocked' | 'unsupported';
+  userLocation: GeoPoint | null;
+}) {
+  const statusLabel =
+    locationStatus === 'ready' && userLocation
+      ? 'Ubicacion actual detectada'
+      : locationStatus === 'requesting'
+        ? 'Buscando tu ubicacion'
+        : locationStatus === 'unsupported'
+          ? 'Ubicacion no disponible'
+          : locationStatus === 'blocked'
+            ? 'Ubicacion pendiente'
+            : 'Grupos cerca de ti';
+
+  return (
+    <div className="min-w-0 flex-1 space-y-3">
+      <div className="min-w-0">
+        <h2 className="text-[26px] font-black leading-7 text-[#0B1F5B]">{title}</h2>
+        <p className="mt-2 max-w-sm text-[14px] font-semibold leading-5 text-[#637295]">{subtitle}</p>
+      </div>
+
+      <div className="inline-flex max-w-full items-center gap-2 rounded-full border border-[#CFE9DC] bg-[#F2FFF8] px-3 py-2 text-[12px] font-black text-[#087A57] shadow-[0_10px_24px_rgba(8,122,87,0.08)]">
+        <Compass size={16} className="shrink-0" />
+        <span className="truncate">{statusLabel}</span>
+      </div>
+    </div>
+  );
+}
+
+function EcoMapPanel({
+  publications,
+  userLocation,
+  locationStatus,
+  onOpen,
+}: {
+  publications: SoyibaPublication[];
+  userLocation: GeoPoint | null;
+  locationStatus: 'idle' | 'requesting' | 'ready' | 'blocked' | 'unsupported';
+  onOpen: (publicationId: string) => void;
+}) {
+  const mappedPublications = publications.filter(hasEcoCoordinates);
+  const firstPosition = mappedPublications[0] ? getEcoCoordinates(mappedPublications[0]) : null;
+  const center: [number, number] = userLocation
+    ? [userLocation.latitude, userLocation.longitude]
+    : firstPosition
+      ? [firstPosition.latitude, firstPosition.longitude]
+      : [4.4389, -75.2322];
+  const markers: SoyibaMapMarker[] = mappedPublications.map((publication) => {
+    const position = getEcoCoordinates(publication) as GeoPoint;
+    const distanceKm = getEcoDistanceKm(publication, userLocation);
+
+    return {
+      id: publication.id,
+      title: publication.title,
+      subtitle: [publication.eco.neighborhood || publication.eco.city, distanceKm === null ? '' : formatDistance(distanceKm)]
+        .filter(Boolean)
+        .join(' - '),
+      position: [position.latitude, position.longitude],
+      mapsUrl: buildGoogleMapsUrl(publication),
+      onClick: () => undefined,
+    };
+  });
+
+  if (!mappedPublications.length) {
+    return null;
+  }
+
+  return (
+    <section className="overflow-hidden rounded-[18px] border border-[#DCE5F2] bg-white shadow-[0_16px_38px_rgba(15,23,42,0.08)]">
+      <div className="flex items-center justify-between gap-3 px-4 py-3">
+        <div className="min-w-0">
+          <h3 className="text-[15px] font-black text-[#0B1F5B]">Mapa de Grupos ECO</h3>
+          <p className="text-[12px] font-semibold text-[#637295]">{locationStatus === 'ready' ? 'Ordenados desde el mas cercano.' : 'Ubicaciones disponibles.'}</p>
+        </div>
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#EAF2FF] text-[#145CFF]">
+          <MapPinned size={20} />
+        </span>
+      </div>
+
+      <SoyibaMap markers={markers} userLocation={userLocation ? [userLocation.latitude, userLocation.longitude] : null} center={center} zoom={13} className="h-[300px] rounded-none" />
+
+      <div className="space-y-2 bg-[#F8FBFF] p-3">
+        {publications.slice(0, 3).map((publication) => {
+          const distanceKm = getEcoDistanceKm(publication, userLocation);
+
+          return (
+            <button
+              key={publication.id}
+              type="button"
+              onClick={() => onOpen(publication.id)}
+              className="grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-[12px] border border-[#E0E7F0] bg-white px-3 py-2 text-left shadow-[0_8px_18px_rgba(15,23,42,0.04)]"
+            >
+              <span className="min-w-0">
+                <span className="block truncate text-[13px] font-black text-[#0B1F5B]">{publication.title}</span>
+                <span className="mt-0.5 block truncate text-[11px] font-bold text-[#637295]">{formatEcoLocation(publication) || 'Ubicacion por confirmar'}</span>
+              </span>
+              {distanceKm !== null ? <span className="rounded-full bg-[#E6FAF1] px-2.5 py-1 text-[11px] font-black text-[#087A57]">{formatDistance(distanceKm)}</span> : null}
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function EcoGroupCard({
+  publication,
+  distanceKm,
+  menuOpen,
+  canManage,
+  publicMode,
+  onMenuToggle,
+  onOpen,
+  onShare,
+  onEdit,
+  onDelete,
+}: {
+  publication: SoyibaPublication;
+  distanceKm: number | null;
+  menuOpen: boolean;
+  canManage: boolean;
+  publicMode: boolean;
+  onMenuToggle: () => void;
+  onOpen: () => void;
+  onShare: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const imageItem = publication.mediaItems.find((item) => item.type === 'image');
+  const sources = imageItem ? getGoogleDriveImageCandidates(imageItem.url) : [];
+
+  return (
+    <article className="overflow-hidden rounded-[18px] border border-[#D7EFE4] bg-white shadow-[0_16px_38px_rgba(15,23,42,0.08)]">
+      <div className="grid min-h-[190px] grid-cols-[124px_minmax(0,1fr)] min-[520px]:grid-cols-[220px_minmax(0,1fr)]">
+        <div className="relative bg-[#EAF7F0]">
+          {imageItem ? (
+            <PublicationDriveImage sources={sources} alt={imageItem.title || publication.title} className="h-full min-h-[190px] w-full object-cover" />
+          ) : (
+            <div className="grid h-full min-h-[190px] place-items-center text-[#52637C]">
+              <ImageIcon size={30} />
+            </div>
+          )}
+
+          <span className="absolute left-3 top-3 rounded-full bg-[#087A57]/92 px-3 py-1 text-[10px] font-black uppercase text-white shadow-[0_12px_26px_rgba(8,122,87,0.22)]">
+            ECO
+          </span>
+        </div>
+
+        <div className="min-w-0 p-3 min-[520px]:p-4">
+          <div className="flex min-w-0 items-start justify-between gap-2">
+            <div className="min-w-0">
+              <h3 className="line-clamp-2 text-[18px] font-black leading-5 text-[#0B1F5B]">{publication.title}</h3>
+              <p className="mt-1 truncate text-[12px] font-bold text-[#087A57]">{formatEcoLocation(publication) || 'Sector por confirmar'}</p>
+            </div>
+
+            {!publicMode ? (
+              <div className="relative -mr-1 -mt-1 shrink-0">
+                <button
+                  type="button"
+                  aria-label="Opciones del Grupo ECO"
+                  onClick={onMenuToggle}
+                  className="grid h-9 w-9 place-items-center rounded-full text-[#0B1F5B] transition hover:bg-[#EAF2FF]"
+                >
+                  <MoreVertical size={20} />
+                </button>
+
+                <AnimatePresence>
+                  {menuOpen ? (
+                    <motion.div
+                      initial={{ opacity: 0, y: -4, scale: 0.98 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -4, scale: 0.98 }}
+                      className="absolute right-0 top-10 z-20 w-44 overflow-hidden rounded-[14px] border border-[#DCE5F2] bg-white py-1 shadow-[0_18px_42px_rgba(15,23,42,0.16)]"
+                    >
+                      <MenuAction icon={Share2} label="Compartir" onClick={onShare} />
+                      {canManage ? <MenuAction icon={PencilLine} label="Editar" onClick={onEdit} /> : null}
+                      {canManage ? <MenuAction icon={Trash2} label="Eliminar" danger onClick={onDelete} /> : null}
+                    </motion.div>
+                  ) : null}
+                </AnimatePresence>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="mt-3 grid gap-2 text-[11px] font-bold text-[#273653] min-[520px]:grid-cols-2">
+            <EcoCardMeta icon={CalendarDays} label={publication.eco.day || 'Dia por confirmar'} />
+            <EcoCardMeta icon={Clock3} label={publication.eco.time || 'Hora por confirmar'} />
+            <EcoCardMeta icon={House} label={publication.eco.host || 'Anfitrion por confirmar'} />
+            <EcoCardMeta icon={UserCheck} label={publication.eco.moderator || 'Moderador por confirmar'} />
+            <EcoCardMeta icon={UsersRound} label={`${formatCount(publication.eco.attendeesCount)} asistentes`} />
+            {distanceKm !== null ? <EcoCardMeta icon={Navigation} label={formatDistance(distanceKm)} /> : null}
+          </div>
+
+          <button
+            type="button"
+            onClick={onOpen}
+            className="mt-4 inline-flex h-10 w-full items-center justify-center rounded-[13px] bg-[#0B1F5B] px-3 text-[12px] font-black text-white shadow-[0_12px_24px_rgba(11,31,91,0.18)] transition hover:bg-[#145CFF]"
+          >
+            Ver Grupo ECO
+          </button>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function EcoCardMeta({ icon: Icon, label }: { icon: LucideIcon; label: string }) {
+  return (
+    <span className="inline-flex min-w-0 items-center gap-1.5">
+      <Icon size={14} className="shrink-0 text-[#087A57]" />
+      <span className="truncate">{label}</span>
+    </span>
   );
 }
 
@@ -956,6 +1335,318 @@ function PublicationDetailsModal({
   );
 }
 
+function EcoGroupModal({
+  publication,
+  attendingBusy,
+  publicMode,
+  userLocation,
+  onClose,
+  onShare,
+  onToggleAttendance,
+  onAuthRequired,
+  onOpenImage,
+}: {
+  publication: SoyibaPublication;
+  attendingBusy: boolean;
+  publicMode: boolean;
+  userLocation: GeoPoint | null;
+  onClose: () => void;
+  onShare: () => void;
+  onToggleAttendance: () => void;
+  onAuthRequired?: (mode: 'login' | 'register') => void;
+  onOpenImage: (preview: ImagePreview) => void;
+}) {
+  const mapsUrl = buildGoogleMapsUrl(publication);
+  const streetViewUrl = buildStreetViewUrl(publication);
+  const distanceKm = getEcoDistanceKm(publication, userLocation);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[110] flex h-[100dvh] items-end justify-center overflow-hidden bg-[#0B1F5B]/35 px-2 pb-[calc(10px+env(safe-area-inset-bottom))] pt-[calc(10px+env(safe-area-inset-top))] backdrop-blur-sm min-[560px]:items-center"
+      onMouseDown={onClose}
+    >
+      <motion.article
+        role="dialog"
+        aria-modal="true"
+        initial={{ opacity: 0, y: 28, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 24, scale: 0.98 }}
+        className="flex max-h-full w-full max-w-xl flex-col overflow-hidden rounded-[18px] border border-white/80 bg-white shadow-[0_26px_70px_rgba(11,31,91,0.24)]"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <header className="flex items-center gap-3 px-4 py-3">
+          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#E6FAF1] text-[#087A57] ring-2 ring-[#EEF2F7]">
+            <House size={23} />
+          </span>
+
+          <div className="min-w-0 flex-1">
+            <h3 className="truncate text-[15px] font-black leading-5 text-[#101827]">{publication.title}</h3>
+            <p className="text-[12px] font-semibold leading-4 text-[#667085]">{formatEcoLocation(publication) || 'Grupo ECO'}</p>
+          </div>
+
+          <PublicationTypeBadge publication={publication} />
+
+          <button type="button" aria-label="Cerrar Grupo ECO" onClick={onClose} className="grid h-10 w-9 place-items-center rounded-full text-[#0B1F5B] transition hover:bg-[#F2F5FA]">
+            <X size={21} />
+          </button>
+        </header>
+
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <PublicationMediaCarousel publication={publication} allowExternalOpen={!publicMode} onOpenImage={onOpenImage} />
+
+          <div className="space-y-4 px-4 pb-4 pt-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-3 text-[#253047]">
+                <Stat icon={UsersRound} value={publication.eco.attendeesCount} label="Asistentes" />
+                <Stat icon={Eye} value={publication.viewsCount} label="Views" />
+                {!publicMode ? (
+                  <button type="button" onClick={onShare} className="inline-flex items-center gap-1.5 text-sm font-bold text-[#253047]">
+                    <Share2 className={statsIconClass} />
+                    <span>{formatCount(publication.sharedCount)}</span>
+                  </button>
+                ) : (
+                  <Stat icon={Share2} value={publication.sharedCount} label="Compartidos" />
+                )}
+              </div>
+
+              {distanceKm !== null ? <span className="rounded-full bg-[#E6FAF1] px-3 py-1.5 text-[12px] font-black text-[#087A57]">{formatDistance(distanceKm)}</span> : null}
+            </div>
+
+            {publication.description ? <p className="whitespace-pre-line text-[14px] font-medium leading-6 text-[#202B3C]">{publication.description}</p> : null}
+
+            <div className="grid overflow-hidden rounded-[14px] border border-[#D6F5E7] bg-[#F8FFFB] min-[440px]:grid-cols-2">
+              <EventInfoTile icon={CalendarDays} label="Dia" value={publication.eco.day || 'Por confirmar'} />
+              <EventInfoTile icon={Clock3} label="Hora" value={publication.eco.time || 'Por confirmar'} />
+              <EventInfoTile icon={MapPin} label="Barrio" value={publication.eco.neighborhood || 'Por confirmar'} subvalue={publication.eco.city} />
+              <EventInfoTile icon={House} label="Punto de encuentro" value={publication.eco.address || 'Por confirmar'} />
+              <EventInfoTile icon={UserCheck} label="Anfitrion" value={publication.eco.host || 'Por confirmar'} />
+              <EventInfoTile icon={HeartHandshake} label="Moderador" value={publication.eco.moderator || 'Por confirmar'} />
+              <EventInfoTile icon={Phone} label="Contacto" value={publication.eco.phone || 'Por confirmar'} />
+              <EventInfoTile icon={UsersRound} label="Asistentes" value={`${formatCount(publication.eco.attendeesCount)} asistentes`} />
+            </div>
+
+            <EcoAboutAccordion />
+            <EcoOpenHomeCard />
+            <EcoLocationFrame publication={publication} mapsUrl={mapsUrl} streetViewUrl={streetViewUrl} />
+
+            {!publicMode && publication.relatedLinks.length ? (
+              <div className="space-y-2">
+                {publication.relatedLinks.map((link) => (
+                  <a
+                    key={link.id}
+                    href={link.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex min-h-[64px] items-center gap-3 rounded-[14px] border border-[#E0E7F0] bg-[#FAFCFF] px-3 py-2 shadow-[0_8px_18px_rgba(15,23,42,0.04)]"
+                  >
+                    <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[12px] bg-[#FFF1F1] text-[#E03131]">
+                      <FileText size={22} />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[13px] font-black text-[#101827]">{link.title}</span>
+                      <span className="mt-0.5 block truncate text-[11px] font-bold text-[#667085]">{hostFromUrl(link.url)}</span>
+                    </span>
+                    <span className="inline-flex shrink-0 items-center gap-1 text-[13px] font-black text-[#1F2544]">
+                      Abrir
+                      <ExternalLink size={16} />
+                    </span>
+                  </a>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        <footer className="border-t border-[#E3EAF5] bg-white p-3.5">
+          {publicMode ? (
+            <PublicAuthGate compact onAuthRequired={onAuthRequired} />
+          ) : (
+            <div className="flex justify-end">
+              <EcoAttendButton publication={publication} busy={attendingBusy} onClick={onToggleAttendance} />
+            </div>
+          )}
+        </footer>
+      </motion.article>
+    </motion.div>
+  );
+}
+
+function EcoAboutAccordion() {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <section className="overflow-hidden rounded-[14px] border border-[#DCE6F5] bg-white shadow-[0_8px_18px_rgba(15,23,42,0.04)]">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+        className="flex min-h-[54px] w-full items-center justify-between gap-3 px-3 text-left"
+      >
+        <span className="inline-flex min-w-0 items-center gap-2 text-[14px] font-black text-[#0B1F5B]">
+          <BookOpen size={18} className="shrink-0 text-[#087A57]" />
+          <span className="truncate">¿Qué son los Grupos ECO?</span>
+        </span>
+        <ChevronDown size={18} className={cx('shrink-0 text-[#637295] transition', open && 'rotate-180')} />
+      </button>
+
+      <AnimatePresence initial={false}>
+        {open ? (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+            className="overflow-hidden border-t border-[#E3EAF5]"
+          >
+            <div className="space-y-3 p-3 text-[13px] font-semibold leading-6 text-[#344154]">
+              <p>
+                ECO significa Evangelio, Comunidad y Oracion. Son espacios de encuentro de la Iglesia Biblica Antioquia donde los miembros se reunen en hogares para crecer juntos en su relacion con Dios y fortalecer la vida en comunidad.
+              </p>
+              <p>
+                A diferencia de una celula enfocada principalmente en el alcance evangelistico, los Grupos ECO estan orientados a profundizar en los temas compartidos durante la predica, promover la comunion entre hermanos, acompanarse mutuamente en oracion y fomentar el discipulado practico.
+              </p>
+
+              <div className="grid gap-2 min-[440px]:grid-cols-3">
+                <EcoPrincipleCard title="Evangelio" body="Reflexionamos y profundizamos en las ensenanzas biblicas para aplicarlas a la vida diaria." icon={BookOpen} />
+                <EcoPrincipleCard title="Comunidad" body="Construimos relaciones sanas y significativas como familia en Cristo." icon={UsersRound} />
+                <EcoPrincipleCard title="Oracion" body="Compartimos necesidades, damos gracias y oramos unos por otros." icon={MessageCircle} />
+              </div>
+
+              <p>Los Grupos ECO se reunen normalmente los viernes a las 7:00 p.m. en diferentes hogares de la ciudad.</p>
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </section>
+  );
+}
+
+function EcoPrincipleCard({ title, body, icon: Icon }: { title: string; body: string; icon: LucideIcon }) {
+  return (
+    <div className="rounded-[12px] border border-[#D6F5E7] bg-[#F8FFFB] p-3">
+      <span className="grid h-9 w-9 place-items-center rounded-full bg-[#E6FAF1] text-[#087A57]">
+        <Icon size={17} />
+      </span>
+      <h4 className="mt-2 text-[12px] font-black text-[#0B1F5B]">{title}</h4>
+      <p className="mt-1 text-[11px] font-semibold leading-5 text-[#52637C]">{body}</p>
+    </div>
+  );
+}
+
+function EcoOpenHomeCard() {
+  const url = `https://wa.me/573243339375?text=${encodeURIComponent('Bendiciones, quiero abrir un nuevo Grupo ECO en mi hogar.')}`;
+
+  return (
+    <section className="rounded-[14px] border border-[#D6F5E7] bg-[#F2FFF8] p-3 shadow-[0_8px_18px_rgba(8,122,87,0.06)]">
+      <div className="flex items-start gap-3">
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white text-[#087A57] shadow-[0_8px_18px_rgba(8,122,87,0.12)]">
+          <House size={19} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <h3 className="text-[14px] font-black text-[#0B1F5B]">Comunidad en casa</h3>
+          <p className="mt-1 text-[13px] font-black text-[#087A57]">¿Quieres abrir un nuevo ECO?</p>
+          <p className="mt-1 text-[12px] font-semibold leading-5 text-[#52637C]">
+            Ayudanos a seguir fortaleciendo nuestra comunidad. Si deseas abrir un Grupo ECO en tu hogar, contactanos.
+          </p>
+        </div>
+      </div>
+      <a
+        href={url}
+        target="_blank"
+        rel="noreferrer"
+        className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-[12px] bg-[#087A57] px-4 text-[12px] font-black text-white shadow-[0_12px_24px_rgba(8,122,87,0.18)] transition hover:bg-[#066347]"
+      >
+        Contactanos
+        <ExternalLink size={15} />
+      </a>
+    </section>
+  );
+}
+
+function EcoLocationFrame({
+  publication,
+  mapsUrl,
+  streetViewUrl,
+}: {
+  publication: SoyibaPublication;
+  mapsUrl: string;
+  streetViewUrl: string;
+}) {
+  const coordinates = getEcoCoordinates(publication);
+
+  if (!coordinates) {
+    return (
+      <section className="rounded-[14px] border border-[#DCE6F5] bg-[#F8FBFF] p-3 text-[13px] font-bold text-[#637295]">
+        Ubicacion en mapa por confirmar.
+      </section>
+    );
+  }
+
+  return (
+    <section className="overflow-hidden rounded-[14px] border border-[#DCE6F5] bg-white shadow-[0_8px_18px_rgba(15,23,42,0.04)]">
+      <div className="flex items-center justify-between gap-3 px-3 py-3">
+        <div className="min-w-0">
+          <h3 className="text-[14px] font-black text-[#0B1F5B]">Ubicacion</h3>
+          <p className="truncate text-[12px] font-semibold text-[#637295]">{publication.eco.address || formatEcoLocation(publication)}</p>
+        </div>
+        <MapPin size={19} className="shrink-0 text-[#145CFF]" />
+      </div>
+
+      <iframe
+        title={`Mapa de ${publication.title}`}
+        src={buildGoogleMapEmbedUrl(publication)}
+        className="h-[240px] w-full border-0"
+        loading="lazy"
+        referrerPolicy="no-referrer-when-downgrade"
+      />
+
+      <div className="grid gap-2 bg-[#F8FBFF] p-3 min-[420px]:grid-cols-2">
+        <a
+          href={mapsUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-[12px] bg-[#0B1F5B] px-3 text-[12px] font-black text-white transition hover:bg-[#145CFF]"
+        >
+          Google Maps
+          <ExternalLink size={15} />
+        </a>
+        <a
+          href={streetViewUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-[12px] border border-[#BFD0EA] bg-white px-3 text-[12px] font-black text-[#145CFF] transition hover:bg-[#EAF2FF]"
+        >
+          Street View
+          <ExternalLink size={15} />
+        </a>
+      </div>
+    </section>
+  );
+}
+
+function EcoAttendButton({ publication, busy, onClick }: { publication: SoyibaPublication; busy: boolean; onClick: () => void }) {
+  const active = publication.eco.currentUserAttending;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={busy}
+      aria-pressed={active}
+      className={cx(
+        'inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-[13px] px-5 text-sm font-black text-white shadow-[0_12px_24px_rgba(5,150,105,0.2)] transition disabled:cursor-not-allowed disabled:bg-slate-400 disabled:shadow-none',
+        active ? 'bg-[#07865B] hover:bg-[#04724D]' : 'bg-[#145CFF] hover:bg-[#0B4BE0]',
+      )}
+    >
+      {busy ? <LoaderCircle size={17} className="animate-spin" /> : <UserCheck size={17} />}
+      {active ? 'Asistire' : 'Quiero asistir'}
+    </button>
+  );
+}
+
 function PublicationTypeBadge({ publication }: { publication: SoyibaPublication }) {
   if (publication.type === 'Evento' && publication.event.expired) {
     return <span className="shrink-0 rounded-full bg-[#FFE8E8] px-3 py-2 text-[11px] font-black uppercase tracking-normal text-[#D92D2D]">Caducado</span>;
@@ -1089,6 +1780,7 @@ function PublicationCard({
   onDelete,
   onToggleSave,
   onOpenEvent,
+  onOpenEco,
   onOpenDetails,
   onAuthRequired,
   onOpenImage,
@@ -1103,6 +1795,7 @@ function PublicationCard({
   onDelete: () => void;
   onToggleSave: () => void;
   onOpenEvent?: () => void;
+  onOpenEco?: () => void;
   onOpenDetails: () => void;
   onAuthRequired?: (mode: 'login' | 'register') => void;
   onOpenImage: (preview: ImagePreview) => void;
@@ -1192,6 +1885,14 @@ function PublicationCard({
             >
               Ver evento
             </button>
+          ) : onOpenEco ? (
+            <button
+              type="button"
+              onClick={onOpenEco}
+              className="inline-flex h-11 shrink-0 items-center justify-center rounded-[12px] bg-[#087A57] px-4 text-sm font-black text-white shadow-[0_12px_24px_rgba(8,122,87,0.2)] transition hover:bg-[#066347]"
+            >
+              Ver Grupo ECO
+            </button>
           ) : !publicMode && ctaUrl ? (
             <a
               href={ctaUrl}
@@ -1223,7 +1924,7 @@ function PublicationCard({
           </div>
         ) : null}
 
-        {!onOpenEvent ? (
+        {!onOpenEvent && !onOpenEco ? (
           <button type="button" onClick={onOpenDetails} className="mt-3 text-[14px] font-black text-[#145CFF]">
             Ver detalles
           </button>
@@ -1574,6 +2275,13 @@ function PublicationComposerModal({
       }
     }
 
+    if (form.type === 'Grupo ECO') {
+      if (!form.ecoDay.trim() || !form.ecoTime.trim() || !form.ecoNeighborhood.trim() || !form.ecoHost.trim() || !form.ecoModerator.trim()) {
+        setError('Completa dia, hora, barrio, anfitrion y moderador del Grupo ECO.');
+        return;
+      }
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -1609,6 +2317,23 @@ function PublicationComposerModal({
                 validFrom: dateTimeInputToIso(form.eventValidFrom),
                 validUntil: dateTimeInputToIso(form.eventValidUntil),
                 capacityTotal: numberFromInput(form.eventCapacityTotal),
+              }
+            : undefined,
+        eco:
+          form.type === 'Grupo ECO'
+            ? {
+                day: form.ecoDay.trim(),
+                time: form.ecoTime.trim(),
+                host: form.ecoHost.trim(),
+                moderator: form.ecoModerator.trim(),
+                phone: form.ecoPhone.trim(),
+                address: form.ecoAddress.trim(),
+                neighborhood: form.ecoNeighborhood.trim(),
+                city: form.ecoCity.trim(),
+                latitude: geoNumberFromInput(form.ecoLatitude),
+                longitude: geoNumberFromInput(form.ecoLongitude),
+                validFrom: dateTimeInputToIso(form.ecoValidFrom),
+                validUntil: dateTimeInputToIso(form.ecoValidUntil),
               }
             : undefined,
       };
@@ -1691,6 +2416,23 @@ function PublicationComposerModal({
                 type="number"
                 placeholder="40"
               />
+            </div>
+          ) : null}
+
+          {form.type === 'Grupo ECO' ? (
+            <div className="grid gap-3 rounded-[14px] border border-[#D6F5E7] bg-white p-3 shadow-[0_10px_24px_rgba(15,23,42,0.04)] min-[520px]:grid-cols-2">
+              <TextField label="Dia de reunion" value={form.ecoDay} onChange={(value) => updateField('ecoDay', value)} icon={CalendarDays} placeholder="Viernes" />
+              <TextField label="Hora de reunion" value={form.ecoTime} onChange={(value) => updateField('ecoTime', value)} icon={Clock3} placeholder="7:00 p.m." />
+              <TextField label="Anfitrion" value={form.ecoHost} onChange={(value) => updateField('ecoHost', value)} icon={House} placeholder="Nombre del anfitrion" />
+              <TextField label="Moderador" value={form.ecoModerator} onChange={(value) => updateField('ecoModerator', value)} icon={UserCheck} placeholder="Nombre del moderador" />
+              <TextField label="Telefono de contacto" value={form.ecoPhone} onChange={(value) => updateField('ecoPhone', value)} icon={Phone} type="tel" placeholder="+57..." />
+              <TextField label="Barrio o sector" value={form.ecoNeighborhood} onChange={(value) => updateField('ecoNeighborhood', value)} icon={MapPin} placeholder="Barrio" />
+              <TextField label="Ciudad" value={form.ecoCity} onChange={(value) => updateField('ecoCity', value)} icon={MapPinned} placeholder="Ibague" />
+              <TextField label="Direccion o punto de encuentro" value={form.ecoAddress} onChange={(value) => updateField('ecoAddress', value)} icon={Navigation} placeholder="Direccion o referencia" />
+              <TextField label="Latitud" value={form.ecoLatitude} onChange={(value) => updateField('ecoLatitude', value)} icon={Compass} type="number" placeholder="4.4389" />
+              <TextField label="Longitud" value={form.ecoLongitude} onChange={(value) => updateField('ecoLongitude', value)} icon={Compass} type="number" placeholder="-75.2322" />
+              <TextField label="Inicio de vigencia" value={form.ecoValidFrom} onChange={(value) => updateField('ecoValidFrom', value)} icon={Clock3} type="datetime-local" />
+              <TextField label="Fin de vigencia" value={form.ecoValidUntil} onChange={(value) => updateField('ecoValidUntil', value)} icon={Clock3} type="datetime-local" />
             </div>
           ) : null}
 
@@ -2064,6 +2806,18 @@ function buildFormState(publication: SoyibaPublication | null, permittedTypes: P
       eventValidFrom: '',
       eventValidUntil: '',
       eventCapacityTotal: '',
+      ecoDay: '',
+      ecoTime: '',
+      ecoHost: '',
+      ecoModerator: '',
+      ecoPhone: '',
+      ecoAddress: '',
+      ecoNeighborhood: '',
+      ecoCity: '',
+      ecoLatitude: '',
+      ecoLongitude: '',
+      ecoValidFrom: '',
+      ecoValidUntil: '',
     };
   }
 
@@ -2087,6 +2841,18 @@ function buildFormState(publication: SoyibaPublication | null, permittedTypes: P
     eventValidFrom: toDateTimeInputValue(publication.event.validFrom),
     eventValidUntil: toDateTimeInputValue(publication.event.validUntil),
     eventCapacityTotal: publication.event.capacityTotal ? String(publication.event.capacityTotal) : '',
+    ecoDay: publication.eco.day,
+    ecoTime: publication.eco.time,
+    ecoHost: publication.eco.host,
+    ecoModerator: publication.eco.moderator,
+    ecoPhone: publication.eco.phone,
+    ecoAddress: publication.eco.address,
+    ecoNeighborhood: publication.eco.neighborhood,
+    ecoCity: publication.eco.city,
+    ecoLatitude: publication.eco.latitude === null ? '' : String(publication.eco.latitude),
+    ecoLongitude: publication.eco.longitude === null ? '' : String(publication.eco.longitude),
+    ecoValidFrom: toDateTimeInputValue(publication.eco.validFrom),
+    ecoValidUntil: toDateTimeInputValue(publication.eco.validUntil),
   };
 }
 
@@ -2114,6 +2880,10 @@ function mergeActivityStats(updated: SoyibaPublication, current: SoyibaPublicati
     event: {
       ...updated.event,
       currentUserGoing: current.event.currentUserGoing,
+    },
+    eco: {
+      ...updated.eco,
+      currentUserAttending: current.eco.currentUserAttending,
     },
   };
 }
@@ -2157,6 +2927,109 @@ function isEventPast(publication: SoyibaPublication) {
   return Number.isFinite(timestamp) && timestamp < Date.now();
 }
 
+function sortEcoPublicationsByDistance(publications: SoyibaPublication[], userLocation: GeoPoint | null) {
+  if (!userLocation) {
+    return publications;
+  }
+
+  return [...publications].sort((first, second) => {
+    const firstDistance = getEcoDistanceKm(first, userLocation);
+    const secondDistance = getEcoDistanceKm(second, userLocation);
+
+    if (firstDistance === null && secondDistance === null) {
+      return Date.parse(second.createdAt) - Date.parse(first.createdAt);
+    }
+
+    if (firstDistance === null) return 1;
+    if (secondDistance === null) return -1;
+    return firstDistance - secondDistance;
+  });
+}
+
+function getEcoDistanceKm(publication: SoyibaPublication, userLocation: GeoPoint | null) {
+  const coordinates = getEcoCoordinates(publication);
+
+  if (!coordinates || !userLocation) {
+    return null;
+  }
+
+  return haversineDistanceKm(userLocation, coordinates);
+}
+
+function hasEcoCoordinates(publication: SoyibaPublication) {
+  return getEcoCoordinates(publication) !== null;
+}
+
+function getEcoCoordinates(publication: SoyibaPublication): GeoPoint | null {
+  if (publication.eco.latitude === null || publication.eco.longitude === null) {
+    return null;
+  }
+
+  return {
+    latitude: publication.eco.latitude,
+    longitude: publication.eco.longitude,
+  };
+}
+
+function formatEcoLocation(publication: SoyibaPublication) {
+  return [publication.eco.neighborhood, publication.eco.city].filter(Boolean).join(', ');
+}
+
+function formatDistance(value: number) {
+  if (value < 1) {
+    return `${Math.max(1, Math.round(value * 1000))} m`;
+  }
+
+  return `${value.toFixed(value < 10 ? 1 : 0)} km`;
+}
+
+function buildGoogleMapsUrl(publication: SoyibaPublication) {
+  const coordinates = getEcoCoordinates(publication);
+
+  if (coordinates) {
+    return `https://www.google.com/maps/search/?api=1&query=${coordinates.latitude},${coordinates.longitude}`;
+  }
+
+  const query = [publication.eco.address, publication.eco.neighborhood, publication.eco.city].filter(Boolean).join(', ');
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query || publication.title)}`;
+}
+
+function buildStreetViewUrl(publication: SoyibaPublication) {
+  const coordinates = getEcoCoordinates(publication);
+
+  if (!coordinates) {
+    return buildGoogleMapsUrl(publication);
+  }
+
+  return `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${coordinates.latitude},${coordinates.longitude}`;
+}
+
+function buildGoogleMapEmbedUrl(publication: SoyibaPublication) {
+  const coordinates = getEcoCoordinates(publication);
+  const query = coordinates
+    ? `${coordinates.latitude},${coordinates.longitude}`
+    : [publication.eco.address, publication.eco.neighborhood, publication.eco.city].filter(Boolean).join(', ') || publication.title;
+
+  return `https://www.google.com/maps?q=${encodeURIComponent(query)}&z=16&output=embed`;
+}
+
+function haversineDistanceKm(from: GeoPoint, to: GeoPoint) {
+  const earthRadiusKm = 6371;
+  const deltaLatitude = degreesToRadians(to.latitude - from.latitude);
+  const deltaLongitude = degreesToRadians(to.longitude - from.longitude);
+  const fromLatitude = degreesToRadians(from.latitude);
+  const toLatitude = degreesToRadians(to.latitude);
+  const a =
+    Math.sin(deltaLatitude / 2) * Math.sin(deltaLatitude / 2) +
+    Math.cos(fromLatitude) * Math.cos(toLatitude) * Math.sin(deltaLongitude / 2) * Math.sin(deltaLongitude / 2);
+
+  return earthRadiusKm * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function degreesToRadians(value: number) {
+  return (value * Math.PI) / 180;
+}
+
 function normalizeSearchText(value: string) {
   return value
     .normalize('NFD')
@@ -2193,6 +3066,17 @@ function dateTimeInputToIso(value: string) {
 function numberFromInput(value: string) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? Math.max(0, Math.round(parsed)) : 0;
+}
+
+function geoNumberFromInput(value: string) {
+  const normalized = value.trim().replace(',', '.');
+
+  if (!normalized) {
+    return null;
+  }
+
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function formatEventDateParts(value: string) {

@@ -3,7 +3,7 @@ var SOYIBA_INICIO_SHEET = 'Inicio';
 var SOYIBA_INICIO_HEADERS = ['metric_id', 'label', 'value', 'sort_order', 'visible', 'updated_at'];
 var SOYIBA_AUTH_SPREADSHEET_ID = '1Sk6f6mScrMTcXfa-psxoY4boa_1gqJmFt7anP-lpErM';
 var SOYIBA_AUTH_SHEET = 'Auth';
-var SOYIBA_INICIO_CODE_VERSION = 'eventos-yovoy-2026-06-16';
+var SOYIBA_INICIO_CODE_VERSION = 'eco-groups-2026-06-16';
 var SOYIBA_AUTH_HEADERS = [
   'user_id',
   'email',
@@ -35,6 +35,7 @@ var SOYIBA_PUBLICACIONES_SPREADSHEET_ID = SOYIBA_INICIO_SPREADSHEET_ID;
 var SOYIBA_PUBLICACIONES_SHEET = 'Publicaciones';
 var SOYIBA_GUARDADOS_SHEET = 'Guardados';
 var SOYIBA_YOVOY_SHEET = 'YoVoy';
+var SOYIBA_ASISTENCIAS_ECO_SHEET = 'AsistenciasECO';
 var SOYIBA_PUBLICACIONES_MEDIA_FOLDER_ID = '1QqE9UI2Y0O2Md0sb3tyYPYFiUAUw_vXn';
 var SOYIBA_PUBLICACIONES_MEDIA_FOLDER_NAME = 'SOYIBA Publicaciones';
 var SOYIBA_PUBLICACIONES_SHARE_UPLOADED_FILES = false;
@@ -65,7 +66,20 @@ var SOYIBA_PUBLICACIONES_HEADERS = [
   'fecha_inicio_vigencia',
   'fecha_caducidad',
   'cupos',
-  'yovoy'
+  'yovoy',
+  'diaEco',
+  'horaEco',
+  'anfitrion',
+  'moderador',
+  'telefonoContacto',
+  'direccion',
+  'barrio',
+  'ciudad',
+  'latitud',
+  'longitud',
+  'asistentes',
+  'fechaInicioVigencia',
+  'fechaFinVigencia'
 ];
 var SOYIBA_GUARDADOS_HEADERS = [
   'saved_id',
@@ -82,6 +96,12 @@ var SOYIBA_YOVOY_HEADERS = [
   'user_email',
   'user_name',
   'created_at'
+];
+var SOYIBA_ASISTENCIAS_ECO_HEADERS = [
+  'idRegistro',
+  'idPublicacion',
+  'idUsuario',
+  'fechaRegistro'
 ];
 
 function doGet(e) {
@@ -620,6 +640,10 @@ function soyibaPublicacionesHandle_(action, data) {
     return soyibaPublicacionesToggleYoVoy_(data);
   }
 
+  if (action === 'toggleEcoAttendance') {
+    return soyibaPublicacionesToggleEcoAttendance_(data);
+  }
+
   if (action === 'recordView') {
     return soyibaPublicacionesRecordStat_(data, 'views');
   }
@@ -635,11 +659,13 @@ function soyibaPublicacionesList_(data) {
   var sheet = soyibaPublicacionesGetSheet_();
   var savedSheet = soyibaGuardadosGetSheet_();
   var yovoySheet = soyibaYoVoyGetSheet_();
+  var asistenciasEcoSheet = soyibaAsistenciasEcoGetSheet_();
   var values = sheet.getDataRange().getValues();
   var headers = soyibaPublicacionesGetHeaders_(sheet);
   var currentUser = soyibaPublicacionesGetCurrentUser_(data);
   var savedMap = soyibaPublicacionesGetSavedMap_(savedSheet, currentUser);
   var yovoyMap = soyibaPublicacionesGetYoVoyMap_(yovoySheet, currentUser);
+  var ecoAttendanceMap = soyibaPublicacionesGetEcoAttendanceMap_(asistenciasEcoSheet, currentUser);
   var rawTypeFilter = String(data.type || data.tipo_publicacion || '').trim();
   var typeFilter = rawTypeFilter ? soyibaPublicacionesNormalizeType_(rawTypeFilter) : '';
   var publications = [];
@@ -658,7 +684,8 @@ function soyibaPublicacionesList_(data) {
     publications.push(soyibaPublicacionesBuildResponse_(
       record,
       savedMap[String(record.publication_id)] === true,
-      yovoyMap[String(record.publication_id)] === true
+      yovoyMap[String(record.publication_id)] === true,
+      ecoAttendanceMap[String(record.publication_id)] === true
     ));
   }
 
@@ -686,6 +713,7 @@ function soyibaPublicacionesCreate_(data) {
   var nowIso = now.toISOString();
   var publicationId = Utilities.getUuid();
   var eventPayload = soyibaPublicacionesNormalizeEventPayload_(data, 0);
+  var ecoPayload = soyibaPublicacionesNormalizeEcoPayload_(data);
   var row = [
     publicationId,
     nowIso,
@@ -712,7 +740,20 @@ function soyibaPublicacionesCreate_(data) {
     type === 'Evento' ? eventPayload.validFrom : '',
     type === 'Evento' ? eventPayload.validUntil : '',
     type === 'Evento' ? eventPayload.capacityAvailable : 0,
-    0
+    0,
+    type === 'Grupo ECO' ? ecoPayload.day : '',
+    type === 'Grupo ECO' ? ecoPayload.time : '',
+    type === 'Grupo ECO' ? ecoPayload.host : '',
+    type === 'Grupo ECO' ? ecoPayload.moderator : '',
+    type === 'Grupo ECO' ? ecoPayload.phone : '',
+    type === 'Grupo ECO' ? ecoPayload.address : '',
+    type === 'Grupo ECO' ? ecoPayload.neighborhood : '',
+    type === 'Grupo ECO' ? ecoPayload.city : '',
+    type === 'Grupo ECO' ? ecoPayload.latitude : '',
+    type === 'Grupo ECO' ? ecoPayload.longitude : '',
+    0,
+    type === 'Grupo ECO' ? ecoPayload.validFrom : '',
+    type === 'Grupo ECO' ? ecoPayload.validUntil : ''
   ];
 
   var sheet = soyibaPublicacionesGetSheet_();
@@ -720,7 +761,7 @@ function soyibaPublicacionesCreate_(data) {
 
   return {
     ok: true,
-    publication: soyibaPublicacionesBuildResponse_(soyibaPublicacionesRowToObject_(SOYIBA_PUBLICACIONES_HEADERS, row), false)
+    publication: soyibaPublicacionesBuildResponse_(soyibaPublicacionesRowToObject_(SOYIBA_PUBLICACIONES_HEADERS, row), false, false, false)
   };
 }
 
@@ -777,10 +818,44 @@ function soyibaPublicacionesUpdate_(data) {
     soyibaPublicacionesSetCell_(sheet, headers, found.row, 'yovoy', 0);
   }
 
+  if (type === 'Grupo ECO') {
+    var ecoPayload = soyibaPublicacionesNormalizeEcoPayload_(data);
+    var currentEcoAttendance = Number(found.record.asistentes || 0);
+    soyibaPublicacionesSetCell_(sheet, headers, found.row, 'diaEco', ecoPayload.day);
+    soyibaPublicacionesSetCell_(sheet, headers, found.row, 'horaEco', ecoPayload.time);
+    soyibaPublicacionesSetCell_(sheet, headers, found.row, 'anfitrion', ecoPayload.host);
+    soyibaPublicacionesSetCell_(sheet, headers, found.row, 'moderador', ecoPayload.moderator);
+    soyibaPublicacionesSetCell_(sheet, headers, found.row, 'telefonoContacto', ecoPayload.phone);
+    soyibaPublicacionesSetCell_(sheet, headers, found.row, 'direccion', ecoPayload.address);
+    soyibaPublicacionesSetCell_(sheet, headers, found.row, 'barrio', ecoPayload.neighborhood);
+    soyibaPublicacionesSetCell_(sheet, headers, found.row, 'ciudad', ecoPayload.city);
+    soyibaPublicacionesSetCell_(sheet, headers, found.row, 'latitud', ecoPayload.latitude);
+    soyibaPublicacionesSetCell_(sheet, headers, found.row, 'longitud', ecoPayload.longitude);
+    soyibaPublicacionesSetCell_(sheet, headers, found.row, 'asistentes', currentEcoAttendance);
+    soyibaPublicacionesSetCell_(sheet, headers, found.row, 'fechaInicioVigencia', ecoPayload.validFrom);
+    soyibaPublicacionesSetCell_(sheet, headers, found.row, 'fechaFinVigencia', ecoPayload.validUntil);
+  } else {
+    soyibaPublicacionesSetCell_(sheet, headers, found.row, 'diaEco', '');
+    soyibaPublicacionesSetCell_(sheet, headers, found.row, 'horaEco', '');
+    soyibaPublicacionesSetCell_(sheet, headers, found.row, 'anfitrion', '');
+    soyibaPublicacionesSetCell_(sheet, headers, found.row, 'moderador', '');
+    soyibaPublicacionesSetCell_(sheet, headers, found.row, 'telefonoContacto', '');
+    soyibaPublicacionesSetCell_(sheet, headers, found.row, 'direccion', '');
+    soyibaPublicacionesSetCell_(sheet, headers, found.row, 'barrio', '');
+    soyibaPublicacionesSetCell_(sheet, headers, found.row, 'ciudad', '');
+    soyibaPublicacionesSetCell_(sheet, headers, found.row, 'latitud', '');
+    soyibaPublicacionesSetCell_(sheet, headers, found.row, 'longitud', '');
+    soyibaPublicacionesSetCell_(sheet, headers, found.row, 'asistentes', 0);
+    soyibaPublicacionesSetCell_(sheet, headers, found.row, 'fechaInicioVigencia', '');
+    soyibaPublicacionesSetCell_(sheet, headers, found.row, 'fechaFinVigencia', '');
+  }
+
   var record = soyibaPublicacionesReadRow_(sheet, found.row);
   var yovoySheet = soyibaYoVoyGetSheet_();
   var going = soyibaPublicacionesFindYoVoyRow_(yovoySheet, record.publication_id, user).row > 0;
-  return { ok: true, publication: soyibaPublicacionesBuildResponse_(record, false, going) };
+  var asistenciaEcoSheet = soyibaAsistenciasEcoGetSheet_();
+  var attendingEco = soyibaPublicacionesFindEcoAttendanceRow_(asistenciaEcoSheet, record.publication_id, user).row > 0;
+  return { ok: true, publication: soyibaPublicacionesBuildResponse_(record, false, going, attendingEco) };
 }
 
 function soyibaPublicacionesDelete_(data) {
@@ -944,6 +1019,63 @@ function soyibaPublicacionesToggleYoVoy_(data) {
   }
 }
 
+function soyibaPublicacionesToggleEcoAttendance_(data) {
+  var publicationId = String(data.publicationId || data.publication_id || '').trim();
+  var user = soyibaPublicacionesGetCurrentUser_(data);
+
+  if (!user.id && !user.email) {
+    return { ok: false, error: 'Usuario requerido para marcar asistencia al Grupo ECO.' };
+  }
+
+  var lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+
+  try {
+    var publicationSheet = soyibaPublicacionesGetSheet_();
+    var foundPublication = soyibaPublicacionesFindRow_(publicationSheet, publicationId);
+
+    if (foundPublication.row < 1) {
+      return { ok: false, error: 'Grupo ECO no encontrado.' };
+    }
+
+    if (soyibaPublicacionesNormalizeType_(foundPublication.record.tipo_publicacion) !== 'Grupo ECO') {
+      return { ok: false, error: 'La asistencia solo esta disponible para Grupos ECO.' };
+    }
+
+    var attendanceSheet = soyibaAsistenciasEcoGetSheet_();
+    var foundAttendance = soyibaPublicacionesFindEcoAttendanceRow_(attendanceSheet, publicationId, user);
+    var shouldAttend = data.attending === true ||
+      data.asistir === true ||
+      String(data.attending || data.asistir || '').toLowerCase() === 'true';
+
+    if (shouldAttend && foundAttendance.row < 1) {
+      attendanceSheet.appendRow([
+        Utilities.getUuid(),
+        publicationId,
+        soyibaPublicacionesEcoUserKey_(user),
+        new Date().toISOString()
+      ]);
+      soyibaPublicacionesIncrement_(publicationSheet, foundPublication.row, 'asistentes', 1);
+    }
+
+    if (!shouldAttend && foundAttendance.row > 0) {
+      attendanceSheet.deleteRow(foundAttendance.row);
+      soyibaPublicacionesIncrement_(publicationSheet, foundPublication.row, 'asistentes', -1);
+    }
+
+    var updatedRecord = soyibaPublicacionesReadRow_(publicationSheet, foundPublication.row);
+    var attending = shouldAttend && soyibaPublicacionesFindEcoAttendanceRow_(attendanceSheet, publicationId, user).row > 0;
+
+    return {
+      ok: true,
+      attending: attending,
+      publication: soyibaPublicacionesBuildResponse_(updatedRecord, false, false, attending)
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function soyibaPublicacionesRecordStat_(data, header) {
   var sheet = soyibaPublicacionesGetSheet_();
   var found = soyibaPublicacionesFindRow_(sheet, data.publicationId || data.publication_id);
@@ -1011,10 +1143,13 @@ function soyibaPublicacionesIsManager_(user) {
   return role === 'admin' || role === 'moderador';
 }
 
-function soyibaPublicacionesBuildResponse_(record, savedByCurrentUser, yovoyByCurrentUser) {
+function soyibaPublicacionesBuildResponse_(record, savedByCurrentUser, yovoyByCurrentUser, ecoAttendanceByCurrentUser) {
   var capacityAvailable = Number(record.cupos || 0);
   var attendeesCount = Number(record.yovoy || 0);
   var capacityTotal = capacityAvailable + attendeesCount;
+  var ecoAttendeesCount = Number(record.asistentes || 0);
+  var ecoLatitude = soyibaPublicacionesNumberOrNull_(record.latitud);
+  var ecoLongitude = soyibaPublicacionesNumberOrNull_(record.longitud);
 
   return {
     id: String(record.publication_id || ''),
@@ -1052,13 +1187,43 @@ function soyibaPublicacionesBuildResponse_(record, savedByCurrentUser, yovoyByCu
       currentUserGoing: yovoyByCurrentUser === true,
       expired: soyibaPublicacionesIsEventExpired_(record.fecha_caducidad)
     },
+    eco: {
+      day: String(record.diaEco || ''),
+      time: String(record.horaEco || ''),
+      host: String(record.anfitrion || ''),
+      moderator: String(record.moderador || ''),
+      phone: String(record.telefonoContacto || ''),
+      address: String(record.direccion || ''),
+      neighborhood: String(record.barrio || ''),
+      city: String(record.ciudad || ''),
+      latitude: ecoLatitude,
+      longitude: ecoLongitude,
+      attendeesCount: ecoAttendeesCount,
+      currentUserAttending: ecoAttendanceByCurrentUser === true,
+      validFrom: String(record.fechaInicioVigencia || ''),
+      validUntil: String(record.fechaFinVigencia || '')
+    },
     fecha_hora_evento: String(record.fecha_hora_evento || ''),
     lugar_evento: String(record.lugar_evento || ''),
     fecha_inicio_vigencia: String(record.fecha_inicio_vigencia || ''),
     fecha_caducidad: String(record.fecha_caducidad || ''),
     cupos: capacityAvailable,
     yovoy: attendeesCount,
-    yovoy_by_current_user: yovoyByCurrentUser === true
+    yovoy_by_current_user: yovoyByCurrentUser === true,
+    diaEco: String(record.diaEco || ''),
+    horaEco: String(record.horaEco || ''),
+    anfitrion: String(record.anfitrion || ''),
+    moderador: String(record.moderador || ''),
+    telefonoContacto: String(record.telefonoContacto || ''),
+    direccion: String(record.direccion || ''),
+    barrio: String(record.barrio || ''),
+    ciudad: String(record.ciudad || ''),
+    latitud: ecoLatitude,
+    longitud: ecoLongitude,
+    asistentes: ecoAttendeesCount,
+    fechaInicioVigencia: String(record.fechaInicioVigencia || ''),
+    fechaFinVigencia: String(record.fechaFinVigencia || ''),
+    asistencia_eco_by_current_user: ecoAttendanceByCurrentUser === true
   };
 }
 
@@ -1218,6 +1383,15 @@ function soyibaYoVoyGetSheet_() {
   return sheet;
 }
 
+function soyibaAsistenciasEcoGetSheet_() {
+  var spreadsheet = SOYIBA_PUBLICACIONES_SPREADSHEET_ID
+    ? SpreadsheetApp.openById(SOYIBA_PUBLICACIONES_SPREADSHEET_ID)
+    : SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = spreadsheet.getSheetByName(SOYIBA_ASISTENCIAS_ECO_SHEET) || spreadsheet.insertSheet(SOYIBA_ASISTENCIAS_ECO_SHEET);
+  soyibaPublicacionesEnsureHeaders_(sheet, SOYIBA_ASISTENCIAS_ECO_HEADERS);
+  return sheet;
+}
+
 function soyibaPublicacionesEnsureHeaders_(sheet, expectedHeaders) {
   if (sheet.getLastRow() === 0) {
     sheet.appendRow(expectedHeaders);
@@ -1339,6 +1513,56 @@ function soyibaPublicacionesFindYoVoyRow_(sheet, publicationId, user) {
   return { row: -1 };
 }
 
+function soyibaPublicacionesGetEcoAttendanceMap_(sheet, user) {
+  var headers = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), SOYIBA_ASISTENCIAS_ECO_HEADERS.length)).getValues()[0];
+  var publicationColumn = headers.indexOf('idPublicacion');
+  var userColumn = headers.indexOf('idUsuario');
+  var values = sheet.getDataRange().getValues();
+  var userKey = soyibaPublicacionesEcoUserKey_(user);
+  var map = {};
+
+  if (!userKey) {
+    return map;
+  }
+
+  for (var rowIndex = 1; rowIndex < values.length; rowIndex += 1) {
+    var rowUser = String(values[rowIndex][userColumn] || '').trim();
+
+    if (rowUser === userKey) {
+      map[String(values[rowIndex][publicationColumn])] = true;
+    }
+  }
+
+  return map;
+}
+
+function soyibaPublicacionesFindEcoAttendanceRow_(sheet, publicationId, user) {
+  var headers = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), SOYIBA_ASISTENCIAS_ECO_HEADERS.length)).getValues()[0];
+  var publicationColumn = headers.indexOf('idPublicacion');
+  var userColumn = headers.indexOf('idUsuario');
+  var values = sheet.getDataRange().getValues();
+  var userKey = soyibaPublicacionesEcoUserKey_(user);
+
+  if (!userKey) {
+    return { row: -1 };
+  }
+
+  for (var rowIndex = 1; rowIndex < values.length; rowIndex += 1) {
+    var samePublication = String(values[rowIndex][publicationColumn] || '').trim() === publicationId;
+    var sameUser = String(values[rowIndex][userColumn] || '').trim() === userKey;
+
+    if (samePublication && sameUser) {
+      return { row: rowIndex + 1 };
+    }
+  }
+
+  return { row: -1 };
+}
+
+function soyibaPublicacionesEcoUserKey_(user) {
+  return String((user && (user.id || user.email)) || '').trim();
+}
+
 function soyibaPublicacionesIncrement_(sheet, row, header, delta) {
   var headers = soyibaPublicacionesGetHeaders_(sheet);
   var column = headers.indexOf(header);
@@ -1420,6 +1644,25 @@ function soyibaPublicacionesNormalizeEventPayload_(data, currentYoVoy) {
   };
 }
 
+function soyibaPublicacionesNormalizeEcoPayload_(data) {
+  var eco = data && data.eco ? data.eco : {};
+
+  return {
+    day: String(soyibaPublicacionesFirstValue_(eco.day, eco.diaEco, data.diaEco, data.dia_eco)),
+    time: String(soyibaPublicacionesFirstValue_(eco.time, eco.horaEco, data.horaEco, data.hora_eco)),
+    host: String(soyibaPublicacionesFirstValue_(eco.host, eco.anfitrion, data.anfitrion)),
+    moderator: String(soyibaPublicacionesFirstValue_(eco.moderator, eco.moderador, data.moderador)),
+    phone: String(soyibaPublicacionesFirstValue_(eco.phone, eco.telefonoContacto, data.telefonoContacto, data.telefono_contacto)),
+    address: String(soyibaPublicacionesFirstValue_(eco.address, eco.direccion, data.direccion)),
+    neighborhood: String(soyibaPublicacionesFirstValue_(eco.neighborhood, eco.barrio, data.barrio, data.sector)),
+    city: String(soyibaPublicacionesFirstValue_(eco.city, eco.ciudad, data.ciudad)),
+    latitude: soyibaPublicacionesCoordinateValue_(soyibaPublicacionesFirstValue_(eco.latitude, eco.latitud, data.latitud)),
+    longitude: soyibaPublicacionesCoordinateValue_(soyibaPublicacionesFirstValue_(eco.longitude, eco.longitud, data.longitud)),
+    validFrom: String(soyibaPublicacionesFirstValue_(eco.validFrom, eco.fechaInicioVigencia, data.fechaInicioVigencia)),
+    validUntil: String(soyibaPublicacionesFirstValue_(eco.validUntil, eco.fechaFinVigencia, data.fechaFinVigencia))
+  };
+}
+
 function soyibaPublicacionesIsEventExpired_(value) {
   if (!value) {
     return false;
@@ -1471,6 +1714,40 @@ function soyibaPublicacionesIsTrue_(value) {
   }
 
   return ['true', '1', 'si', 'yes'].indexOf(String(value || '').trim().toLowerCase()) >= 0;
+}
+
+function soyibaPublicacionesFirstValue_() {
+  for (var index = 0; index < arguments.length; index += 1) {
+    var value = arguments[index];
+
+    if (value !== undefined && value !== null && String(value).trim() !== '') {
+      return value;
+    }
+  }
+
+  return '';
+}
+
+function soyibaPublicacionesCoordinateValue_(value) {
+  var normalized = String(value === undefined || value === null ? '' : value).trim().replace(',', '.');
+
+  if (!normalized) {
+    return '';
+  }
+
+  var parsed = Number(normalized);
+  return isNaN(parsed) ? '' : parsed;
+}
+
+function soyibaPublicacionesNumberOrNull_(value) {
+  var normalized = String(value === undefined || value === null ? '' : value).trim().replace(',', '.');
+
+  if (!normalized) {
+    return null;
+  }
+
+  var parsed = Number(normalized);
+  return isNaN(parsed) ? null : parsed;
 }
 
 function soyibaInicioGetSheet_() {
