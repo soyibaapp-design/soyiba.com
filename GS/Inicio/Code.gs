@@ -1149,7 +1149,7 @@ function soyibaPublicacionesBuildResponse_(record, savedByCurrentUser, yovoyByCu
   var capacityTotal = capacityAvailable + attendeesCount;
   var ecoAttendeesCount = Number(record.asistentes || 0);
   var ecoLatitude = soyibaPublicacionesNumberOrNull_(record.latitud);
-  var ecoLongitude = soyibaPublicacionesNumberOrNull_(record.longitud);
+  var ecoLongitude = soyibaPublicacionesLongitudeOrNull_(record.longitud);
 
   return {
     id: String(record.publication_id || ''),
@@ -1657,7 +1657,7 @@ function soyibaPublicacionesNormalizeEcoPayload_(data) {
     neighborhood: String(soyibaPublicacionesFirstValue_(eco.neighborhood, eco.barrio, data.barrio, data.sector)),
     city: String(soyibaPublicacionesFirstValue_(eco.city, eco.ciudad, data.ciudad)),
     latitude: soyibaPublicacionesCoordinateValue_(soyibaPublicacionesFirstValue_(eco.latitude, eco.latitud, data.latitud)),
-    longitude: soyibaPublicacionesCoordinateValue_(soyibaPublicacionesFirstValue_(eco.longitude, eco.longitud, data.longitud)),
+    longitude: soyibaPublicacionesLongitudeValue_(soyibaPublicacionesFirstValue_(eco.longitude, eco.longitud, data.longitud)),
     validFrom: String(soyibaPublicacionesFirstValue_(eco.validFrom, eco.fechaInicioVigencia, data.fechaInicioVigencia)),
     validUntil: String(soyibaPublicacionesFirstValue_(eco.validUntil, eco.fechaFinVigencia, data.fechaFinVigencia))
   };
@@ -1748,6 +1748,34 @@ function soyibaPublicacionesNumberOrNull_(value) {
 
   var parsed = Number(normalized);
   return isNaN(parsed) ? null : parsed;
+}
+
+function soyibaPublicacionesLongitudeValue_(value) {
+  var parsed = soyibaPublicacionesCoordinateValue_(value);
+
+  if (parsed === '') {
+    return '';
+  }
+
+  if (parsed > 0 && parsed >= 60 && parsed <= 85) {
+    return -parsed;
+  }
+
+  return parsed;
+}
+
+function soyibaPublicacionesLongitudeOrNull_(value) {
+  var parsed = soyibaPublicacionesNumberOrNull_(value);
+
+  if (parsed === null) {
+    return null;
+  }
+
+  if (parsed > 0 && parsed >= 60 && parsed <= 85) {
+    return -parsed;
+  }
+
+  return parsed;
 }
 
 function soyibaInicioGetSheet_() {

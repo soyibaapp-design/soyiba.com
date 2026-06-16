@@ -853,7 +853,7 @@ function normalizeEcoDetails(record: Record<string, unknown>): PublicationEcoDet
     neighborhood: stringFrom(valueFrom(eco.neighborhood, eco.barrio, record.barrio, record.sector)),
     city: stringFrom(valueFrom(eco.city, eco.ciudad, record.ciudad)),
     latitude: geoNumberFrom(valueFrom(eco.latitude, eco.latitud, record.latitud)),
-    longitude: geoNumberFrom(valueFrom(eco.longitude, eco.longitud, record.longitud)),
+    longitude: longitudeFrom(valueFrom(eco.longitude, eco.longitud, record.longitud)),
     attendeesCount: numberFrom(valueFrom(eco.attendeesCount, eco.asistentes, record.attendeesCount, record.asistentes)),
     currentUserAttending: isTrue(
       valueFrom(eco.currentUserAttending, record.currentUserAttending, record.asistenciaEcoByCurrentUser, record.asistencia_eco_by_current_user),
@@ -1024,6 +1024,21 @@ function geoNumberFrom(value: unknown) {
 
   const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function longitudeFrom(value: unknown) {
+  const parsed = geoNumberFrom(value);
+
+  if (parsed === null) {
+    return null;
+  }
+
+  // Colombia is west of Greenwich; operators often paste longitudes without the minus sign.
+  if (parsed > 0 && parsed >= 60 && parsed <= 85) {
+    return -parsed;
+  }
+
+  return parsed;
 }
 
 function getPublicationFeedCacheKey(session: SoyibaSession, options: PublicationFeedOptions) {

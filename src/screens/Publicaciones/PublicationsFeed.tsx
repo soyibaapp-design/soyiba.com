@@ -873,20 +873,21 @@ function EcoMapPanel({
   const markers: SoyibaMapMarker[] = mappedPublications.map((publication) => {
     const position = getEcoCoordinates(publication) as GeoPoint;
     const distanceKm = getEcoDistanceKm(publication, userLocation);
+    const distanceLabel = distanceKm === null ? '' : formatDistance(distanceKm);
+    const locationLabel = formatEcoLocation(publication) || 'Ubicacion del Grupo ECO';
 
     return {
       id: publication.id,
       title: publication.title,
-      subtitle: [publication.eco.neighborhood || publication.eco.city, distanceKm === null ? '' : formatDistance(distanceKm)]
-        .filter(Boolean)
-        .join(' - '),
+      subtitle: [locationLabel, distanceLabel].filter(Boolean).join(' - '),
+      distanceLabel,
+      locationLabel,
       position: [position.latitude, position.longitude],
       mapsUrl: buildGoogleMapsUrl(publication),
-      onClick: () => undefined,
     };
   });
 
-  if (!mappedPublications.length) {
+  if (!mappedPublications.length && !userLocation) {
     return null;
   }
 
@@ -895,14 +896,30 @@ function EcoMapPanel({
       <div className="flex items-center justify-between gap-3 px-4 py-3">
         <div className="min-w-0">
           <h3 className="text-[15px] font-black text-[#0B1F5B]">Mapa de Grupos ECO</h3>
-          <p className="text-[12px] font-semibold text-[#637295]">{locationStatus === 'ready' ? 'Ordenados desde el mas cercano.' : 'Ubicaciones disponibles.'}</p>
+          <p className="text-[12px] font-semibold text-[#637295]">
+            {locationStatus === 'ready' ? 'Tu ubicacion aparece como punto azul. Los ECO aparecen como casas.' : 'Ubicaciones disponibles.'}
+          </p>
         </div>
         <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#EAF2FF] text-[#145CFF]">
           <MapPinned size={20} />
         </span>
       </div>
 
-      <SoyibaMap markers={markers} userLocation={userLocation ? [userLocation.latitude, userLocation.longitude] : null} center={center} zoom={13} className="h-[300px] rounded-none" />
+      <SoyibaMap
+        markers={markers}
+        userLocation={userLocation ? [userLocation.latitude, userLocation.longitude] : null}
+        center={center}
+        zoom={13}
+        focusUserLocation={Boolean(userLocation)}
+        userZoom={13}
+        className="h-[300px] rounded-none"
+      />
+
+      {!mappedPublications.length ? (
+        <div className="border-t border-[#E0E7F0] bg-[#FFF9ED] px-4 py-3 text-[12px] font-bold leading-5 text-[#8A5A00]">
+          Tu ubicacion ya esta en el mapa. Para mostrar casas de Grupos ECO, cada publicacion ECO debe tener latitud y longitud.
+        </div>
+      ) : null}
 
       <div className="space-y-2 bg-[#F8FBFF] p-3">
         {publications.slice(0, 3).map((publication) => {
