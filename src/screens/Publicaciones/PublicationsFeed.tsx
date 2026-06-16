@@ -21,7 +21,6 @@ import {
   RefreshCw,
   Search,
   Share2,
-  SlidersHorizontal,
   Trash2,
   UploadCloud,
   UserCheck,
@@ -44,6 +43,7 @@ import {
   deletePublication,
   buildPublicationMediaItems,
   canManagePublication,
+  getCachedPublicationFeed,
   getMediaFormValues,
   getPermittedPublicationTypes,
   getPublicationCtaLabel,
@@ -117,16 +117,17 @@ export function PublicationsFeed({
   onPublicationOpened,
   onOpenEventFromHome,
 }: PublicationsFeedProps) {
-  const [publications, setPublications] = useState<SoyibaPublication[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const cachedPublications = getCachedPublicationFeed(session, filterType ? { type: filterType } : {});
+  const [publications, setPublications] = useState<SoyibaPublication[]>(() => cachedPublications || []);
+  const [isLoading, setIsLoading] = useState(() => !cachedPublications);
   const [error, setError] = useState('');
   const [composerOpen, setComposerOpen] = useState(false);
   const [editingPublication, setEditingPublication] = useState<SoyibaPublication | null>(null);
   const [savingPublication, setSavingPublication] = useState(false);
   const [activeMenuId, setActiveMenuId] = useState('');
   const [imagePreview, setImagePreview] = useState<ImagePreview | null>(null);
-  const [activeEventId, setActiveEventId] = useState('');
-  const [eventStatusFilter, setEventStatusFilter] = useState<'proximos' | 'todos' | 'pasados'>('proximos');
+  const [activePublicationId, setActivePublicationId] = useState('');
+  const [eventStatusFilter, setEventStatusFilter] = useState<'todos' | 'proximos' | 'pasados'>('todos');
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [goingBusyId, setGoingBusyId] = useState('');
@@ -157,13 +158,24 @@ export function PublicationsFeed({
 
     return items;
   }, [eventStatusFilter, publications, searchTerm, variant]);
-  const activeEventPublication = useMemo(
-    () => publications.find((publication) => publication.id === activeEventId && publication.type === 'Evento') || null,
-    [activeEventId, publications],
+  const activeDetailPublication = useMemo(
+    () => publications.find((publication) => publication.id === activePublicationId) || null,
+    [activePublicationId, publications],
   );
 
   useEffect(() => {
     let isMounted = true;
+    const cached = getCachedPublicationFeed(session, filterType ? { type: filterType } : {});
+
+    if (cached) {
+      setPublications(cached);
+      setIsLoading(false);
+      setError('');
+      return () => {
+        isMounted = false;
+      };
+    }
+
     setIsLoading(true);
     setError('');
 
@@ -209,11 +221,11 @@ export function PublicationsFeed({
       return;
     }
 
-    const publication = publications.find((item) => item.id === openPublicationId && item.type === 'Evento');
+    const publication = publications.find((item) => item.id === openPublicationId);
 
     if (publication) {
       lastOpenPublicationId.current = openPublicationId;
-      setActiveEventId(publication.id);
+      setActivePublicationId(publication.id);
       onPublicationOpened?.();
     }
   }, [isLoading, onPublicationOpened, openPublicationId, publications]);
@@ -370,7 +382,7 @@ export function PublicationsFeed({
 
   async function handleShare(publication: SoyibaPublication) {
     setActiveMenuId('');
-    const shareUrl = `${window.location.origin}${window.location.pathname}#publicacion-${publication.id}`;
+    const shareUrl = buildPublicationShareUrl(publication);
     const shareData = {
       title: publication.title,
       text: publication.description || publication.title,
@@ -471,8 +483,13 @@ export function PublicationsFeed({
               key={publication.id}
               publication={publication}
               goingBusy={goingBusyId === publication.id}
-              onOpen={() => setActiveEventId(publication.id)}
+              menuOpen={activeMenuId === publication.id}
+              canManage={canManagePublication(session.user, publication)}
+              onMenuToggle={() => setActiveMenuId((current) => (current === publication.id ? '' : publication.id))}
+              onOpen={() => setActivePublicationId(publication.id)}
               onShare={() => handleShare(publication)}
+              onEdit={() => openEditComposer(publication)}
+              onDelete={() => handleDeletePublication(publication)}
               onToggleGoing={() => handleToggleGoing(publication)}
             />
           ) : (
@@ -487,6 +504,7 @@ export function PublicationsFeed({
               onDelete={() => handleDeletePublication(publication)}
               onToggleSave={() => handleToggleSave(publication)}
               onOpenEvent={publication.type === 'Evento' && onOpenEventFromHome ? () => onOpenEventFromHome(publication.id) : undefined}
+              onOpenDetails={() => setActivePublicationId(publication.id)}
               onOpenImage={(preview) => setImagePreview(preview)}
             />
           ),
@@ -514,13 +532,13 @@ export function PublicationsFeed({
       </AnimatePresence>
 
       <AnimatePresence>
-        {activeEventPublication ? (
-          <EventDetailsModal
-            publication={activeEventPublication}
-            goingBusy={goingBusyId === activeEventPublication.id}
-            onClose={() => setActiveEventId('')}
-            onShare={() => handleShare(activeEventPublication)}
-            onToggleGoing={() => handleToggleGoing(activeEventPublication)}
+        {activeDetailPublication ? (
+          <PublicationDetailsModal
+            publication={activeDetailPublication}
+            goingBusy={goingBusyId === activeDetailPublication.id}
+            onClose={() => setActivePublicationId('')}
+            onShare={() => handleShare(activeDetailPublication)}
+            onToggleGoing={() => handleToggleGoing(activeDetailPublication)}
             onOpenImage={(preview) => setImagePreview(preview)}
           />
         ) : null}
@@ -548,9 +566,9 @@ function EventsHeader({
   onSearchToggle: () => void;
   onSearchChange: (value: string) => void;
 }) {
-  const filters: Array<{ id: 'proximos' | 'todos' | 'pasados'; label: string }> = [
-    { id: 'proximos', label: 'Proximos' },
+  const filters: Array<{ id: 'todos' | 'proximos' | 'pasados'; label: string }> = [
     { id: 'todos', label: 'Todos' },
+    { id: 'proximos', label: 'Proximos' },
     { id: 'pasados', label: 'Pasados' },
   ];
 
@@ -596,14 +614,6 @@ function EventsHeader({
         >
           <Search size={21} />
         </button>
-
-        <button
-          type="button"
-          aria-label="Filtros de eventos"
-          className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-white text-[#0B1F5B] shadow-[0_12px_28px_rgba(15,23,42,0.08)] transition hover:bg-[#EAF2FF]"
-        >
-          <SlidersHorizontal size={21} />
-        </button>
       </div>
 
       {searchOpen ? (
@@ -624,14 +634,24 @@ function EventsHeader({
 function EventListCard({
   publication,
   goingBusy,
+  menuOpen,
+  canManage,
+  onMenuToggle,
   onOpen,
   onShare,
+  onEdit,
+  onDelete,
   onToggleGoing,
 }: {
   publication: SoyibaPublication;
   goingBusy: boolean;
+  menuOpen: boolean;
+  canManage: boolean;
+  onMenuToggle: () => void;
   onOpen: () => void;
   onShare: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
   onToggleGoing: () => void;
 }) {
   const capacityTone = publication.event.capacityAvailable <= 5 && publication.event.capacityAvailable > 0 ? 'text-[#E77700]' : 'text-[#07865B]';
@@ -641,14 +661,42 @@ function EventListCard({
       <EventCardMedia publication={publication} />
 
       <div className="min-w-0 px-3 py-3 min-[520px]:px-4">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <span className="rounded-full bg-[#E9E6FF] px-2.5 py-1 text-[10px] font-black uppercase text-[#3150F7]">Evento</span>
-          {publication.event.expired ? (
-            <span className="rounded-full bg-[#FFE8E8] px-2.5 py-1 text-[10px] font-black uppercase text-[#D92D2D]">Caducado</span>
-          ) : null}
-          {publication.cta.type !== 'Ninguno' ? (
-            <span className="rounded-full bg-[#EEF4FF] px-2.5 py-1 text-[10px] font-black text-[#0B1F5B]">{getPublicationCtaLabel(publication)}</span>
-          ) : null}
+        <div className="flex min-w-0 items-start justify-between gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <span className="rounded-full bg-[#E9E6FF] px-2.5 py-1 text-[10px] font-black uppercase text-[#3150F7]">Evento</span>
+            {publication.event.expired ? (
+              <span className="rounded-full bg-[#FFE8E8] px-2.5 py-1 text-[10px] font-black uppercase text-[#D92D2D]">Caducado</span>
+            ) : null}
+            {publication.cta.type !== 'Ninguno' ? (
+              <span className="rounded-full bg-[#EEF4FF] px-2.5 py-1 text-[10px] font-black text-[#0B1F5B]">{getPublicationCtaLabel(publication)}</span>
+            ) : null}
+          </div>
+
+          <div className="relative -mr-1 -mt-1 shrink-0">
+            <button
+              type="button"
+              aria-label="Opciones del evento"
+              onClick={onMenuToggle}
+              className="grid h-9 w-9 place-items-center rounded-full text-[#0B1F5B] transition hover:bg-[#EAF2FF]"
+            >
+              <MoreVertical size={20} />
+            </button>
+
+            <AnimatePresence>
+              {menuOpen ? (
+                <motion.div
+                  initial={{ opacity: 0, y: -4, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -4, scale: 0.98 }}
+                  className="absolute right-0 top-10 z-20 w-44 overflow-hidden rounded-[14px] border border-[#DCE5F2] bg-white py-1 shadow-[0_18px_42px_rgba(15,23,42,0.16)]"
+                >
+                  <MenuAction icon={Share2} label="Compartir" onClick={onShare} />
+                  {canManage ? <MenuAction icon={PencilLine} label="Editar" onClick={onEdit} /> : null}
+                  {canManage ? <MenuAction icon={Trash2} label="Eliminar" danger onClick={onDelete} /> : null}
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
+          </div>
         </div>
 
         <h3 className="mt-2 line-clamp-2 text-[18px] font-black leading-5 text-[#0B1F5B] min-[520px]:text-[19px]">{publication.title}</h3>
@@ -665,7 +713,7 @@ function EventListCard({
           {!publication.event.expired && publication.event.capacityAvailable > 0 && publication.event.capacityAvailable <= 5 ? ' - Quedan pocos cupos' : ''}
         </p>
 
-        <div className="mt-3 grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2">
+        <div className="mt-3 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
           <button
             type="button"
             onClick={onOpen}
@@ -674,14 +722,6 @@ function EventListCard({
             Ver evento
           </button>
           <EventGoingButton publication={publication} busy={goingBusy} compact onClick={onToggleGoing} />
-          <button
-            type="button"
-            aria-label="Compartir evento"
-            onClick={onShare}
-            className="grid h-10 w-10 place-items-center rounded-full text-[#0B1F5B] transition hover:bg-[#EAF2FF]"
-          >
-            <Share2 size={19} />
-          </button>
         </div>
       </div>
     </article>
@@ -712,7 +752,7 @@ function EventCardMedia({ publication }: { publication: SoyibaPublication }) {
   );
 }
 
-function EventDetailsModal({
+function PublicationDetailsModal({
   publication,
   goingBusy,
   onClose,
@@ -756,14 +796,7 @@ function EventDetailsModal({
             <p className="text-[12px] font-semibold leading-4 text-[#667085]">{formatRelativeTime(publication.createdAt)}</p>
           </div>
 
-          <span
-            className={cx(
-              'shrink-0 rounded-full px-3 py-2 text-[11px] font-black uppercase tracking-normal',
-              publication.event.expired ? 'bg-[#FFE8E8] text-[#D92D2D]' : 'bg-[#EEF1F6] text-[#1F2937]',
-            )}
-          >
-            {publication.event.expired ? 'Caducado' : 'Evento'}
-          </span>
+          <PublicationTypeBadge publication={publication} />
 
           <button type="button" aria-label="Cerrar evento" onClick={onClose} className="grid h-10 w-9 place-items-center rounded-full text-[#0B1F5B] transition hover:bg-[#F2F5FA]">
             <X size={21} />
@@ -811,17 +844,23 @@ function EventDetailsModal({
               </div>
             ) : null}
 
-            <div className="mt-4 grid overflow-hidden rounded-[14px] border border-[#E0E7F0] bg-[#FAFCFF] min-[440px]:grid-cols-2">
-              <EventInfoTile icon={CalendarDays} label="Fecha" value={formatEventLongDate(publication.event.dateTime)} />
-              <EventInfoTile icon={Clock3} label="Hora" value={formatEventTime(publication.event.dateTime)} />
-              <EventInfoTile icon={MapPin} label="Lugar" value={eventPlaceName(publication.event.place)} subvalue={eventPlaceCity(publication.event.place)} />
-              <EventInfoTile
-                icon={UsersRound}
-                label="Cupos"
-                value={formatEventCapacity(publication)}
-                subvalue={publication.event.expired ? 'Evento caducado' : `${formatCount(publication.event.capacityAvailable)} disponibles`}
-              />
-            </div>
+            {publication.type === 'Evento' ? (
+              <div className="mt-4 grid overflow-hidden rounded-[14px] border border-[#E0E7F0] bg-[#FAFCFF] min-[440px]:grid-cols-2">
+                <EventInfoTile icon={CalendarDays} label="Fecha" value={formatEventLongDate(publication.event.dateTime)} />
+                <EventInfoTile icon={Clock3} label="Hora" value={formatEventTime(publication.event.dateTime)} />
+                <EventInfoTile icon={MapPin} label="Lugar" value={eventPlaceName(publication.event.place)} subvalue={eventPlaceCity(publication.event.place)} />
+                <EventInfoTile
+                  icon={UsersRound}
+                  label="Cupos"
+                  value={formatEventCapacity(publication)}
+                  subvalue={publication.event.expired ? 'Evento caducado' : `${formatCount(publication.event.capacityAvailable)} disponibles`}
+                />
+              </div>
+            ) : publication.type === 'Grupo ECO' ? (
+              <div className="mt-4 rounded-[14px] border border-[#D6F5E7] bg-[#F4FFF9] px-3 py-3 text-[13px] font-bold leading-5 text-[#0B5F45]">
+                Publicacion de Grupo ECO
+              </div>
+            ) : null}
 
             {publication.relatedLinks.length ? (
               <div className="mt-4 space-y-2">
@@ -851,12 +890,29 @@ function EventDetailsModal({
           </div>
         </div>
 
-        <footer className="flex justify-end border-t border-[#E3EAF5] bg-white p-3.5">
-          <EventGoingButton publication={publication} busy={goingBusy} onClick={onToggleGoing} />
-        </footer>
+        {publication.type === 'Evento' ? (
+          <footer className="flex justify-end border-t border-[#E3EAF5] bg-white p-3.5">
+            <EventGoingButton publication={publication} busy={goingBusy} onClick={onToggleGoing} />
+          </footer>
+        ) : null}
       </motion.article>
     </motion.div>
   );
+}
+
+function PublicationTypeBadge({ publication }: { publication: SoyibaPublication }) {
+  if (publication.type === 'Evento' && publication.event.expired) {
+    return <span className="shrink-0 rounded-full bg-[#FFE8E8] px-3 py-2 text-[11px] font-black uppercase tracking-normal text-[#D92D2D]">Caducado</span>;
+  }
+
+  const tone =
+    publication.type === 'Grupo ECO'
+      ? 'bg-[#E6FAF1] text-[#087A57]'
+      : publication.type === 'Evento'
+        ? 'bg-[#EEF1F6] text-[#1F2937]'
+        : 'bg-[#EAF2FF] text-[#145CFF]';
+
+  return <span className={cx('shrink-0 rounded-full px-3 py-2 text-[11px] font-black uppercase tracking-normal', tone)}>{publication.type}</span>;
 }
 
 function EventMeta({ icon: Icon, label }: { icon: LucideIcon; label: string }) {
@@ -934,6 +990,7 @@ function PublicationCard({
   onDelete,
   onToggleSave,
   onOpenEvent,
+  onOpenDetails,
   onOpenImage,
 }: {
   publication: SoyibaPublication;
@@ -945,6 +1002,7 @@ function PublicationCard({
   onDelete: () => void;
   onToggleSave: () => void;
   onOpenEvent?: () => void;
+  onOpenDetails: () => void;
   onOpenImage: (preview: ImagePreview) => void;
 }) {
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
@@ -1051,6 +1109,12 @@ function PublicationCard({
               </button>
             ) : null}
           </div>
+        ) : null}
+
+        {!onOpenEvent ? (
+          <button type="button" onClick={onOpenDetails} className="mt-3 text-[14px] font-black text-[#145CFF]">
+            Ver detalles
+          </button>
         ) : null}
 
         {publication.relatedLinks.length ? (
@@ -1942,6 +2006,11 @@ function mergeServerPublication(updated: SoyibaPublication, current: SoyibaPubli
 
 function sortPublications(items: SoyibaPublication[]) {
   return [...items].sort((first, second) => Date.parse(second.createdAt) - Date.parse(first.createdAt));
+}
+
+function buildPublicationShareUrl(publication: SoyibaPublication) {
+  const screen = publication.type === 'Evento' ? 'eventos' : publication.type === 'Grupo ECO' ? 'eco' : 'inicio';
+  return `${window.location.origin}${window.location.pathname}#${screen}/publicacion-${encodeURIComponent(publication.id)}`;
 }
 
 function filterEventsByStatus(publications: SoyibaPublication[], status: 'proximos' | 'todos' | 'pasados') {

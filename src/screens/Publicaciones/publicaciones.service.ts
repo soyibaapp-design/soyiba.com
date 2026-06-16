@@ -95,6 +95,8 @@ type PublicationsResponse = {
   error?: string;
 };
 
+const publicationFeedCache = new Map<string, SoyibaPublication[]>();
+
 const localPublications: SoyibaPublication[] = [
   {
     id: 'local-sabiduria',
@@ -210,6 +212,11 @@ const localPublications: SoyibaPublication[] = [
   },
 ];
 
+export function getCachedPublicationFeed(session: SoyibaSession, options: PublicationFeedOptions = {}) {
+  const cached = publicationFeedCache.get(getPublicationFeedCacheKey(session, options));
+  return cached ? clonePublications(cached) : null;
+}
+
 export async function getPublicationFeed(session: SoyibaSession, options: PublicationFeedOptions = {}) {
   const response = await callAppsScript<PublicationsResponse>(
     'Publicaciones',
@@ -229,7 +236,9 @@ export async function getPublicationFeed(session: SoyibaSession, options: Public
     throw new Error(response.error || 'No fue posible cargar las publicaciones.');
   }
 
-  return normalizePublications(response.publications || [], options.type);
+  const publications = normalizePublications(response.publications || [], options.type);
+  publicationFeedCache.set(getPublicationFeedCacheKey(session, options), clonePublications(publications));
+  return publications;
 }
 
 export async function createPublication(session: SoyibaSession, payload: PublicationPayload) {
@@ -262,6 +271,7 @@ export async function createPublication(session: SoyibaSession, payload: Publica
     throw new Error(response.error || 'No fue posible crear la publicacion.');
   }
 
+  invalidatePublicationFeedCache(session);
   return normalizePublication(response.publication);
 }
 
@@ -297,6 +307,7 @@ export async function updatePublication(session: SoyibaSession, publicationId: s
     throw new Error(response.error || 'No fue posible actualizar la publicacion.');
   }
 
+  invalidatePublicationFeedCache(session);
   return normalizePublication(response.publication);
 }
 
@@ -315,6 +326,8 @@ export async function deletePublication(session: SoyibaSession, publicationId: s
   if (!response.ok) {
     throw new Error(response.error || 'No fue posible eliminar la publicacion.');
   }
+
+  invalidatePublicationFeedCache(session);
 }
 
 export async function uploadPublicationMedia(session: SoyibaSession, file: File, mediaType: 'image' | 'driveVideo') {
@@ -795,6 +808,31 @@ function stringFrom(value: unknown) {
 function numberFrom(value: unknown) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function getPublicationFeedCacheKey(session: SoyibaSession, options: PublicationFeedOptions) {
+  return `${session.user.id || session.user.email || 'anon'}::${options.type || 'all'}`;
+}
+
+function invalidatePublicationFeedCache(session: SoyibaSession) {
+  const userKey = `${session.user.id || session.user.email || 'anon'}::`;
+
+  for (const key of publicationFeedCache.keys()) {
+    if (key.startsWith(userKey)) {
+      publicationFeedCache.delete(key);
+    }
+  }
+}
+
+function clonePublications(publications: SoyibaPublication[]) {
+  return publications.map((publication) => ({
+    ...publication,
+    author: { ...publication.author },
+    mediaItems: publication.mediaItems.map((item) => ({ ...item })),
+    cta: { ...publication.cta },
+    relatedLinks: publication.relatedLinks.map((item) => ({ ...item })),
+    event: { ...publication.event },
+  }));
 }
 
 function valueFrom(...values: unknown[]) {

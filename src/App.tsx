@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { CalendarDays, Heart, Home, UserRound, UsersRound, type LucideIcon } from 'lucide-react';
 import { AppHeader } from './components/AppHeader';
@@ -22,15 +22,34 @@ const navigation: BottomNavItem<ScreenId>[] = [
 ];
 
 export default function App() {
+  const initialSharedTarget = readSharedPublicationTarget();
   const [session, setSession] = useState<SoyibaSession | null>(() => loadStoredSession());
-  const [activeScreen, setActiveScreen] = useState<ScreenId>('inicio');
+  const [activeScreen, setActiveScreen] = useState<ScreenId>(initialSharedTarget?.screen || 'inicio');
   const [publicationComposerSignal, setPublicationComposerSignal] = useState(0);
   const [publicationComposerOpen, setPublicationComposerOpen] = useState(false);
-  const [eventToOpenId, setEventToOpenId] = useState('');
+  const [publicationToOpenId, setPublicationToOpenId] = useState(initialSharedTarget?.publicationId || '');
+
+  useEffect(() => {
+    function handleHashChange() {
+      const target = readSharedPublicationTarget();
+
+      if (!target) {
+        return;
+      }
+
+      setActiveScreen(target.screen);
+      setPublicationToOpenId(target.publicationId);
+    }
+
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
 
   function handleSignedIn(nextSession: SoyibaSession) {
     handleSessionUpdated(nextSession);
-    setActiveScreen('inicio');
+    const target = readSharedPublicationTarget();
+    setActiveScreen(target?.screen || 'inicio');
+    setPublicationToOpenId(target?.publicationId || '');
   }
 
   function handleSessionUpdated(nextSession: SoyibaSession) {
@@ -45,7 +64,7 @@ export default function App() {
   }
 
   function handleOpenEventFromHome(publicationId: string) {
-    setEventToOpenId(publicationId);
+    setPublicationToOpenId(publicationId);
     setActiveScreen('eventos');
   }
 
@@ -66,6 +85,8 @@ export default function App() {
                 openPublicationComposerSignal={publicationComposerSignal}
                 onPublicationComposerOpenChange={setPublicationComposerOpen}
                 onOpenEvent={handleOpenEventFromHome}
+                openPublicationId={publicationToOpenId}
+                onPublicationOpened={() => setPublicationToOpenId('')}
               />
             ) : null}
             {activeScreen === 'eventos' ? (
@@ -76,8 +97,8 @@ export default function App() {
                 variant="eventos"
                 title="Eventos"
                 subtitle="Conectate y participa en todo lo que Dios esta haciendo en nuestra iglesia."
-                openPublicationId={eventToOpenId}
-                onPublicationOpened={() => setEventToOpenId('')}
+                openPublicationId={publicationToOpenId}
+                onPublicationOpened={() => setPublicationToOpenId('')}
                 onComposerOpenChange={setPublicationComposerOpen}
               />
             ) : null}
@@ -89,6 +110,8 @@ export default function App() {
                 variant="eco"
                 title="Grupos ECO"
                 subtitle="Encuentra publicaciones y encuentros de los grupos ECO."
+                openPublicationId={publicationToOpenId}
+                onPublicationOpened={() => setPublicationToOpenId('')}
                 onComposerOpenChange={setPublicationComposerOpen}
               />
             ) : null}
@@ -113,6 +136,33 @@ export default function App() {
       </div>
     </div>
   );
+}
+
+function readSharedPublicationTarget(): { screen: ScreenId; publicationId: string } | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  const hash = window.location.hash.replace(/^#/, '');
+  const modernMatch = hash.match(/^(inicio|eventos|eco)\/publicacion-(.+)$/);
+
+  if (modernMatch) {
+    return {
+      screen: modernMatch[1] as ScreenId,
+      publicationId: decodeURIComponent(modernMatch[2] || ''),
+    };
+  }
+
+  const legacyMatch = hash.match(/^publicacion-(.+)$/);
+
+  if (legacyMatch) {
+    return {
+      screen: 'inicio',
+      publicationId: decodeURIComponent(legacyMatch[1] || ''),
+    };
+  }
+
+  return null;
 }
 
 function loadStoredSession(): SoyibaSession | null {

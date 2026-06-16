@@ -10,9 +10,18 @@ type InicioScreenProps = {
   openPublicationComposerSignal?: number;
   onPublicationComposerOpenChange?: (open: boolean) => void;
   onOpenEvent?: (publicationId: string) => void;
+  openPublicationId?: string;
+  onPublicationOpened?: () => void;
 };
 
-export function InicioScreen({ session, openPublicationComposerSignal = 0, onPublicationComposerOpenChange, onOpenEvent }: InicioScreenProps) {
+export function InicioScreen({
+  session,
+  openPublicationComposerSignal = 0,
+  onPublicationComposerOpenChange,
+  onOpenEvent,
+  openPublicationId,
+  onPublicationOpened,
+}: InicioScreenProps) {
   const [metrics, setMetrics] = useState<InicioMetric[]>([]);
   const [notices, setNotices] = useState<InicioNotice[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -87,6 +96,8 @@ export function InicioScreen({ session, openPublicationComposerSignal = 0, onPub
         openComposerSignal={openPublicationComposerSignal}
         onComposerOpenChange={onPublicationComposerOpenChange}
         onOpenEventFromHome={onOpenEvent}
+        openPublicationId={openPublicationId}
+        onPublicationOpened={onPublicationOpened}
       />
     </motion.section>
   );
