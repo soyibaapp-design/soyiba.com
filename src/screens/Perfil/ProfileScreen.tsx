@@ -32,6 +32,7 @@ import {
   type SoyibaUser,
   type UpdateProfilePayload,
 } from '../Auth/auth.service';
+import { primaryAssets } from '../../lib/assets';
 
 type ScreenTarget = 'inicio' | 'eventos' | 'eco' | 'donaciones' | 'perfil';
 
@@ -86,17 +87,17 @@ const sampleItems = [
   {
     title: 'Devocional semanal',
     date: '15 junio 2026',
-    image: '/assets/auth-login-hero.png',
+    image: primaryAssets.loginHero,
   },
   {
     title: 'Alabanza y adoracion',
     date: '10 junio 2026',
-    image: '/assets/auth-register-hero.png',
+    image: primaryAssets.backHero,
   },
   {
     title: 'Estudio biblico',
     date: '5 junio 2026',
-    image: '/assets/logo-antioquia.png',
+    image: primaryAssets.logoAntioquia,
   },
 ];
 
