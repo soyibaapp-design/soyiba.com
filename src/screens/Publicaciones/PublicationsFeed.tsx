@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type TouchEvent } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
   Bookmark,
   ChevronLeft,
@@ -516,7 +516,9 @@ function PublicationMediaCarousel({
   onOpenImage: (preview: ImagePreview) => void;
 }) {
   const [activeIndex, setActiveIndex] = useState(0);
+  const [carouselDirection, setCarouselDirection] = useState(1);
   const touchStartX = useRef(0);
+  const prefersReducedMotion = useReducedMotion();
   const items = publication.mediaItems;
   const hasMany = items.length > 1;
   const activeItem = items[Math.min(activeIndex, Math.max(0, items.length - 1))];
@@ -534,6 +536,7 @@ function PublicationMediaCarousel({
   }
 
   function goTo(step: number) {
+    setCarouselDirection(step >= 0 ? 1 : -1);
     setActiveIndex((current) => {
       const next = current + step;
 
@@ -558,8 +561,27 @@ function PublicationMediaCarousel({
 
   return (
     <div className="relative bg-[#071426]" onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
-      <div className="aspect-[16/8.5] w-full overflow-hidden">
-        <PublicationMedia item={activeItem} publicationTitle={publication.title} onOpenImage={onOpenImage} />
+      <div
+        className={cx(
+          'w-full overflow-hidden bg-black',
+          activeItem.type === 'driveVideo' ? 'aspect-[4/5] min-[560px]:aspect-video' : 'aspect-[16/8.5]',
+        )}
+      >
+        <div className="relative h-full w-full">
+          <AnimatePresence initial={false} custom={carouselDirection}>
+            <motion.div
+              key={`${activeItem.id}-${activeIndex}`}
+              custom={carouselDirection}
+              initial={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, x: carouselDirection > 0 ? 36 : -36, scale: 0.985 }}
+              animate={{ opacity: 1, x: 0, scale: 1 }}
+              exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, x: carouselDirection > 0 ? -36 : 36, scale: 0.985 }}
+              transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+              className="absolute inset-0"
+            >
+              <PublicationMedia item={activeItem} publicationTitle={publication.title} onOpenImage={onOpenImage} />
+            </motion.div>
+          </AnimatePresence>
+        </div>
       </div>
 
       {hasMany ? (
