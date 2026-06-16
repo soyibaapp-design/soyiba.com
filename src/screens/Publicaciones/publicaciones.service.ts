@@ -213,11 +213,17 @@ const localPublications: SoyibaPublication[] = [
 ];
 
 export function getCachedPublicationFeed(session: SoyibaSession, options: PublicationFeedOptions = {}) {
-  const cached = publicationFeedCache.get(getPublicationFeedCacheKey(session, options));
+  const cached = getCachedPublicationFeedInternal(session, options);
   return cached ? clonePublications(cached) : null;
 }
 
 export async function getPublicationFeed(session: SoyibaSession, options: PublicationFeedOptions = {}) {
+  const cached = getCachedPublicationFeedInternal(session, options);
+
+  if (cached) {
+    return clonePublications(cached);
+  }
+
   const response = await callAppsScript<PublicationsResponse>(
     'Publicaciones',
     'list',
@@ -237,7 +243,7 @@ export async function getPublicationFeed(session: SoyibaSession, options: Public
   }
 
   const publications = normalizePublications(response.publications || [], options.type);
-  publicationFeedCache.set(getPublicationFeedCacheKey(session, options), clonePublications(publications));
+  setPublicationFeedCache(session, options, publications);
   return publications;
 }
 
@@ -381,6 +387,17 @@ export async function togglePublicationSave(session: SoyibaSession, publicationI
     throw new Error(response.error || 'No fue posible actualizar el guardado.');
   }
 
+  updateCachedPublication(session, publicationId, (publication) => {
+    const nextSaved = Boolean(response.saved);
+    const delta = nextSaved && !publication.savedByCurrentUser ? 1 : !nextSaved && publication.savedByCurrentUser ? -1 : 0;
+
+    return {
+      ...publication,
+      savedByCurrentUser: nextSaved,
+      savedCount: Math.max(0, publication.savedCount + delta),
+    };
+  });
+
   return Boolean(response.saved);
 }
 
@@ -404,9 +421,33 @@ export async function toggleEventGoing(session: SoyibaSession, publicationId: st
     throw new Error(response.error || 'No fue posible actualizar Yo voy.');
   }
 
+  const normalizedPublication = response.publication ? normalizePublication(response.publication) : undefined;
+
+  if (normalizedPublication) {
+    updateCachedPublication(session, publicationId, () => normalizedPublication);
+  } else {
+    updateCachedPublication(session, publicationId, (publication) => {
+      const nextGoing = Boolean(response.going);
+      const delta = nextGoing && !publication.event.currentUserGoing ? 1 : !nextGoing && publication.event.currentUserGoing ? -1 : 0;
+      const nextEvent = {
+        ...publication.event,
+        currentUserGoing: nextGoing,
+        attendeesCount: Math.max(0, publication.event.attendeesCount + delta),
+        capacityAvailable: Math.max(0, publication.event.capacityAvailable - delta),
+      };
+
+      nextEvent.capacityTotal = nextEvent.attendeesCount + nextEvent.capacityAvailable;
+
+      return {
+        ...publication,
+        event: nextEvent,
+      };
+    });
+  }
+
   return {
     going: Boolean(response.going),
-    publication: response.publication ? normalizePublication(response.publication) : undefined,
+    publication: normalizedPublication,
   };
 }
 
@@ -421,6 +462,11 @@ export async function recordPublicationView(session: SoyibaSession, publicationI
     },
     () => ({ ok: true }),
   );
+
+  updateCachedPublication(session, publicationId, (publication) => ({
+    ...publication,
+    viewsCount: publication.viewsCount + 1,
+  }));
 }
 
 export async function recordPublicationShare(session: SoyibaSession, publicationId: string) {
@@ -434,6 +480,11 @@ export async function recordPublicationShare(session: SoyibaSession, publication
     },
     () => ({ ok: true }),
   );
+
+  updateCachedPublication(session, publicationId, (publication) => ({
+    ...publication,
+    sharedCount: publication.sharedCount + 1,
+  }));
 }
 
 export function getPermittedPublicationTypes(user: SoyibaUser): PublicationType[] {
@@ -814,6 +865,53 @@ function getPublicationFeedCacheKey(session: SoyibaSession, options: Publication
   return `${session.user.id || session.user.email || 'anon'}::${options.type || 'all'}`;
 }
 
+function getCachedPublicationFeedInternal(session: SoyibaSession, options: PublicationFeedOptions) {
+  const cached = publicationFeedCache.get(getPublicationFeedCacheKey(session, options));
+
+  if (cached) {
+    return cached;
+  }
+
+  if (options.type) {
+    const allCached = publicationFeedCache.get(getPublicationFeedCacheKey(session, {}));
+    return allCached ? filterPublicationsByType(allCached, options.type) : null;
+  }
+
+  return null;
+}
+
+function setPublicationFeedCache(session: SoyibaSession, options: PublicationFeedOptions, publications: SoyibaPublication[]) {
+  publicationFeedCache.set(getPublicationFeedCacheKey(session, options), clonePublications(publications));
+}
+
+function updateCachedPublication(
+  session: SoyibaSession,
+  publicationId: string,
+  updater: (publication: SoyibaPublication) => SoyibaPublication,
+) {
+  const userKey = `${session.user.id || session.user.email || 'anon'}::`;
+
+  for (const [key, cachedPublications] of publicationFeedCache.entries()) {
+    if (!key.startsWith(userKey)) {
+      continue;
+    }
+
+    let changed = false;
+    const nextPublications = cachedPublications.map((publication) => {
+      if (publication.id !== publicationId) {
+        return publication;
+      }
+
+      changed = true;
+      return updater(clonePublication(publication));
+    });
+
+    if (changed) {
+      publicationFeedCache.set(key, clonePublications(nextPublications));
+    }
+  }
+}
+
 function invalidatePublicationFeedCache(session: SoyibaSession) {
   const userKey = `${session.user.id || session.user.email || 'anon'}::`;
 
@@ -825,14 +923,18 @@ function invalidatePublicationFeedCache(session: SoyibaSession) {
 }
 
 function clonePublications(publications: SoyibaPublication[]) {
-  return publications.map((publication) => ({
+  return publications.map(clonePublication);
+}
+
+function clonePublication(publication: SoyibaPublication) {
+  return {
     ...publication,
     author: { ...publication.author },
     mediaItems: publication.mediaItems.map((item) => ({ ...item })),
     cta: { ...publication.cta },
     relatedLinks: publication.relatedLinks.map((item) => ({ ...item })),
     event: { ...publication.event },
-  }));
+  };
 }
 
 function valueFrom(...values: unknown[]) {
