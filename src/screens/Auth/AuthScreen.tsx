@@ -27,6 +27,7 @@ import {
 
 type AuthScreenProps = {
   onSignedIn: (session: SoyibaSession) => void;
+  initialMode?: AuthMode;
 };
 
 type AuthMode = 'login' | 'register';
@@ -55,8 +56,8 @@ const emptyRegisterForm: RegisterFormState = {
   confirmPassword: '',
 };
 
-export function AuthScreen({ onSignedIn }: AuthScreenProps) {
-  const [mode, setMode] = useState<AuthMode>(() => getInitialMode());
+export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
+  const [mode, setMode] = useState<AuthMode>(() => initialMode || getInitialMode());
   const [loginForm, setLoginForm] = useState<LoginFormState>(emptyLoginForm);
   const [registerForm, setRegisterForm] = useState<RegisterFormState>(emptyRegisterForm);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
@@ -71,6 +72,12 @@ export function AuthScreen({ onSignedIn }: AuthScreenProps) {
   const isRegister = mode === 'register';
 
   useEffect(() => {
+    if (initialMode) {
+      setMode(initialMode);
+      setError('');
+      return;
+    }
+
     function syncModeFromHash() {
       setMode(getInitialMode());
       setError('');
@@ -78,7 +85,7 @@ export function AuthScreen({ onSignedIn }: AuthScreenProps) {
 
     window.addEventListener('hashchange', syncModeFromHash);
     return () => window.removeEventListener('hashchange', syncModeFromHash);
-  }, []);
+  }, [initialMode]);
 
   function switchMode(nextMode: AuthMode) {
     setMode(nextMode);

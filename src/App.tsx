@@ -10,6 +10,7 @@ import { ProfileScreen } from './screens/Perfil/ProfileScreen';
 import { PublicationsFeed } from './screens/Publicaciones/PublicationsFeed';
 
 type ScreenId = 'inicio' | 'eventos' | 'eco' | 'donaciones' | 'perfil';
+type AuthMode = 'login' | 'register';
 
 const SESSION_STORAGE_KEY = 'soyiba.session';
 
@@ -21,6 +22,21 @@ const navigation: BottomNavItem<ScreenId>[] = [
   { id: 'perfil', label: 'Perfil', icon: UserRound },
 ];
 
+const publicSession: SoyibaSession = {
+  token: 'public-viewer',
+  user: {
+    id: 'public-viewer',
+    email: '',
+    name: 'Visitante',
+    role: 'public',
+    rolSistema: 'Visitante',
+    publicador: false,
+    publicadorEco: false,
+    publicadorEvento: false,
+    active: false,
+  },
+};
+
 export default function App() {
   const initialSharedTarget = readSharedPublicationTarget();
   const [session, setSession] = useState<SoyibaSession | null>(() => loadStoredSession());
@@ -28,9 +44,10 @@ export default function App() {
   const [publicationComposerSignal, setPublicationComposerSignal] = useState(0);
   const [publicationComposerOpen, setPublicationComposerOpen] = useState(false);
   const [publicationToOpenId, setPublicationToOpenId] = useState(initialSharedTarget?.publicationId || '');
+  const [authMode, setAuthMode] = useState<AuthMode | null>(null);
 
   useEffect(() => {
-    function handleHashChange() {
+  function handleHashChange() {
       const target = readSharedPublicationTarget();
 
       if (!target) {
@@ -39,6 +56,7 @@ export default function App() {
 
       setActiveScreen(target.screen);
       setPublicationToOpenId(target.publicationId);
+      setAuthMode(null);
     }
 
     window.addEventListener('hashchange', handleHashChange);
@@ -48,8 +66,9 @@ export default function App() {
   function handleSignedIn(nextSession: SoyibaSession) {
     handleSessionUpdated(nextSession);
     const target = readSharedPublicationTarget();
-    setActiveScreen(target?.screen || 'inicio');
-    setPublicationToOpenId(target?.publicationId || '');
+    setActiveScreen(target?.screen || (publicationToOpenId ? activeScreen : 'inicio'));
+    setPublicationToOpenId(target?.publicationId || publicationToOpenId || '');
+    setAuthMode(null);
   }
 
   function handleSessionUpdated(nextSession: SoyibaSession) {
@@ -69,13 +88,87 @@ export default function App() {
   }
 
   if (!session) {
-    return <AuthScreen onSignedIn={handleSignedIn} />;
+    if (authMode || !publicationToOpenId) {
+      return <AuthScreen onSignedIn={handleSignedIn} initialMode={authMode || undefined} />;
+    }
+
+    return (
+      <SoyibaShell
+        activeScreen={activeScreen}
+        session={publicSession}
+        publicationToOpenId={publicationToOpenId}
+        publicationComposerSignal={0}
+        publicationComposerOpen={false}
+        publicMode
+        onNotificationsClick={() => setAuthMode('login')}
+        onComposerOpenChange={setPublicationComposerOpen}
+        onOpenEventFromHome={handleOpenEventFromHome}
+        onPublicationOpened={() => undefined}
+        onAuthRequired={setAuthMode}
+      />
+    );
   }
 
   return (
+    <SoyibaShell
+      activeScreen={activeScreen}
+      session={session}
+      publicationToOpenId={publicationToOpenId}
+      publicationComposerSignal={publicationComposerSignal}
+      publicationComposerOpen={publicationComposerOpen}
+      onNotificationsClick={() => setActiveScreen('perfil')}
+      onComposerOpenChange={setPublicationComposerOpen}
+      onOpenEventFromHome={handleOpenEventFromHome}
+      onPublicationOpened={() => setPublicationToOpenId('')}
+      onAuthRequired={setAuthMode}
+      onNavigate={setActiveScreen}
+      onLogout={handleLogout}
+      onSessionUpdated={handleSessionUpdated}
+      onCreatePublication={() => {
+        setActiveScreen('inicio');
+        setPublicationComposerSignal(Date.now());
+      }}
+    />
+  );
+}
+
+function SoyibaShell({
+  activeScreen,
+  session,
+  publicationToOpenId,
+  publicationComposerSignal,
+  publicationComposerOpen,
+  publicMode = false,
+  onNotificationsClick,
+  onComposerOpenChange,
+  onOpenEventFromHome,
+  onPublicationOpened,
+  onAuthRequired,
+  onNavigate,
+  onLogout,
+  onSessionUpdated,
+  onCreatePublication,
+}: {
+  activeScreen: ScreenId;
+  session: SoyibaSession;
+  publicationToOpenId: string;
+  publicationComposerSignal: number;
+  publicationComposerOpen: boolean;
+  publicMode?: boolean;
+  onNotificationsClick: () => void;
+  onComposerOpenChange: (open: boolean) => void;
+  onOpenEventFromHome: (publicationId: string) => void;
+  onPublicationOpened: () => void;
+  onAuthRequired?: (mode: AuthMode) => void;
+  onNavigate?: (screen: ScreenId) => void;
+  onLogout?: () => void;
+  onSessionUpdated?: (session: SoyibaSession) => void;
+  onCreatePublication?: () => void;
+}) {
+  return (
     <div className="soyiba-app-backdrop h-[100dvh] overflow-hidden text-slate-950">
       <div className="safe-area mx-auto flex h-full max-w-3xl flex-col overflow-hidden bg-white/78 shadow-2xl shadow-slate-950/10 backdrop-blur-[1px]">
-        <AppHeader activeTab={activeScreen} onNotificationsClick={() => setActiveScreen('perfil')} />
+        <AppHeader activeTab={activeScreen} onNotificationsClick={onNotificationsClick} />
 
         <main className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 pb-[calc(112px+env(safe-area-inset-bottom))]">
           <AnimatePresence mode="wait">
@@ -83,10 +176,12 @@ export default function App() {
               <InicioScreen
                 session={session}
                 openPublicationComposerSignal={publicationComposerSignal}
-                onPublicationComposerOpenChange={setPublicationComposerOpen}
-                onOpenEvent={handleOpenEventFromHome}
+                onPublicationComposerOpenChange={onComposerOpenChange}
+                onOpenEvent={onOpenEventFromHome}
                 openPublicationId={publicationToOpenId}
-                onPublicationOpened={() => setPublicationToOpenId('')}
+                onPublicationOpened={onPublicationOpened}
+                publicMode={publicMode}
+                onAuthRequired={onAuthRequired}
               />
             ) : null}
             {activeScreen === 'eventos' ? (
@@ -98,8 +193,10 @@ export default function App() {
                 title="Eventos"
                 subtitle="Conectate y participa en todo lo que Dios esta haciendo en nuestra iglesia."
                 openPublicationId={publicationToOpenId}
-                onPublicationOpened={() => setPublicationToOpenId('')}
-                onComposerOpenChange={setPublicationComposerOpen}
+                onPublicationOpened={onPublicationOpened}
+                onComposerOpenChange={onComposerOpenChange}
+                publicMode={publicMode}
+                onAuthRequired={onAuthRequired}
               />
             ) : null}
             {activeScreen === 'eco' ? (
@@ -111,8 +208,10 @@ export default function App() {
                 title="Grupos ECO"
                 subtitle="Encuentra publicaciones y encuentros de los grupos ECO."
                 openPublicationId={publicationToOpenId}
-                onPublicationOpened={() => setPublicationToOpenId('')}
-                onComposerOpenChange={setPublicationComposerOpen}
+                onPublicationOpened={onPublicationOpened}
+                onComposerOpenChange={onComposerOpenChange}
+                publicMode={publicMode}
+                onAuthRequired={onAuthRequired}
               />
             ) : null}
             {activeScreen === 'donaciones' ? <PlaceholderScreen key="donaciones" icon={Heart} title="Donaciones" /> : null}
@@ -120,19 +219,16 @@ export default function App() {
               <ProfileScreen
                 key="perfil"
                 session={session}
-                onLogout={handleLogout}
-                onNavigate={setActiveScreen}
-                onSessionUpdated={handleSessionUpdated}
-                onCreatePublication={() => {
-                  setActiveScreen('inicio');
-                  setPublicationComposerSignal(Date.now());
-                }}
+                onLogout={onLogout || (() => undefined)}
+                onNavigate={onNavigate || (() => undefined)}
+                onSessionUpdated={onSessionUpdated || (() => undefined)}
+                onCreatePublication={onCreatePublication || (() => undefined)}
               />
             ) : null}
           </AnimatePresence>
         </main>
 
-        {publicationComposerOpen ? null : <BottomNav activeTab={activeScreen} items={navigation} onChange={setActiveScreen} />}
+        {publicMode || publicationComposerOpen ? null : <BottomNav activeTab={activeScreen} items={navigation} onChange={onNavigate || (() => undefined)} />}
       </div>
     </div>
   );

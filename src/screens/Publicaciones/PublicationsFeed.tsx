@@ -75,6 +75,8 @@ type PublicationsFeedProps = {
   openPublicationId?: string;
   onPublicationOpened?: () => void;
   onOpenEventFromHome?: (publicationId: string) => void;
+  publicMode?: boolean;
+  onAuthRequired?: (mode: 'login' | 'register') => void;
 };
 
 type ImagePreview = {
@@ -116,6 +118,8 @@ export function PublicationsFeed({
   openPublicationId,
   onPublicationOpened,
   onOpenEventFromHome,
+  publicMode = false,
+  onAuthRequired,
 }: PublicationsFeedProps) {
   const cachedPublications = getCachedPublicationFeed(session, filterType ? { type: filterType } : {});
   const [publications, setPublications] = useState<SoyibaPublication[]>(() => cachedPublications || []);
@@ -139,7 +143,7 @@ export function PublicationsFeed({
     () => (filterType && permittedTypes.includes(filterType) ? [filterType] : permittedTypes),
     [filterType, permittedTypes],
   );
-  const canCreate = composerTypes.length > 0;
+  const canCreate = !publicMode && composerTypes.length > 0;
   const feedTitle = title || (variant === 'eventos' ? 'Eventos' : variant === 'eco' ? 'Grupos ECO' : 'Publicaciones');
   const feedSubtitle = subtitle || (variant === 'eventos' ? 'Conectate y participa en lo que Dios esta haciendo.' : 'Comunidad SOY IBA');
   const visiblePublications = useMemo(() => {
@@ -231,6 +235,10 @@ export function PublicationsFeed({
   }, [isLoading, onPublicationOpened, openPublicationId, publications]);
 
   useEffect(() => {
+    if (publicMode) {
+      return;
+    }
+
     publications.forEach((publication) => {
       const viewKey = `soyiba.viewed.${session.user.id || session.user.email}.${publication.id}`;
 
@@ -244,7 +252,7 @@ export function PublicationsFeed({
       );
       recordPublicationView(session, publication.id).catch(() => undefined);
     });
-  }, [publications, session]);
+  }, [publicMode, publications, session]);
 
   useEffect(() => {
     if (!notice) {
@@ -310,6 +318,11 @@ export function PublicationsFeed({
   }
 
   async function handleToggleSave(publication: SoyibaPublication) {
+    if (publicMode) {
+      onAuthRequired?.('login');
+      return;
+    }
+
     const nextSaved = !publication.savedByCurrentUser;
     updatePublicationState(publication.id, {
       savedByCurrentUser: nextSaved,
@@ -331,6 +344,11 @@ export function PublicationsFeed({
   }
 
   async function handleToggleGoing(publication: SoyibaPublication) {
+    if (publicMode) {
+      onAuthRequired?.('login');
+      return;
+    }
+
     if (publication.type !== 'Evento') {
       return;
     }
@@ -381,6 +399,10 @@ export function PublicationsFeed({
   }
 
   async function handleShare(publication: SoyibaPublication) {
+    if (publicMode) {
+      return;
+    }
+
     setActiveMenuId('');
     const shareUrl = buildPublicationShareUrl(publication);
     const shareData = {
@@ -484,20 +506,23 @@ export function PublicationsFeed({
               publication={publication}
               goingBusy={goingBusyId === publication.id}
               menuOpen={activeMenuId === publication.id}
-              canManage={canManagePublication(session.user, publication)}
+              canManage={!publicMode && canManagePublication(session.user, publication)}
+              publicMode={publicMode}
               onMenuToggle={() => setActiveMenuId((current) => (current === publication.id ? '' : publication.id))}
               onOpen={() => setActivePublicationId(publication.id)}
               onShare={() => handleShare(publication)}
               onEdit={() => openEditComposer(publication)}
               onDelete={() => handleDeletePublication(publication)}
               onToggleGoing={() => handleToggleGoing(publication)}
+              onAuthRequired={onAuthRequired}
             />
           ) : (
             <PublicationCard
               key={publication.id}
               publication={publication}
               menuOpen={activeMenuId === publication.id}
-              canManage={canManagePublication(session.user, publication)}
+              canManage={!publicMode && canManagePublication(session.user, publication)}
+              publicMode={publicMode}
               onMenuToggle={() => setActiveMenuId((current) => (current === publication.id ? '' : publication.id))}
               onShare={() => handleShare(publication)}
               onEdit={() => openEditComposer(publication)}
@@ -505,6 +530,7 @@ export function PublicationsFeed({
               onToggleSave={() => handleToggleSave(publication)}
               onOpenEvent={publication.type === 'Evento' && onOpenEventFromHome ? () => onOpenEventFromHome(publication.id) : undefined}
               onOpenDetails={() => setActivePublicationId(publication.id)}
+              onAuthRequired={onAuthRequired}
               onOpenImage={(preview) => setImagePreview(preview)}
             />
           ),
@@ -536,9 +562,11 @@ export function PublicationsFeed({
           <PublicationDetailsModal
             publication={activeDetailPublication}
             goingBusy={goingBusyId === activeDetailPublication.id}
+            publicMode={publicMode}
             onClose={() => setActivePublicationId('')}
             onShare={() => handleShare(activeDetailPublication)}
             onToggleGoing={() => handleToggleGoing(activeDetailPublication)}
+            onAuthRequired={onAuthRequired}
             onOpenImage={(preview) => setImagePreview(preview)}
           />
         ) : null}
@@ -636,23 +664,27 @@ function EventListCard({
   goingBusy,
   menuOpen,
   canManage,
+  publicMode,
   onMenuToggle,
   onOpen,
   onShare,
   onEdit,
   onDelete,
   onToggleGoing,
+  onAuthRequired,
 }: {
   publication: SoyibaPublication;
   goingBusy: boolean;
   menuOpen: boolean;
   canManage: boolean;
+  publicMode: boolean;
   onMenuToggle: () => void;
   onOpen: () => void;
   onShare: () => void;
   onEdit: () => void;
   onDelete: () => void;
   onToggleGoing: () => void;
+  onAuthRequired?: (mode: 'login' | 'register') => void;
 }) {
   const capacityTone = publication.event.capacityAvailable <= 5 && publication.event.capacityAvailable > 0 ? 'text-[#E77700]' : 'text-[#07865B]';
 
@@ -672,6 +704,7 @@ function EventListCard({
             ) : null}
           </div>
 
+          {!publicMode ? (
           <div className="relative -mr-1 -mt-1 shrink-0">
             <button
               type="button"
@@ -697,6 +730,7 @@ function EventListCard({
               ) : null}
             </AnimatePresence>
           </div>
+          ) : null}
         </div>
 
         <h3 className="mt-2 line-clamp-2 text-[18px] font-black leading-5 text-[#0B1F5B] min-[520px]:text-[19px]">{publication.title}</h3>
@@ -713,7 +747,7 @@ function EventListCard({
           {!publication.event.expired && publication.event.capacityAvailable > 0 && publication.event.capacityAvailable <= 5 ? ' - Quedan pocos cupos' : ''}
         </p>
 
-        <div className="mt-3 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+        <div className={cx('mt-3 grid items-center gap-2', publicMode ? 'grid-cols-1' : 'grid-cols-[minmax(0,1fr)_auto]')}>
           <button
             type="button"
             onClick={onOpen}
@@ -721,7 +755,11 @@ function EventListCard({
           >
             Ver evento
           </button>
-          <EventGoingButton publication={publication} busy={goingBusy} compact onClick={onToggleGoing} />
+          {publicMode ? (
+            <PublicAuthGate compact onAuthRequired={onAuthRequired} />
+          ) : (
+            <EventGoingButton publication={publication} busy={goingBusy} compact onClick={onToggleGoing} />
+          )}
         </div>
       </div>
     </article>
@@ -755,16 +793,20 @@ function EventCardMedia({ publication }: { publication: SoyibaPublication }) {
 function PublicationDetailsModal({
   publication,
   goingBusy,
+  publicMode,
   onClose,
   onShare,
   onToggleGoing,
+  onAuthRequired,
   onOpenImage,
 }: {
   publication: SoyibaPublication;
   goingBusy: boolean;
+  publicMode: boolean;
   onClose: () => void;
   onShare: () => void;
   onToggleGoing: () => void;
+  onAuthRequired?: (mode: 'login' | 'register') => void;
   onOpenImage: (preview: ImagePreview) => void;
 }) {
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
@@ -804,20 +846,24 @@ function PublicationDetailsModal({
         </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto">
-          <PublicationMediaCarousel publication={publication} onOpenImage={onOpenImage} />
+          <PublicationMediaCarousel publication={publication} allowExternalOpen={!publicMode} onOpenImage={onOpenImage} />
 
           <div className="px-4 pb-4 pt-3">
             <div className="flex items-center justify-between gap-3">
               <div className="flex min-w-0 items-center gap-3 text-[#253047]">
                 <Stat icon={Bookmark} value={publication.savedCount} label="Guardados" />
                 <Stat icon={Eye} value={publication.viewsCount} label="Views" />
-                <button type="button" onClick={onShare} className="inline-flex items-center gap-1.5 text-sm font-bold text-[#253047]">
-                  <Share2 className={statsIconClass} />
-                  <span>{formatCount(publication.sharedCount)}</span>
-                </button>
+                {!publicMode ? (
+                  <button type="button" onClick={onShare} className="inline-flex items-center gap-1.5 text-sm font-bold text-[#253047]">
+                    <Share2 className={statsIconClass} />
+                    <span>{formatCount(publication.sharedCount)}</span>
+                  </button>
+                ) : (
+                  <Stat icon={Share2} value={publication.sharedCount} label="Compartidos" />
+                )}
               </div>
 
-              {ctaUrl ? (
+              {!publicMode && ctaUrl ? (
                 <a
                   href={ctaUrl}
                   target="_blank"
@@ -862,7 +908,11 @@ function PublicationDetailsModal({
               </div>
             ) : null}
 
-            {publication.relatedLinks.length ? (
+            {publicMode ? (
+              <PublicAuthGate className="mt-4" onAuthRequired={onAuthRequired} />
+            ) : null}
+
+            {!publicMode && publication.relatedLinks.length ? (
               <div className="mt-4 space-y-2">
                 {publication.relatedLinks.map((link) => (
                   <a
@@ -891,8 +941,14 @@ function PublicationDetailsModal({
         </div>
 
         {publication.type === 'Evento' ? (
-          <footer className="flex justify-end border-t border-[#E3EAF5] bg-white p-3.5">
-            <EventGoingButton publication={publication} busy={goingBusy} onClick={onToggleGoing} />
+          <footer className="border-t border-[#E3EAF5] bg-white p-3.5">
+            {publicMode ? (
+              <PublicAuthGate compact onAuthRequired={onAuthRequired} />
+            ) : (
+              <div className="flex justify-end">
+                <EventGoingButton publication={publication} busy={goingBusy} onClick={onToggleGoing} />
+              </div>
+            )}
           </footer>
         ) : null}
       </motion.article>
@@ -913,6 +969,48 @@ function PublicationTypeBadge({ publication }: { publication: SoyibaPublication 
         : 'bg-[#EAF2FF] text-[#145CFF]';
 
   return <span className={cx('shrink-0 rounded-full px-3 py-2 text-[11px] font-black uppercase tracking-normal', tone)}>{publication.type}</span>;
+}
+
+function PublicAuthGate({
+  compact,
+  className,
+  onAuthRequired,
+}: {
+  compact?: boolean;
+  className?: string;
+  onAuthRequired?: (mode: 'login' | 'register') => void;
+}) {
+  return (
+    <div className={cx('rounded-[14px] border border-[#DCE6F5] bg-[#F8FBFF] p-3 shadow-[0_8px_18px_rgba(15,23,42,0.04)]', className)}>
+      {!compact ? (
+        <>
+          <p className="text-[13px] font-black leading-5 text-[#0B1F5B]">Inicia sesion o crea tu cuenta para participar.</p>
+          <p className="mt-1 text-[12px] font-semibold leading-5 text-[#637295]">
+            Al entrar podras ver enlaces, abrir botones de accion, marcar Yo voy y guardar publicaciones.
+          </p>
+        </>
+      ) : (
+        <p className="text-[12px] font-black leading-4 text-[#0B1F5B]">Ingresa para participar y ver acciones.</p>
+      )}
+
+      <div className={cx('grid gap-2', compact ? 'mt-2 grid-cols-2' : 'mt-3 grid-cols-2')}>
+        <button
+          type="button"
+          onClick={() => onAuthRequired?.('login')}
+          className="h-10 rounded-[12px] bg-[#0B1F5B] px-3 text-[12px] font-black text-white shadow-[0_10px_22px_rgba(11,31,91,0.18)] transition hover:bg-[#145CFF]"
+        >
+          Iniciar sesion
+        </button>
+        <button
+          type="button"
+          onClick={() => onAuthRequired?.('register')}
+          className="h-10 rounded-[12px] border border-[#BFD0EA] bg-white px-3 text-[12px] font-black text-[#145CFF] transition hover:bg-[#EAF2FF]"
+        >
+          Registrarme
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function EventMeta({ icon: Icon, label }: { icon: LucideIcon; label: string }) {
@@ -984,6 +1082,7 @@ function PublicationCard({
   publication,
   menuOpen,
   canManage,
+  publicMode,
   onMenuToggle,
   onShare,
   onEdit,
@@ -991,11 +1090,13 @@ function PublicationCard({
   onToggleSave,
   onOpenEvent,
   onOpenDetails,
+  onAuthRequired,
   onOpenImage,
 }: {
   publication: SoyibaPublication;
   menuOpen: boolean;
   canManage: boolean;
+  publicMode: boolean;
   onMenuToggle: () => void;
   onShare: () => void;
   onEdit: () => void;
@@ -1003,6 +1104,7 @@ function PublicationCard({
   onToggleSave: () => void;
   onOpenEvent?: () => void;
   onOpenDetails: () => void;
+  onAuthRequired?: (mode: 'login' | 'register') => void;
   onOpenImage: (preview: ImagePreview) => void;
 }) {
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
@@ -1026,6 +1128,7 @@ function PublicationCard({
           {publication.type}
         </span>
 
+        {!publicMode ? (
         <div className="relative">
           <button
             type="button"
@@ -1051,25 +1154,34 @@ function PublicationCard({
             ) : null}
           </AnimatePresence>
         </div>
+        ) : null}
       </header>
 
-      <PublicationMediaCarousel publication={publication} onOpenImage={onOpenImage} />
+      <PublicationMediaCarousel publication={publication} allowExternalOpen={!publicMode} onOpenImage={onOpenImage} />
 
       <div className="px-4 pb-4 pt-3">
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3 text-[#253047]">
-            <StatButton
-              active={publication.savedByCurrentUser}
-              icon={Bookmark}
-              value={publication.savedCount}
-              label="Guardados"
-              onClick={onToggleSave}
-            />
+            {publicMode ? (
+              <Stat icon={Bookmark} value={publication.savedCount} label="Guardados" />
+            ) : (
+              <StatButton
+                active={publication.savedByCurrentUser}
+                icon={Bookmark}
+                value={publication.savedCount}
+                label="Guardados"
+                onClick={onToggleSave}
+              />
+            )}
             <Stat icon={Eye} value={publication.viewsCount} label="Views" />
-            <button type="button" onClick={onShare} className="inline-flex items-center gap-1.5 text-sm font-bold text-[#253047]">
-              <Share2 className={statsIconClass} />
-              <span>{formatCount(publication.sharedCount)}</span>
-            </button>
+            {publicMode ? (
+              <Stat icon={Share2} value={publication.sharedCount} label="Compartidos" />
+            ) : (
+              <button type="button" onClick={onShare} className="inline-flex items-center gap-1.5 text-sm font-bold text-[#253047]">
+                <Share2 className={statsIconClass} />
+                <span>{formatCount(publication.sharedCount)}</span>
+              </button>
+            )}
           </div>
 
           {onOpenEvent ? (
@@ -1080,7 +1192,7 @@ function PublicationCard({
             >
               Ver evento
             </button>
-          ) : ctaUrl ? (
+          ) : !publicMode && ctaUrl ? (
             <a
               href={ctaUrl}
               target="_blank"
@@ -1117,7 +1229,11 @@ function PublicationCard({
           </button>
         ) : null}
 
-        {publication.relatedLinks.length ? (
+        {publicMode ? (
+          <PublicAuthGate className="mt-4" onAuthRequired={onAuthRequired} />
+        ) : null}
+
+        {!publicMode && publication.relatedLinks.length ? (
           <div className="mt-4 space-y-2">
             {publication.relatedLinks.map((link) => (
               <a
@@ -1149,9 +1265,11 @@ function PublicationCard({
 
 function PublicationMediaCarousel({
   publication,
+  allowExternalOpen = true,
   onOpenImage,
 }: {
   publication: SoyibaPublication;
+  allowExternalOpen?: boolean;
   onOpenImage: (preview: ImagePreview) => void;
 }) {
   const [activeIndex, setActiveIndex] = useState(0);
@@ -1217,7 +1335,7 @@ function PublicationMediaCarousel({
               transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
               className="absolute inset-0"
             >
-              <PublicationMedia item={activeItem} publicationTitle={publication.title} onOpenImage={onOpenImage} />
+              <PublicationMedia item={activeItem} publicationTitle={publication.title} allowExternalOpen={allowExternalOpen} onOpenImage={onOpenImage} />
             </motion.div>
           </AnimatePresence>
         </div>
@@ -1239,10 +1357,12 @@ function PublicationMediaCarousel({
 function PublicationMedia({
   item,
   publicationTitle,
+  allowExternalOpen,
   onOpenImage,
 }: {
   item: PublicationMediaItem;
   publicationTitle: string;
+  allowExternalOpen: boolean;
   onOpenImage: (preview: ImagePreview) => void;
 }) {
   if (item.type === 'youtube') {
@@ -1278,7 +1398,7 @@ function PublicationMedia({
       );
     }
 
-    return <DriveVideoPlayer url={item.url} title={item.title || publicationTitle} />;
+    return <DriveVideoPlayer url={item.url} title={item.title || publicationTitle} allowExternalOpen={allowExternalOpen} />;
   }
 
   const sources = getGoogleDriveImageCandidates(item.url);
@@ -1337,7 +1457,7 @@ function PublicationDriveImage({
   return <img src={src} alt={alt} className={className} loading={loading} onError={handleImageError} />;
 }
 
-function DriveVideoPlayer({ url, title }: { url: string; title: string }) {
+function DriveVideoPlayer({ url, title, allowExternalOpen }: { url: string; title: string; allowExternalOpen: boolean }) {
   const directUrl = getGoogleDriveDownloadUrl(url);
   const previewUrl = getGoogleDrivePreviewUrl(url);
   const fileUrl = getGoogleDriveFileUrl(url);
@@ -1362,16 +1482,18 @@ function DriveVideoPlayer({ url, title }: { url: string; title: string }) {
           preload="metadata"
           onError={() => setMode('preview')}
         />
-        <a
-          href={fileUrl}
-          target="_blank"
-          rel="noreferrer"
-          aria-label="Abrir video en Drive"
-          title="Abrir video en Drive"
-          className="absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-full bg-black/70 text-white backdrop-blur"
-        >
-          <ExternalLink size={16} />
-        </a>
+        {allowExternalOpen ? (
+          <a
+            href={fileUrl}
+            target="_blank"
+            rel="noreferrer"
+            aria-label="Abrir video en Drive"
+            title="Abrir video en Drive"
+            className="absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-full bg-black/70 text-white backdrop-blur"
+          >
+            <ExternalLink size={16} />
+          </a>
+        ) : null}
       </div>
     );
   }
@@ -1390,16 +1512,18 @@ function DriveVideoPlayer({ url, title }: { url: string; title: string }) {
         >
           <RefreshCw size={15} />
         </button>
-        <a
-          href={fileUrl}
-          target="_blank"
-          rel="noreferrer"
-          aria-label="Abrir video en Drive"
-          title="Abrir video en Drive"
-          className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/14 text-white transition hover:bg-white/24"
-        >
-          <ExternalLink size={15} />
-        </a>
+        {allowExternalOpen ? (
+          <a
+            href={fileUrl}
+            target="_blank"
+            rel="noreferrer"
+            aria-label="Abrir video en Drive"
+            title="Abrir video en Drive"
+            className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/14 text-white transition hover:bg-white/24"
+          >
+            <ExternalLink size={15} />
+          </a>
+        ) : null}
       </div>
     </div>
   );
