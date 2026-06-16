@@ -1,0 +1,4 @@
+metric_id	label	value	sort_order	visible	updated_at
+usuarios_activos	Usuarios	0	1	TRUE	
+solicitudes_hoy	Solicitudes	0	2	TRUE	
+alertas	Alertas	0	3	TRUE	

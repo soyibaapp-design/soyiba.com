@@ -1,0 +1,1 @@
+user_id	email	password_hash	salt	display_name	role	status	created_at	updated_at	last_login_at	fcm_token	first_name	last_name	phone	tipo_usuario	titulo_usuario	rol_sistema	estado_usuario	publicador	publicador_eco	publicador_evento	acepto_politica_datos	fecha_aceptacion_politica	active	tiempo_iba
