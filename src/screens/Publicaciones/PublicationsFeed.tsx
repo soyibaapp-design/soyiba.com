@@ -2,23 +2,30 @@ import { useEffect, useMemo, useRef, useState, type TouchEvent } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
   Bookmark,
+  CalendarDays,
   ChevronLeft,
   ChevronRight,
+  Clock3,
   ExternalLink,
   Eye,
   FileText,
   ImageIcon,
   Link as LinkIcon,
   LoaderCircle,
+  MapPin,
   MessageCircle,
   MoreVertical,
   Music2,
   PencilLine,
   Plus,
   RefreshCw,
+  Search,
   Share2,
+  SlidersHorizontal,
   Trash2,
   UploadCloud,
+  UserCheck,
+  UsersRound,
   Video,
   X,
   type LucideIcon,
@@ -46,6 +53,7 @@ import {
   recordPublicationShare,
   recordPublicationView,
   serializeRelatedLinksInput,
+  toggleEventGoing,
   togglePublicationSave,
   updatePublication,
   uploadPublicationMedia,
@@ -60,6 +68,13 @@ type PublicationsFeedProps = {
   session: SoyibaSession;
   openComposerSignal?: number;
   onComposerOpenChange?: (open: boolean) => void;
+  filterType?: PublicationType;
+  variant?: 'feed' | 'eventos' | 'eco';
+  title?: string;
+  subtitle?: string;
+  openPublicationId?: string;
+  onPublicationOpened?: () => void;
+  onOpenEventFromHome?: (publicationId: string) => void;
 };
 
 type ImagePreview = {
@@ -81,11 +96,27 @@ type PublicationFormState = {
   ctaUrl: string;
   ctaPhone: string;
   relatedLinksInput: string;
+  eventDateTime: string;
+  eventPlace: string;
+  eventValidFrom: string;
+  eventValidUntil: string;
+  eventCapacityTotal: string;
 };
 
 const statsIconClass = 'h-5 w-5 shrink-0';
 
-export function PublicationsFeed({ session, openComposerSignal = 0, onComposerOpenChange }: PublicationsFeedProps) {
+export function PublicationsFeed({
+  session,
+  openComposerSignal = 0,
+  onComposerOpenChange,
+  filterType,
+  variant = 'feed',
+  title,
+  subtitle,
+  openPublicationId,
+  onPublicationOpened,
+  onOpenEventFromHome,
+}: PublicationsFeedProps) {
   const [publications, setPublications] = useState<SoyibaPublication[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -94,17 +125,49 @@ export function PublicationsFeed({ session, openComposerSignal = 0, onComposerOp
   const [savingPublication, setSavingPublication] = useState(false);
   const [activeMenuId, setActiveMenuId] = useState('');
   const [imagePreview, setImagePreview] = useState<ImagePreview | null>(null);
+  const [activeEventId, setActiveEventId] = useState('');
+  const [eventStatusFilter, setEventStatusFilter] = useState<'proximos' | 'todos' | 'pasados'>('proximos');
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [goingBusyId, setGoingBusyId] = useState('');
   const [notice, setNotice] = useState('');
   const lastComposerSignal = useRef(0);
+  const lastOpenPublicationId = useRef('');
   const permittedTypes = useMemo(() => getPermittedPublicationTypes(session.user), [session.user]);
-  const canCreate = permittedTypes.length > 0;
+  const composerTypes = useMemo(
+    () => (filterType && permittedTypes.includes(filterType) ? [filterType] : permittedTypes),
+    [filterType, permittedTypes],
+  );
+  const canCreate = composerTypes.length > 0;
+  const feedTitle = title || (variant === 'eventos' ? 'Eventos' : variant === 'eco' ? 'Grupos ECO' : 'Publicaciones');
+  const feedSubtitle = subtitle || (variant === 'eventos' ? 'Conectate y participa en lo que Dios esta haciendo.' : 'Comunidad SOY IBA');
+  const visiblePublications = useMemo(() => {
+    let items = publications;
+
+    if (variant === 'eventos') {
+      items = filterEventsByStatus(items, eventStatusFilter);
+
+      if (searchTerm.trim()) {
+        const term = normalizeSearchText(searchTerm);
+        items = items.filter((publication) =>
+          normalizeSearchText(`${publication.title} ${publication.description} ${publication.event.place}`).includes(term),
+        );
+      }
+    }
+
+    return items;
+  }, [eventStatusFilter, publications, searchTerm, variant]);
+  const activeEventPublication = useMemo(
+    () => publications.find((publication) => publication.id === activeEventId && publication.type === 'Evento') || null,
+    [activeEventId, publications],
+  );
 
   useEffect(() => {
     let isMounted = true;
     setIsLoading(true);
     setError('');
 
-    getPublicationFeed(session)
+    getPublicationFeed(session, filterType ? { type: filterType } : {})
       .then((items) => {
         if (isMounted) {
           setPublications(items);
@@ -124,7 +187,7 @@ export function PublicationsFeed({ session, openComposerSignal = 0, onComposerOp
     return () => {
       isMounted = false;
     };
-  }, [session]);
+  }, [filterType, session]);
 
   useEffect(() => {
     if (!canCreate || openComposerSignal === lastComposerSignal.current) {
@@ -135,6 +198,25 @@ export function PublicationsFeed({ session, openComposerSignal = 0, onComposerOp
     setEditingPublication(null);
     setComposerOpen(true);
   }, [canCreate, openComposerSignal]);
+
+  useEffect(() => {
+    if (!openPublicationId) {
+      lastOpenPublicationId.current = '';
+      return;
+    }
+
+    if (!openPublicationId || isLoading || openPublicationId === lastOpenPublicationId.current) {
+      return;
+    }
+
+    const publication = publications.find((item) => item.id === openPublicationId && item.type === 'Evento');
+
+    if (publication) {
+      lastOpenPublicationId.current = openPublicationId;
+      setActiveEventId(publication.id);
+      onPublicationOpened?.();
+    }
+  }, [isLoading, onPublicationOpened, openPublicationId, publications]);
 
   useEffect(() => {
     publications.forEach((publication) => {
@@ -184,7 +266,7 @@ export function PublicationsFeed({ session, openComposerSignal = 0, onComposerOp
     try {
       if (editingPublication) {
         const updated = await updatePublication(session, editingPublication.id, payload);
-        setPublications((current) => sortPublications(current.map((item) => (item.id === updated.id ? mergeStats(updated, item) : item))));
+        setPublications((current) => sortPublications(current.map((item) => (item.id === updated.id ? mergeActivityStats(updated, item) : item))));
       } else {
         const created = await createPublication(session, payload);
         setPublications((current) => sortPublications([created, ...current]));
@@ -236,6 +318,56 @@ export function PublicationsFeed({ session, openComposerSignal = 0, onComposerOp
     }
   }
 
+  async function handleToggleGoing(publication: SoyibaPublication) {
+    if (publication.type !== 'Evento') {
+      return;
+    }
+
+    if (publication.event.expired) {
+      setNotice('Este evento ya caduco.');
+      return;
+    }
+
+    const nextGoing = !publication.event.currentUserGoing;
+
+    if (nextGoing && publication.event.capacityAvailable <= 0) {
+      setNotice('No quedan cupos disponibles para este evento.');
+      return;
+    }
+
+    const optimisticEvent = {
+      ...publication.event,
+      currentUserGoing: nextGoing,
+      attendeesCount: Math.max(0, publication.event.attendeesCount + (nextGoing ? 1 : -1)),
+      capacityAvailable: Math.max(0, publication.event.capacityAvailable + (nextGoing ? -1 : 1)),
+    };
+    optimisticEvent.capacityTotal = optimisticEvent.attendeesCount + optimisticEvent.capacityAvailable;
+    setGoingBusyId(publication.id);
+    updatePublicationState(publication.id, { event: optimisticEvent });
+
+    try {
+      const result = await toggleEventGoing(session, publication.id, nextGoing);
+
+      if (result.publication) {
+        setPublications((current) =>
+          sortPublications(current.map((item) => (item.id === result.publication?.id ? mergeServerPublication(result.publication, item) : item))),
+        );
+      } else {
+        updatePublicationState(publication.id, {
+          event: {
+            ...optimisticEvent,
+            currentUserGoing: result.going,
+          },
+        });
+      }
+    } catch (goingError) {
+      setError(goingError instanceof Error ? goingError.message : 'No fue posible actualizar Yo voy.');
+      updatePublicationState(publication.id, { event: publication.event });
+    } finally {
+      setGoingBusyId('');
+    }
+  }
+
   async function handleShare(publication: SoyibaPublication) {
     setActiveMenuId('');
     const shareUrl = `${window.location.origin}${window.location.pathname}#publicacion-${publication.id}`;
@@ -281,10 +413,23 @@ export function PublicationsFeed({ session, openComposerSignal = 0, onComposerOp
   return (
     <section className="space-y-3">
       <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-[19px] font-black leading-6 text-[#0B1F5B]">Publicaciones</h2>
-          <p className="text-xs font-semibold text-[#62718A]">Comunidad SOY IBA</p>
-        </div>
+        {variant === 'eventos' ? (
+          <EventsHeader
+            title={feedTitle}
+            subtitle={feedSubtitle}
+            activeFilter={eventStatusFilter}
+            searchOpen={searchOpen}
+            searchTerm={searchTerm}
+            onFilterChange={setEventStatusFilter}
+            onSearchToggle={() => setSearchOpen((current) => !current)}
+            onSearchChange={setSearchTerm}
+          />
+        ) : (
+          <div className="min-w-0">
+            <h2 className="text-[19px] font-black leading-6 text-[#0B1F5B]">{feedTitle}</h2>
+            <p className="text-xs font-semibold text-[#62718A]">{feedSubtitle}</p>
+          </div>
+        )}
 
         {canCreate ? (
           <button
@@ -312,28 +457,40 @@ export function PublicationsFeed({ session, openComposerSignal = 0, onComposerOp
         </div>
       ) : null}
 
-      {!isLoading && !publications.length ? (
+      {!isLoading && !visiblePublications.length ? (
         <div className="rounded-[18px] border border-dashed border-[#B8C9E7] bg-white p-5 text-center shadow-[0_14px_32px_rgba(15,23,42,0.05)]">
           <FileText className="mx-auto h-9 w-9 text-[#145CFF]" />
-          <p className="mt-3 text-sm font-black text-[#0B1F5B]">Aun no hay publicaciones.</p>
+          <p className="mt-3 text-sm font-black text-[#0B1F5B]">Aun no hay {feedTitle.toLowerCase()}.</p>
         </div>
       ) : null}
 
-      <div className="space-y-4">
-        {publications.map((publication) => (
-          <PublicationCard
-            key={publication.id}
-            publication={publication}
-            menuOpen={activeMenuId === publication.id}
-            canManage={canManagePublication(session.user, publication)}
-            onMenuToggle={() => setActiveMenuId((current) => (current === publication.id ? '' : publication.id))}
-            onShare={() => handleShare(publication)}
-            onEdit={() => openEditComposer(publication)}
-            onDelete={() => handleDeletePublication(publication)}
-            onToggleSave={() => handleToggleSave(publication)}
-            onOpenImage={(preview) => setImagePreview(preview)}
-          />
-        ))}
+      <div className={cx('space-y-4', variant === 'eventos' && 'space-y-3')}>
+        {visiblePublications.map((publication) =>
+          variant === 'eventos' ? (
+            <EventListCard
+              key={publication.id}
+              publication={publication}
+              goingBusy={goingBusyId === publication.id}
+              onOpen={() => setActiveEventId(publication.id)}
+              onShare={() => handleShare(publication)}
+              onToggleGoing={() => handleToggleGoing(publication)}
+            />
+          ) : (
+            <PublicationCard
+              key={publication.id}
+              publication={publication}
+              menuOpen={activeMenuId === publication.id}
+              canManage={canManagePublication(session.user, publication)}
+              onMenuToggle={() => setActiveMenuId((current) => (current === publication.id ? '' : publication.id))}
+              onShare={() => handleShare(publication)}
+              onEdit={() => openEditComposer(publication)}
+              onDelete={() => handleDeletePublication(publication)}
+              onToggleSave={() => handleToggleSave(publication)}
+              onOpenEvent={publication.type === 'Evento' && onOpenEventFromHome ? () => onOpenEventFromHome(publication.id) : undefined}
+              onOpenImage={(preview) => setImagePreview(preview)}
+            />
+          ),
+        )}
       </div>
 
       <AnimatePresence>
@@ -341,7 +498,7 @@ export function PublicationsFeed({ session, openComposerSignal = 0, onComposerOp
           <PublicationComposerModal
             session={session}
             publication={editingPublication}
-            permittedTypes={permittedTypes}
+            permittedTypes={composerTypes}
             saving={savingPublication}
             onClose={() => {
               setComposerOpen(false);
@@ -355,7 +512,415 @@ export function PublicationsFeed({ session, openComposerSignal = 0, onComposerOp
       <AnimatePresence>
         {imagePreview ? <ImageLightbox preview={imagePreview} onClose={() => setImagePreview(null)} /> : null}
       </AnimatePresence>
+
+      <AnimatePresence>
+        {activeEventPublication ? (
+          <EventDetailsModal
+            publication={activeEventPublication}
+            goingBusy={goingBusyId === activeEventPublication.id}
+            onClose={() => setActiveEventId('')}
+            onShare={() => handleShare(activeEventPublication)}
+            onToggleGoing={() => handleToggleGoing(activeEventPublication)}
+            onOpenImage={(preview) => setImagePreview(preview)}
+          />
+        ) : null}
+      </AnimatePresence>
     </section>
+  );
+}
+
+function EventsHeader({
+  title,
+  subtitle,
+  activeFilter,
+  searchOpen,
+  searchTerm,
+  onFilterChange,
+  onSearchToggle,
+  onSearchChange,
+}: {
+  title: string;
+  subtitle: string;
+  activeFilter: 'proximos' | 'todos' | 'pasados';
+  searchOpen: boolean;
+  searchTerm: string;
+  onFilterChange: (filter: 'proximos' | 'todos' | 'pasados') => void;
+  onSearchToggle: () => void;
+  onSearchChange: (value: string) => void;
+}) {
+  const filters: Array<{ id: 'proximos' | 'todos' | 'pasados'; label: string }> = [
+    { id: 'proximos', label: 'Proximos' },
+    { id: 'todos', label: 'Todos' },
+    { id: 'pasados', label: 'Pasados' },
+  ];
+
+  return (
+    <div className="min-w-0 flex-1 space-y-3">
+      <div className="min-w-0">
+        <h2 className="text-[26px] font-black leading-7 text-[#0B1F5B]">{title}</h2>
+        <p className="mt-2 max-w-sm text-[14px] font-semibold leading-5 text-[#637295]">{subtitle}</p>
+      </div>
+
+      <div className="flex items-center gap-2">
+        <div
+          className="grid min-h-[42px] flex-1 rounded-full border border-[#D7E1F1] bg-white p-1 shadow-[0_12px_32px_rgba(15,23,42,0.06)]"
+          style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))' }}
+        >
+          {filters.map((filter) => {
+            const active = activeFilter === filter.id;
+
+            return (
+              <button
+                key={filter.id}
+                type="button"
+                onClick={() => onFilterChange(filter.id)}
+                className={cx(
+                  'h-9 rounded-full px-2 text-[12px] font-black transition',
+                  active ? 'bg-[#0B1F5B] text-white shadow-[0_10px_22px_rgba(11,31,91,0.22)]' : 'text-[#0B1F5B] hover:bg-[#EAF2FF]',
+                )}
+              >
+                {filter.label}
+              </button>
+            );
+          })}
+        </div>
+
+        <button
+          type="button"
+          aria-label="Buscar eventos"
+          onClick={onSearchToggle}
+          className={cx(
+            'grid h-11 w-11 shrink-0 place-items-center rounded-full bg-white text-[#0B1F5B] shadow-[0_12px_28px_rgba(15,23,42,0.08)] transition',
+            searchOpen && 'bg-[#EAF2FF] text-[#145CFF]',
+          )}
+        >
+          <Search size={21} />
+        </button>
+
+        <button
+          type="button"
+          aria-label="Filtros de eventos"
+          className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-white text-[#0B1F5B] shadow-[0_12px_28px_rgba(15,23,42,0.08)] transition hover:bg-[#EAF2FF]"
+        >
+          <SlidersHorizontal size={21} />
+        </button>
+      </div>
+
+      {searchOpen ? (
+        <label className="flex h-11 items-center gap-2 rounded-full border border-[#D7E1F1] bg-white px-4 text-sm font-bold text-[#0B1F5B] shadow-[0_12px_32px_rgba(15,23,42,0.06)]">
+          <Search size={17} className="shrink-0 text-[#667085]" />
+          <input
+            value={searchTerm}
+            onChange={(event) => onSearchChange(event.target.value)}
+            placeholder="Buscar por nombre o lugar"
+            className="h-full min-w-0 flex-1 bg-transparent outline-none placeholder:text-[#98A1BD]"
+          />
+        </label>
+      ) : null}
+    </div>
+  );
+}
+
+function EventListCard({
+  publication,
+  goingBusy,
+  onOpen,
+  onShare,
+  onToggleGoing,
+}: {
+  publication: SoyibaPublication;
+  goingBusy: boolean;
+  onOpen: () => void;
+  onShare: () => void;
+  onToggleGoing: () => void;
+}) {
+  const capacityTone = publication.event.capacityAvailable <= 5 && publication.event.capacityAvailable > 0 ? 'text-[#E77700]' : 'text-[#07865B]';
+
+  return (
+    <article className="grid min-h-[176px] grid-cols-[118px_minmax(0,1fr)] overflow-hidden rounded-[18px] border border-white/80 bg-white shadow-[0_16px_38px_rgba(15,23,42,0.08)] min-[520px]:grid-cols-[238px_minmax(0,1fr)]">
+      <EventCardMedia publication={publication} />
+
+      <div className="min-w-0 px-3 py-3 min-[520px]:px-4">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <span className="rounded-full bg-[#E9E6FF] px-2.5 py-1 text-[10px] font-black uppercase text-[#3150F7]">Evento</span>
+          {publication.event.expired ? (
+            <span className="rounded-full bg-[#FFE8E8] px-2.5 py-1 text-[10px] font-black uppercase text-[#D92D2D]">Caducado</span>
+          ) : null}
+          {publication.cta.type !== 'Ninguno' ? (
+            <span className="rounded-full bg-[#EEF4FF] px-2.5 py-1 text-[10px] font-black text-[#0B1F5B]">{getPublicationCtaLabel(publication)}</span>
+          ) : null}
+        </div>
+
+        <h3 className="mt-2 line-clamp-2 text-[18px] font-black leading-5 text-[#0B1F5B] min-[520px]:text-[19px]">{publication.title}</h3>
+        {publication.description ? <p className="mt-1 line-clamp-2 text-[12px] font-semibold leading-5 text-[#637295]">{publication.description}</p> : null}
+
+        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-bold text-[#273653]">
+          <EventMeta icon={Clock3} label={formatEventTime(publication.event.dateTime)} />
+          <EventMeta icon={MapPin} label={publication.event.place || 'Lugar por confirmar'} />
+          <EventMeta icon={UsersRound} label={`${formatCount(publication.event.attendeesCount)} personas van`} />
+        </div>
+
+        <p className={cx('mt-2 text-[11px] font-black', publication.event.expired ? 'text-[#D92D2D]' : capacityTone)}>
+          {publication.event.expired ? 'Evento caducado' : `Cupos disponibles: ${formatCount(publication.event.capacityAvailable)}`}
+          {!publication.event.expired && publication.event.capacityAvailable > 0 && publication.event.capacityAvailable <= 5 ? ' - Quedan pocos cupos' : ''}
+        </p>
+
+        <div className="mt-3 grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2">
+          <button
+            type="button"
+            onClick={onOpen}
+            className="h-10 min-w-0 rounded-[13px] bg-[#0B1F5B] px-3 text-[12px] font-black text-white shadow-[0_12px_24px_rgba(11,31,91,0.18)] transition hover:bg-[#145CFF]"
+          >
+            Ver evento
+          </button>
+          <EventGoingButton publication={publication} busy={goingBusy} compact onClick={onToggleGoing} />
+          <button
+            type="button"
+            aria-label="Compartir evento"
+            onClick={onShare}
+            className="grid h-10 w-10 place-items-center rounded-full text-[#0B1F5B] transition hover:bg-[#EAF2FF]"
+          >
+            <Share2 size={19} />
+          </button>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function EventCardMedia({ publication }: { publication: SoyibaPublication }) {
+  const imageItem = publication.mediaItems.find((item) => item.type === 'image');
+  const sources = imageItem ? getGoogleDriveImageCandidates(imageItem.url) : [];
+  const dateParts = formatEventDateParts(publication.event.dateTime || publication.createdAt);
+
+  return (
+    <div className="relative min-h-full bg-[#DCE7F7]">
+      {imageItem ? (
+        <PublicationDriveImage sources={sources} alt={imageItem.title || publication.title} className="h-full min-h-[176px] w-full object-cover" />
+      ) : (
+        <div className="grid h-full min-h-[176px] place-items-center text-[#52637C]">
+          <ImageIcon size={30} />
+        </div>
+      )}
+
+      <div className="absolute left-3 top-3 grid min-h-[88px] w-[70px] place-items-center rounded-[12px] bg-[#0B1F5B]/92 px-2 py-2 text-center text-white shadow-[0_16px_32px_rgba(11,31,91,0.24)] backdrop-blur">
+        <span className="text-[15px] font-black uppercase leading-none text-white/80">{dateParts.month}</span>
+        <span className="text-[34px] font-black leading-9">{dateParts.day}</span>
+        <span className="text-[11px] font-black uppercase leading-none text-white/80">{dateParts.weekday}</span>
+      </div>
+    </div>
+  );
+}
+
+function EventDetailsModal({
+  publication,
+  goingBusy,
+  onClose,
+  onShare,
+  onToggleGoing,
+  onOpenImage,
+}: {
+  publication: SoyibaPublication;
+  goingBusy: boolean;
+  onClose: () => void;
+  onShare: () => void;
+  onToggleGoing: () => void;
+  onOpenImage: (preview: ImagePreview) => void;
+}) {
+  const [descriptionExpanded, setDescriptionExpanded] = useState(false);
+  const descriptionIsLong = publication.description.length > 145 || publication.description.split(/\r?\n/).length > 2;
+  const ctaUrl = getPublicationCtaUrl(publication);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[110] flex h-[100dvh] items-end justify-center overflow-hidden bg-[#0B1F5B]/35 px-2 pb-[calc(10px+env(safe-area-inset-bottom))] pt-[calc(10px+env(safe-area-inset-top))] backdrop-blur-sm min-[560px]:items-center"
+      onMouseDown={onClose}
+    >
+      <motion.article
+        role="dialog"
+        aria-modal="true"
+        initial={{ opacity: 0, y: 28, scale: 0.98 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: 24, scale: 0.98 }}
+        className="flex max-h-full w-full max-w-xl flex-col overflow-hidden rounded-[18px] border border-white/80 bg-white shadow-[0_26px_70px_rgba(11,31,91,0.24)]"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <header className="flex items-center gap-3 px-4 py-3">
+          <AuthorAvatar publication={publication} />
+
+          <div className="min-w-0 flex-1">
+            <h3 className="truncate text-[15px] font-black leading-5 text-[#101827]">{publication.author.name}</h3>
+            <p className="text-[12px] font-semibold leading-4 text-[#667085]">{formatRelativeTime(publication.createdAt)}</p>
+          </div>
+
+          <span
+            className={cx(
+              'shrink-0 rounded-full px-3 py-2 text-[11px] font-black uppercase tracking-normal',
+              publication.event.expired ? 'bg-[#FFE8E8] text-[#D92D2D]' : 'bg-[#EEF1F6] text-[#1F2937]',
+            )}
+          >
+            {publication.event.expired ? 'Caducado' : 'Evento'}
+          </span>
+
+          <button type="button" aria-label="Cerrar evento" onClick={onClose} className="grid h-10 w-9 place-items-center rounded-full text-[#0B1F5B] transition hover:bg-[#F2F5FA]">
+            <X size={21} />
+          </button>
+        </header>
+
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <PublicationMediaCarousel publication={publication} onOpenImage={onOpenImage} />
+
+          <div className="px-4 pb-4 pt-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-3 text-[#253047]">
+                <Stat icon={Bookmark} value={publication.savedCount} label="Guardados" />
+                <Stat icon={Eye} value={publication.viewsCount} label="Views" />
+                <button type="button" onClick={onShare} className="inline-flex items-center gap-1.5 text-sm font-bold text-[#253047]">
+                  <Share2 className={statsIconClass} />
+                  <span>{formatCount(publication.sharedCount)}</span>
+                </button>
+              </div>
+
+              {ctaUrl ? (
+                <a
+                  href={ctaUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-[12px] bg-[#5B6577] px-4 text-sm font-black text-white shadow-[0_12px_24px_rgba(31,41,55,0.18)] transition hover:bg-[#3F4857]"
+                >
+                  {getPublicationCtaLabel(publication)}
+                  <ExternalLink size={16} />
+                </a>
+              ) : null}
+            </div>
+
+            <h3 className="mt-4 text-[19px] font-black leading-6 text-[#101827]">{publication.title}</h3>
+            {publication.description ? (
+              <div className="mt-2">
+                <p className={cx('whitespace-pre-line text-[14px] font-medium leading-6 text-[#202B3C]', !descriptionExpanded && 'line-clamp-2')}>
+                  {publication.description}
+                </p>
+                {descriptionIsLong ? (
+                  <button type="button" onClick={() => setDescriptionExpanded((current) => !current)} className="mt-1 text-[14px] font-black text-[#145CFF]">
+                    {descriptionExpanded ? 'Ver menos' : 'Ver mas'}
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+
+            <div className="mt-4 grid overflow-hidden rounded-[14px] border border-[#E0E7F0] bg-[#FAFCFF] min-[440px]:grid-cols-2">
+              <EventInfoTile icon={CalendarDays} label="Fecha" value={formatEventLongDate(publication.event.dateTime)} />
+              <EventInfoTile icon={Clock3} label="Hora" value={formatEventTime(publication.event.dateTime)} />
+              <EventInfoTile icon={MapPin} label="Lugar" value={eventPlaceName(publication.event.place)} subvalue={eventPlaceCity(publication.event.place)} />
+              <EventInfoTile
+                icon={UsersRound}
+                label="Cupos"
+                value={formatEventCapacity(publication)}
+                subvalue={publication.event.expired ? 'Evento caducado' : `${formatCount(publication.event.capacityAvailable)} disponibles`}
+              />
+            </div>
+
+            {publication.relatedLinks.length ? (
+              <div className="mt-4 space-y-2">
+                {publication.relatedLinks.map((link) => (
+                  <a
+                    key={link.id}
+                    href={link.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="flex min-h-[64px] items-center gap-3 rounded-[14px] border border-[#E0E7F0] bg-[#FAFCFF] px-3 py-2 shadow-[0_8px_18px_rgba(15,23,42,0.04)]"
+                  >
+                    <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[12px] bg-[#FFF1F1] text-[#E03131]">
+                      <FileText size={22} />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[13px] font-black text-[#101827]">{link.title}</span>
+                      <span className="mt-0.5 block truncate text-[11px] font-bold text-[#667085]">{hostFromUrl(link.url)}</span>
+                    </span>
+                    <span className="inline-flex shrink-0 items-center gap-1 text-[13px] font-black text-[#1F2544]">
+                      Abrir
+                      <ExternalLink size={16} />
+                    </span>
+                  </a>
+                ))}
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        <footer className="flex justify-end border-t border-[#E3EAF5] bg-white p-3.5">
+          <EventGoingButton publication={publication} busy={goingBusy} onClick={onToggleGoing} />
+        </footer>
+      </motion.article>
+    </motion.div>
+  );
+}
+
+function EventMeta({ icon: Icon, label }: { icon: LucideIcon; label: string }) {
+  return (
+    <span className="inline-flex min-w-0 items-center gap-1">
+      <Icon size={14} className="shrink-0 text-[#566987]" />
+      <span className="truncate">{label}</span>
+    </span>
+  );
+}
+
+function EventInfoTile({
+  icon: Icon,
+  label,
+  value,
+  subvalue,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: string;
+  subvalue?: string;
+}) {
+  return (
+    <div className="flex min-h-[76px] items-center gap-3 border-b border-[#E0E7F0] px-3 py-3 last:border-b-0">
+      <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white text-[#145CFF] shadow-[0_8px_18px_rgba(20,92,255,0.12)]">
+        <Icon size={18} />
+      </span>
+      <span className="min-w-0">
+        <span className="block text-[10px] font-black uppercase text-[#62718A]">{label}</span>
+        <span className="mt-0.5 block break-words text-[12px] font-black leading-4 text-[#101827]">{value}</span>
+        {subvalue ? <span className="mt-0.5 block truncate text-[11px] font-semibold text-[#667085]">{subvalue}</span> : null}
+      </span>
+    </div>
+  );
+}
+
+function EventGoingButton({
+  publication,
+  busy,
+  compact,
+  onClick,
+}: {
+  publication: SoyibaPublication;
+  busy: boolean;
+  compact?: boolean;
+  onClick: () => void;
+}) {
+  const disabled = busy || publication.event.expired || (!publication.event.currentUserGoing && publication.event.capacityAvailable <= 0);
+  const active = publication.event.currentUserGoing;
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={cx(
+        'inline-flex shrink-0 items-center justify-center gap-2 rounded-[13px] text-sm font-black text-white shadow-[0_12px_24px_rgba(5,150,105,0.2)] transition disabled:cursor-not-allowed disabled:bg-slate-400 disabled:shadow-none',
+        compact ? 'h-10 px-3 text-[12px]' : 'h-11 px-5',
+        active ? 'bg-[#07865B] hover:bg-[#04724D]' : 'bg-[#145CFF] hover:bg-[#0B4BE0]',
+      )}
+    >
+      {busy ? <LoaderCircle size={compact ? 15 : 17} className="animate-spin" /> : <UserCheck size={compact ? 15 : 17} />}
+      {active ? 'Voy' : 'Yo voy'}
+    </button>
   );
 }
 
@@ -368,6 +933,7 @@ function PublicationCard({
   onEdit,
   onDelete,
   onToggleSave,
+  onOpenEvent,
   onOpenImage,
 }: {
   publication: SoyibaPublication;
@@ -378,6 +944,7 @@ function PublicationCard({
   onEdit: () => void;
   onDelete: () => void;
   onToggleSave: () => void;
+  onOpenEvent?: () => void;
   onOpenImage: (preview: ImagePreview) => void;
 }) {
   const [descriptionExpanded, setDescriptionExpanded] = useState(false);
@@ -447,7 +1014,15 @@ function PublicationCard({
             </button>
           </div>
 
-          {ctaUrl ? (
+          {onOpenEvent ? (
+            <button
+              type="button"
+              onClick={onOpenEvent}
+              className="inline-flex h-11 shrink-0 items-center justify-center rounded-[12px] bg-[#0B1F5B] px-4 text-sm font-black text-white shadow-[0_12px_24px_rgba(11,31,91,0.18)] transition hover:bg-[#145CFF]"
+            >
+              Ver evento
+            </button>
+          ) : ctaUrl ? (
             <a
               href={ctaUrl}
               target="_blank"
@@ -799,6 +1374,18 @@ function PublicationComposerModal({
       return;
     }
 
+    if (form.type === 'Evento') {
+      if (!form.eventDateTime.trim() || !form.eventPlace.trim() || !form.eventValidFrom.trim() || !form.eventValidUntil.trim()) {
+        setError('Completa fecha, lugar y vigencia del evento.');
+        return;
+      }
+
+      if (numberFromInput(form.eventCapacityTotal) <= 0) {
+        setError('Ingresa los cupos totales del evento.');
+        return;
+      }
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -826,6 +1413,16 @@ function PublicationComposerModal({
         }),
         cta: buildCtaPayload(form),
         relatedLinks: parseRelatedLinksInput(form.relatedLinksInput),
+        event:
+          form.type === 'Evento'
+            ? {
+                dateTime: dateTimeInputToIso(form.eventDateTime),
+                place: form.eventPlace.trim(),
+                validFrom: dateTimeInputToIso(form.eventValidFrom),
+                validUntil: dateTimeInputToIso(form.eventValidUntil),
+                capacityTotal: numberFromInput(form.eventCapacityTotal),
+              }
+            : undefined,
       };
 
       await onSave(payload);
@@ -867,6 +1464,47 @@ function PublicationComposerModal({
           </div>
 
           <TextAreaField label="Descripcion" value={form.description} onChange={(value) => updateField('description', value)} rows={4} />
+
+          {form.type === 'Evento' ? (
+            <div className="grid gap-3 rounded-[14px] border border-[#DCE6F5] bg-white p-3 shadow-[0_10px_24px_rgba(15,23,42,0.04)] min-[520px]:grid-cols-2">
+              <TextField
+                label="Fecha y hora del evento"
+                value={form.eventDateTime}
+                onChange={(value) => updateField('eventDateTime', value)}
+                icon={CalendarDays}
+                type="datetime-local"
+              />
+              <TextField
+                label="Lugar del evento"
+                value={form.eventPlace}
+                onChange={(value) => updateField('eventPlace', value)}
+                icon={MapPin}
+                placeholder="Auditorio IBA"
+              />
+              <TextField
+                label="Inicio de vigencia"
+                value={form.eventValidFrom}
+                onChange={(value) => updateField('eventValidFrom', value)}
+                icon={Clock3}
+                type="datetime-local"
+              />
+              <TextField
+                label="Fecha de caducidad"
+                value={form.eventValidUntil}
+                onChange={(value) => updateField('eventValidUntil', value)}
+                icon={Clock3}
+                type="datetime-local"
+              />
+              <TextField
+                label="Cupos totales"
+                value={form.eventCapacityTotal}
+                onChange={(value) => updateField('eventCapacityTotal', value)}
+                icon={UsersRound}
+                type="number"
+                placeholder="40"
+              />
+            </div>
+          ) : null}
 
           <MediaUrlField
             label="Imagen"
@@ -1233,6 +1871,11 @@ function buildFormState(publication: SoyibaPublication | null, permittedTypes: P
       ctaUrl: '',
       ctaPhone: '',
       relatedLinksInput: '',
+      eventDateTime: '',
+      eventPlace: '',
+      eventValidFrom: '',
+      eventValidUntil: '',
+      eventCapacityTotal: '',
     };
   }
 
@@ -1251,6 +1894,11 @@ function buildFormState(publication: SoyibaPublication | null, permittedTypes: P
     ctaUrl: publication.cta.url || '',
     ctaPhone: publication.cta.phone || '',
     relatedLinksInput: serializeRelatedLinksInput(publication.relatedLinks),
+    eventDateTime: toDateTimeInputValue(publication.event.dateTime),
+    eventPlace: publication.event.place,
+    eventValidFrom: toDateTimeInputValue(publication.event.validFrom),
+    eventValidUntil: toDateTimeInputValue(publication.event.validUntil),
+    eventCapacityTotal: publication.event.capacityTotal ? String(publication.event.capacityTotal) : '',
   };
 }
 
@@ -1268,7 +1916,21 @@ function buildCtaPayload(form: PublicationFormState): PublicationPayload['cta'] 
   return { type: 'Ninguno' };
 }
 
-function mergeStats(updated: SoyibaPublication, current: SoyibaPublication) {
+function mergeActivityStats(updated: SoyibaPublication, current: SoyibaPublication) {
+  return {
+    ...updated,
+    savedCount: current.savedCount,
+    viewsCount: current.viewsCount,
+    sharedCount: current.sharedCount,
+    savedByCurrentUser: current.savedByCurrentUser,
+    event: {
+      ...updated.event,
+      currentUserGoing: current.event.currentUserGoing,
+    },
+  };
+}
+
+function mergeServerPublication(updated: SoyibaPublication, current: SoyibaPublication) {
   return {
     ...updated,
     savedCount: current.savedCount,
@@ -1280,6 +1942,124 @@ function mergeStats(updated: SoyibaPublication, current: SoyibaPublication) {
 
 function sortPublications(items: SoyibaPublication[]) {
   return [...items].sort((first, second) => Date.parse(second.createdAt) - Date.parse(first.createdAt));
+}
+
+function filterEventsByStatus(publications: SoyibaPublication[], status: 'proximos' | 'todos' | 'pasados') {
+  if (status === 'todos') {
+    return publications;
+  }
+
+  return publications.filter((publication) => {
+    const past = isEventPast(publication);
+    return status === 'pasados' ? past : !past;
+  });
+}
+
+function isEventPast(publication: SoyibaPublication) {
+  if (publication.event.expired) {
+    return true;
+  }
+
+  const timestamp = Date.parse(publication.event.dateTime);
+  return Number.isFinite(timestamp) && timestamp < Date.now();
+}
+
+function normalizeSearchText(value: string) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+function toDateTimeInputValue(value: string) {
+  if (!value) {
+    return '';
+  }
+
+  const timestamp = Date.parse(value);
+
+  if (!Number.isFinite(timestamp)) {
+    return value.slice(0, 16);
+  }
+
+  const date = new Date(timestamp);
+  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return localDate.toISOString().slice(0, 16);
+}
+
+function dateTimeInputToIso(value: string) {
+  if (!value) {
+    return '';
+  }
+
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : value;
+}
+
+function numberFromInput(value: string) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(0, Math.round(parsed)) : 0;
+}
+
+function formatEventDateParts(value: string) {
+  const date = safeDate(value);
+
+  return {
+    month: new Intl.DateTimeFormat('es-CO', { month: 'short' }).format(date).replace('.', '').toUpperCase(),
+    day: new Intl.DateTimeFormat('es-CO', { day: '2-digit' }).format(date),
+    weekday: new Intl.DateTimeFormat('es-CO', { weekday: 'short' }).format(date).replace('.', '').toUpperCase(),
+  };
+}
+
+function formatEventLongDate(value: string) {
+  if (!value || !Number.isFinite(Date.parse(value))) {
+    return 'Fecha por confirmar';
+  }
+
+  return new Intl.DateTimeFormat('es-CO', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  }).format(new Date(value));
+}
+
+function formatEventTime(value: string) {
+  if (!value || !Number.isFinite(Date.parse(value))) {
+    return 'Hora por confirmar';
+  }
+
+  return new Intl.DateTimeFormat('es-CO', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+  })
+    .format(new Date(value))
+    .replace(/\s*a\.\s*m\./i, ' a.m.')
+    .replace(/\s*p\.\s*m\./i, ' p.m.');
+}
+
+function formatEventCapacity(publication: SoyibaPublication) {
+  const total = publication.event.capacityTotal || publication.event.attendeesCount + publication.event.capacityAvailable;
+  return `${formatCount(publication.event.attendeesCount)}/${formatCount(total)}`;
+}
+
+function eventPlaceName(value: string) {
+  return value.split(',')[0]?.trim() || 'Por confirmar';
+}
+
+function eventPlaceCity(value: string) {
+  return value
+    .split(',')
+    .slice(1)
+    .join(',')
+    .trim();
+}
+
+function safeDate(value: string) {
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) ? new Date(timestamp) : new Date();
 }
 
 function getYouTubeEmbedUrl(url: string) {

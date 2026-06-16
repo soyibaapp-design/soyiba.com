@@ -3,7 +3,7 @@ var SOYIBA_INICIO_SHEET = 'Inicio';
 var SOYIBA_INICIO_HEADERS = ['metric_id', 'label', 'value', 'sort_order', 'visible', 'updated_at'];
 var SOYIBA_AUTH_SPREADSHEET_ID = '1Sk6f6mScrMTcXfa-psxoY4boa_1gqJmFt7anP-lpErM';
 var SOYIBA_AUTH_SHEET = 'Auth';
-var SOYIBA_INICIO_CODE_VERSION = 'publicaciones-drive-folder-1qq-2026-06-16';
+var SOYIBA_INICIO_CODE_VERSION = 'eventos-yovoy-2026-06-16';
 var SOYIBA_AUTH_HEADERS = [
   'user_id',
   'email',
@@ -34,6 +34,7 @@ var SOYIBA_AUTH_HEADERS = [
 var SOYIBA_PUBLICACIONES_SPREADSHEET_ID = SOYIBA_INICIO_SPREADSHEET_ID;
 var SOYIBA_PUBLICACIONES_SHEET = 'Publicaciones';
 var SOYIBA_GUARDADOS_SHEET = 'Guardados';
+var SOYIBA_YOVOY_SHEET = 'YoVoy';
 var SOYIBA_PUBLICACIONES_MEDIA_FOLDER_ID = '1QqE9UI2Y0O2Md0sb3tyYPYFiUAUw_vXn';
 var SOYIBA_PUBLICACIONES_MEDIA_FOLDER_NAME = 'SOYIBA Publicaciones';
 var SOYIBA_PUBLICACIONES_SHARE_UPLOADED_FILES = false;
@@ -58,10 +59,24 @@ var SOYIBA_PUBLICACIONES_HEADERS = [
   'guardados',
   'views',
   'compartidos',
-  'sort_timestamp'
+  'sort_timestamp',
+  'fecha_hora_evento',
+  'lugar_evento',
+  'fecha_inicio_vigencia',
+  'fecha_caducidad',
+  'cupos',
+  'yovoy'
 ];
 var SOYIBA_GUARDADOS_HEADERS = [
   'saved_id',
+  'publication_id',
+  'user_id',
+  'user_email',
+  'user_name',
+  'created_at'
+];
+var SOYIBA_YOVOY_HEADERS = [
+  'yovoy_id',
   'publication_id',
   'user_id',
   'user_email',
@@ -601,6 +616,10 @@ function soyibaPublicacionesHandle_(action, data) {
     return soyibaPublicacionesToggleSave_(data);
   }
 
+  if (action === 'toggleYoVoy') {
+    return soyibaPublicacionesToggleYoVoy_(data);
+  }
+
   if (action === 'recordView') {
     return soyibaPublicacionesRecordStat_(data, 'views');
   }
@@ -615,10 +634,14 @@ function soyibaPublicacionesHandle_(action, data) {
 function soyibaPublicacionesList_(data) {
   var sheet = soyibaPublicacionesGetSheet_();
   var savedSheet = soyibaGuardadosGetSheet_();
+  var yovoySheet = soyibaYoVoyGetSheet_();
   var values = sheet.getDataRange().getValues();
   var headers = soyibaPublicacionesGetHeaders_(sheet);
   var currentUser = soyibaPublicacionesGetCurrentUser_(data);
   var savedMap = soyibaPublicacionesGetSavedMap_(savedSheet, currentUser);
+  var yovoyMap = soyibaPublicacionesGetYoVoyMap_(yovoySheet, currentUser);
+  var rawTypeFilter = String(data.type || data.tipo_publicacion || '').trim();
+  var typeFilter = rawTypeFilter ? soyibaPublicacionesNormalizeType_(rawTypeFilter) : '';
   var publications = [];
 
   for (var rowIndex = 1; rowIndex < values.length; rowIndex += 1) {
@@ -628,7 +651,15 @@ function soyibaPublicacionesList_(data) {
       continue;
     }
 
-    publications.push(soyibaPublicacionesBuildResponse_(record, savedMap[String(record.publication_id)] === true));
+    if (typeFilter && soyibaPublicacionesNormalizeType_(record.tipo_publicacion) !== typeFilter) {
+      continue;
+    }
+
+    publications.push(soyibaPublicacionesBuildResponse_(
+      record,
+      savedMap[String(record.publication_id)] === true,
+      yovoyMap[String(record.publication_id)] === true
+    ));
   }
 
   publications.sort(function (first, second) {
@@ -654,6 +685,7 @@ function soyibaPublicacionesCreate_(data) {
   var now = new Date();
   var nowIso = now.toISOString();
   var publicationId = Utilities.getUuid();
+  var eventPayload = soyibaPublicacionesNormalizeEventPayload_(data, 0);
   var row = [
     publicationId,
     nowIso,
@@ -674,7 +706,13 @@ function soyibaPublicacionesCreate_(data) {
     0,
     0,
     0,
-    now.getTime()
+    now.getTime(),
+    type === 'Evento' ? eventPayload.dateTime : '',
+    type === 'Evento' ? eventPayload.place : '',
+    type === 'Evento' ? eventPayload.validFrom : '',
+    type === 'Evento' ? eventPayload.validUntil : '',
+    type === 'Evento' ? eventPayload.capacityAvailable : 0,
+    0
   ];
 
   var sheet = soyibaPublicacionesGetSheet_();
@@ -721,8 +759,28 @@ function soyibaPublicacionesUpdate_(data) {
   soyibaPublicacionesSetCell_(sheet, headers, found.row, 'cta_phone', String((data.cta && data.cta.phone) || data.cta_phone || ''));
   soyibaPublicacionesSetCell_(sheet, headers, found.row, 'related_links_json', soyibaPublicacionesStringifyArray_(data.relatedLinks || data.related_links || []));
 
+  if (type === 'Evento') {
+    var currentYoVoy = Number(found.record.yovoy || 0);
+    var eventPayload = soyibaPublicacionesNormalizeEventPayload_(data, currentYoVoy);
+    soyibaPublicacionesSetCell_(sheet, headers, found.row, 'fecha_hora_evento', eventPayload.dateTime);
+    soyibaPublicacionesSetCell_(sheet, headers, found.row, 'lugar_evento', eventPayload.place);
+    soyibaPublicacionesSetCell_(sheet, headers, found.row, 'fecha_inicio_vigencia', eventPayload.validFrom);
+    soyibaPublicacionesSetCell_(sheet, headers, found.row, 'fecha_caducidad', eventPayload.validUntil);
+    soyibaPublicacionesSetCell_(sheet, headers, found.row, 'cupos', eventPayload.capacityAvailable);
+    soyibaPublicacionesSetCell_(sheet, headers, found.row, 'yovoy', currentYoVoy);
+  } else {
+    soyibaPublicacionesSetCell_(sheet, headers, found.row, 'fecha_hora_evento', '');
+    soyibaPublicacionesSetCell_(sheet, headers, found.row, 'lugar_evento', '');
+    soyibaPublicacionesSetCell_(sheet, headers, found.row, 'fecha_inicio_vigencia', '');
+    soyibaPublicacionesSetCell_(sheet, headers, found.row, 'fecha_caducidad', '');
+    soyibaPublicacionesSetCell_(sheet, headers, found.row, 'cupos', 0);
+    soyibaPublicacionesSetCell_(sheet, headers, found.row, 'yovoy', 0);
+  }
+
   var record = soyibaPublicacionesReadRow_(sheet, found.row);
-  return { ok: true, publication: soyibaPublicacionesBuildResponse_(record, false) };
+  var yovoySheet = soyibaYoVoyGetSheet_();
+  var going = soyibaPublicacionesFindYoVoyRow_(yovoySheet, record.publication_id, user).row > 0;
+  return { ok: true, publication: soyibaPublicacionesBuildResponse_(record, false, going) };
 }
 
 function soyibaPublicacionesDelete_(data) {
@@ -824,6 +882,68 @@ function soyibaPublicacionesToggleSave_(data) {
   return { ok: true, saved: shouldSave };
 }
 
+function soyibaPublicacionesToggleYoVoy_(data) {
+  var publicationId = String(data.publicationId || data.publication_id || '').trim();
+  var user = soyibaPublicacionesGetCurrentUser_(data);
+
+  if (!user.id && !user.email) {
+    return { ok: false, error: 'Usuario requerido para marcar Yo voy.' };
+  }
+
+  var lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+
+  try {
+    var publicationSheet = soyibaPublicacionesGetSheet_();
+    var foundPublication = soyibaPublicacionesFindRow_(publicationSheet, publicationId);
+
+    if (foundPublication.row < 1) {
+      return { ok: false, error: 'Evento no encontrado.' };
+    }
+
+    if (soyibaPublicacionesNormalizeType_(foundPublication.record.tipo_publicacion) !== 'Evento') {
+      return { ok: false, error: 'Yo voy solo esta disponible para eventos.' };
+    }
+
+    if (soyibaPublicacionesIsEventExpired_(foundPublication.record.fecha_caducidad)) {
+      return { ok: false, error: 'Este evento ya caduco.' };
+    }
+
+    var yovoySheet = soyibaYoVoyGetSheet_();
+    var foundYoVoy = soyibaPublicacionesFindYoVoyRow_(yovoySheet, publicationId, user);
+    var shouldGo = data.going === true || data.yovoy === true || String(data.going || data.yovoy || '').toLowerCase() === 'true';
+
+    if (shouldGo && foundYoVoy.row < 1) {
+      var cupos = Number(foundPublication.record.cupos || 0);
+
+      if (cupos <= 0) {
+        return { ok: false, error: 'No quedan cupos disponibles para este evento.' };
+      }
+
+      yovoySheet.appendRow([Utilities.getUuid(), publicationId, user.id, user.email, user.name, new Date().toISOString()]);
+      soyibaPublicacionesIncrement_(publicationSheet, foundPublication.row, 'yovoy', 1);
+      soyibaPublicacionesIncrement_(publicationSheet, foundPublication.row, 'cupos', -1);
+    }
+
+    if (!shouldGo && foundYoVoy.row > 0) {
+      yovoySheet.deleteRow(foundYoVoy.row);
+      soyibaPublicacionesIncrement_(publicationSheet, foundPublication.row, 'yovoy', -1);
+      soyibaPublicacionesIncrement_(publicationSheet, foundPublication.row, 'cupos', 1);
+    }
+
+    var updatedRecord = soyibaPublicacionesReadRow_(publicationSheet, foundPublication.row);
+    var going = shouldGo && soyibaPublicacionesFindYoVoyRow_(yovoySheet, publicationId, user).row > 0;
+
+    return {
+      ok: true,
+      going: going,
+      publication: soyibaPublicacionesBuildResponse_(updatedRecord, false, going)
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function soyibaPublicacionesRecordStat_(data, header) {
   var sheet = soyibaPublicacionesGetSheet_();
   var found = soyibaPublicacionesFindRow_(sheet, data.publicationId || data.publication_id);
@@ -891,7 +1011,11 @@ function soyibaPublicacionesIsManager_(user) {
   return role === 'admin' || role === 'moderador';
 }
 
-function soyibaPublicacionesBuildResponse_(record, savedByCurrentUser) {
+function soyibaPublicacionesBuildResponse_(record, savedByCurrentUser, yovoyByCurrentUser) {
+  var capacityAvailable = Number(record.cupos || 0);
+  var attendeesCount = Number(record.yovoy || 0);
+  var capacityTotal = capacityAvailable + attendeesCount;
+
   return {
     id: String(record.publication_id || ''),
     type: soyibaPublicacionesNormalizeType_(record.tipo_publicacion),
@@ -916,7 +1040,25 @@ function soyibaPublicacionesBuildResponse_(record, savedByCurrentUser) {
     savedCount: Number(record.guardados || 0),
     viewsCount: Number(record.views || 0),
     sharedCount: Number(record.compartidos || 0),
-    savedByCurrentUser: savedByCurrentUser === true
+    savedByCurrentUser: savedByCurrentUser === true,
+    event: {
+      dateTime: String(record.fecha_hora_evento || ''),
+      place: String(record.lugar_evento || ''),
+      validFrom: String(record.fecha_inicio_vigencia || ''),
+      validUntil: String(record.fecha_caducidad || ''),
+      capacityAvailable: capacityAvailable,
+      attendeesCount: attendeesCount,
+      capacityTotal: capacityTotal,
+      currentUserGoing: yovoyByCurrentUser === true,
+      expired: soyibaPublicacionesIsEventExpired_(record.fecha_caducidad)
+    },
+    fecha_hora_evento: String(record.fecha_hora_evento || ''),
+    lugar_evento: String(record.lugar_evento || ''),
+    fecha_inicio_vigencia: String(record.fecha_inicio_vigencia || ''),
+    fecha_caducidad: String(record.fecha_caducidad || ''),
+    cupos: capacityAvailable,
+    yovoy: attendeesCount,
+    yovoy_by_current_user: yovoyByCurrentUser === true
   };
 }
 
@@ -1067,6 +1209,15 @@ function soyibaGuardadosGetSheet_() {
   return sheet;
 }
 
+function soyibaYoVoyGetSheet_() {
+  var spreadsheet = SOYIBA_PUBLICACIONES_SPREADSHEET_ID
+    ? SpreadsheetApp.openById(SOYIBA_PUBLICACIONES_SPREADSHEET_ID)
+    : SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = spreadsheet.getSheetByName(SOYIBA_YOVOY_SHEET) || spreadsheet.insertSheet(SOYIBA_YOVOY_SHEET);
+  soyibaPublicacionesEnsureHeaders_(sheet, SOYIBA_YOVOY_HEADERS);
+  return sheet;
+}
+
 function soyibaPublicacionesEnsureHeaders_(sheet, expectedHeaders) {
   if (sheet.getLastRow() === 0) {
     sheet.appendRow(expectedHeaders);
@@ -1148,6 +1299,46 @@ function soyibaPublicacionesFindSavedRow_(sheet, publicationId, user) {
   return { row: -1 };
 }
 
+function soyibaPublicacionesGetYoVoyMap_(sheet, user) {
+  var headers = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), SOYIBA_YOVOY_HEADERS.length)).getValues()[0];
+  var publicationColumn = headers.indexOf('publication_id');
+  var userIdColumn = headers.indexOf('user_id');
+  var emailColumn = headers.indexOf('user_email');
+  var values = sheet.getDataRange().getValues();
+  var map = {};
+
+  for (var rowIndex = 1; rowIndex < values.length; rowIndex += 1) {
+    var rowUserId = String(values[rowIndex][userIdColumn] || '').trim();
+    var rowEmail = soyibaAuthNormalizeEmail_(values[rowIndex][emailColumn]);
+
+    if ((user.id && rowUserId === user.id) || (user.email && rowEmail === user.email)) {
+      map[String(values[rowIndex][publicationColumn])] = true;
+    }
+  }
+
+  return map;
+}
+
+function soyibaPublicacionesFindYoVoyRow_(sheet, publicationId, user) {
+  var headers = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), SOYIBA_YOVOY_HEADERS.length)).getValues()[0];
+  var publicationColumn = headers.indexOf('publication_id');
+  var userIdColumn = headers.indexOf('user_id');
+  var emailColumn = headers.indexOf('user_email');
+  var values = sheet.getDataRange().getValues();
+
+  for (var rowIndex = 1; rowIndex < values.length; rowIndex += 1) {
+    var samePublication = String(values[rowIndex][publicationColumn] || '').trim() === publicationId;
+    var sameUser = (user.id && String(values[rowIndex][userIdColumn] || '').trim() === user.id) ||
+      (user.email && soyibaAuthNormalizeEmail_(values[rowIndex][emailColumn]) === user.email);
+
+    if (samePublication && sameUser) {
+      return { row: rowIndex + 1 };
+    }
+  }
+
+  return { row: -1 };
+}
+
 function soyibaPublicacionesIncrement_(sheet, row, header, delta) {
   var headers = soyibaPublicacionesGetHeaders_(sheet);
   var column = headers.indexOf(header);
@@ -1203,6 +1394,39 @@ function soyibaPublicacionesParseArray_(value) {
   } catch (error) {
     return [];
   }
+}
+
+function soyibaPublicacionesNormalizeEventPayload_(data, currentYoVoy) {
+  var event = data && data.event ? data.event : {};
+  var attendees = Math.max(0, Number(currentYoVoy || 0));
+  var rawCapacityTotal = Number(
+    event.capacityTotal ||
+    event.capacity_total ||
+    data.capacityTotal ||
+    data.cupos_total ||
+    data.cuposTotales ||
+    data.cupos ||
+    0
+  );
+  var capacityTotal = Math.max(0, rawCapacityTotal);
+  var capacityAvailable = Math.max(0, capacityTotal - attendees);
+
+  return {
+    dateTime: String(event.dateTime || event.fechaHora || data.eventDateTime || data.fecha_hora_evento || data.fecha_evento || ''),
+    place: String(event.place || data.eventPlace || data.lugar_evento || ''),
+    validFrom: String(event.validFrom || data.eventValidFrom || data.fecha_inicio_vigencia || ''),
+    validUntil: String(event.validUntil || data.eventValidUntil || data.fecha_caducidad || ''),
+    capacityAvailable: capacityAvailable
+  };
+}
+
+function soyibaPublicacionesIsEventExpired_(value) {
+  if (!value) {
+    return false;
+  }
+
+  var timestamp = new Date(value).getTime();
+  return !isNaN(timestamp) && timestamp < new Date().getTime();
 }
 
 function soyibaPublicacionesNormalizeType_(value) {

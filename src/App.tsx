@@ -7,6 +7,7 @@ import { AuthScreen } from './screens/Auth/AuthScreen';
 import type { SoyibaSession } from './screens/Auth/auth.service';
 import { InicioScreen } from './screens/Inicio/InicioScreen';
 import { ProfileScreen } from './screens/Perfil/ProfileScreen';
+import { PublicationsFeed } from './screens/Publicaciones/PublicationsFeed';
 
 type ScreenId = 'inicio' | 'eventos' | 'eco' | 'donaciones' | 'perfil';
 
@@ -25,6 +26,7 @@ export default function App() {
   const [activeScreen, setActiveScreen] = useState<ScreenId>('inicio');
   const [publicationComposerSignal, setPublicationComposerSignal] = useState(0);
   const [publicationComposerOpen, setPublicationComposerOpen] = useState(false);
+  const [eventToOpenId, setEventToOpenId] = useState('');
 
   function handleSignedIn(nextSession: SoyibaSession) {
     handleSessionUpdated(nextSession);
@@ -40,6 +42,11 @@ export default function App() {
     setSession(null);
     clearStoredSession();
     setActiveScreen('inicio');
+  }
+
+  function handleOpenEventFromHome(publicationId: string) {
+    setEventToOpenId(publicationId);
+    setActiveScreen('eventos');
   }
 
   if (!session) {
@@ -58,10 +65,33 @@ export default function App() {
                 session={session}
                 openPublicationComposerSignal={publicationComposerSignal}
                 onPublicationComposerOpenChange={setPublicationComposerOpen}
+                onOpenEvent={handleOpenEventFromHome}
               />
             ) : null}
-            {activeScreen === 'eventos' ? <PlaceholderScreen key="eventos" icon={CalendarDays} title="Eventos" /> : null}
-            {activeScreen === 'eco' ? <PlaceholderScreen key="eco" icon={UsersRound} title="Grupos ECO" /> : null}
+            {activeScreen === 'eventos' ? (
+              <PublicationsFeed
+                key="eventos"
+                session={session}
+                filterType="Evento"
+                variant="eventos"
+                title="Eventos"
+                subtitle="Conectate y participa en todo lo que Dios esta haciendo en nuestra iglesia."
+                openPublicationId={eventToOpenId}
+                onPublicationOpened={() => setEventToOpenId('')}
+                onComposerOpenChange={setPublicationComposerOpen}
+              />
+            ) : null}
+            {activeScreen === 'eco' ? (
+              <PublicationsFeed
+                key="eco"
+                session={session}
+                filterType="Grupo ECO"
+                variant="eco"
+                title="Grupos ECO"
+                subtitle="Encuentra publicaciones y encuentros de los grupos ECO."
+                onComposerOpenChange={setPublicationComposerOpen}
+              />
+            ) : null}
             {activeScreen === 'donaciones' ? <PlaceholderScreen key="donaciones" icon={Heart} title="Donaciones" /> : null}
             {activeScreen === 'perfil' ? (
               <ProfileScreen

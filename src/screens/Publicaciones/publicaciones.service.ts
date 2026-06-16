@@ -21,6 +21,18 @@ export type PublicationRelatedLink = {
   url: string;
 };
 
+export type PublicationEventDetails = {
+  dateTime: string;
+  place: string;
+  validFrom: string;
+  validUntil: string;
+  capacityAvailable: number;
+  attendeesCount: number;
+  capacityTotal: number;
+  currentUserGoing: boolean;
+  expired: boolean;
+};
+
 export type SoyibaPublication = {
   id: string;
   type: PublicationType;
@@ -45,6 +57,7 @@ export type SoyibaPublication = {
   viewsCount: number;
   sharedCount: number;
   savedByCurrentUser: boolean;
+  event: PublicationEventDetails;
 };
 
 export type PublicationPayload = {
@@ -54,6 +67,22 @@ export type PublicationPayload = {
   mediaItems: PublicationMediaItem[];
   cta: SoyibaPublication['cta'];
   relatedLinks: PublicationRelatedLink[];
+  event?: {
+    dateTime: string;
+    place: string;
+    validFrom: string;
+    validUntil: string;
+    capacityTotal: number;
+  };
+};
+
+export type PublicationFeedOptions = {
+  type?: PublicationType;
+};
+
+export type ToggleEventGoingResult = {
+  going: boolean;
+  publication?: SoyibaPublication;
 };
 
 type PublicationsResponse = {
@@ -62,6 +91,7 @@ type PublicationsResponse = {
   publication?: unknown;
   media?: unknown;
   saved?: boolean;
+  going?: boolean;
   error?: string;
 };
 
@@ -101,20 +131,97 @@ const localPublications: SoyibaPublication[] = [
     viewsCount: 356,
     sharedCount: 12,
     savedByCurrentUser: false,
+    event: emptyEventDetails(),
+  },
+  {
+    id: 'local-conferencia-iba',
+    type: 'Evento',
+    title: 'Conferencia IBA 2026',
+    description:
+      'Una noche para adorar, aprender y fortalecer nuestra fe como iglesia.\nTendremos invitados especiales, alabanza y un mensaje central para toda la familia.',
+    createdAt: new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString(),
+    author: {
+      id: 'local-publisher',
+      name: 'Jonathan Rudas',
+    },
+    mediaItems: [
+      {
+        id: 'media-local-evento-1',
+        type: 'image',
+        url: 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=1200&q=85',
+        title: 'Conferencia IBA 2026',
+      },
+    ],
+    cta: {
+      type: 'Whatsapp',
+      phone: '573001112233',
+    },
+    relatedLinks: [
+      {
+        id: 'link-local-evento-1',
+        title: 'Mas informacion del evento',
+        url: 'https://drive.google.com',
+      },
+    ],
+    savedCount: 1,
+    viewsCount: 11,
+    sharedCount: 16,
+    savedByCurrentUser: false,
+    event: {
+      dateTime: new Date(Date.now() + 12 * 24 * 60 * 60 * 1000).toISOString(),
+      place: 'Auditorio IBA, Ibague',
+      validFrom: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+      validUntil: new Date(Date.now() + 11 * 24 * 60 * 60 * 1000).toISOString(),
+      capacityAvailable: 15,
+      attendeesCount: 25,
+      capacityTotal: 40,
+      currentUserGoing: false,
+      expired: false,
+    },
+  },
+  {
+    id: 'local-eco-centro',
+    type: 'Grupo ECO',
+    title: 'Grupo ECO Centro',
+    description: 'Encuentro semanal para orar, compartir la palabra y acompanar nuevos procesos de fe.',
+    createdAt: new Date(Date.now() - 26 * 60 * 60 * 1000).toISOString(),
+    author: {
+      id: 'local-eco-publisher',
+      name: 'Equipo ECO',
+    },
+    mediaItems: [
+      {
+        id: 'media-local-eco-1',
+        type: 'image',
+        url: 'https://images.unsplash.com/photo-1511632765486-a01980e01a18?auto=format&fit=crop&w=1200&q=85',
+        title: 'Grupo ECO Centro',
+      },
+    ],
+    cta: {
+      type: 'Enlace',
+      url: 'https://soyiba.org',
+    },
+    relatedLinks: [],
+    savedCount: 7,
+    viewsCount: 88,
+    sharedCount: 4,
+    savedByCurrentUser: false,
+    event: emptyEventDetails(),
   },
 ];
 
-export async function getPublicationFeed(session: SoyibaSession) {
+export async function getPublicationFeed(session: SoyibaSession, options: PublicationFeedOptions = {}) {
   const response = await callAppsScript<PublicationsResponse>(
     'Publicaciones',
     'list',
     {
       userId: session.user.id,
       email: session.user.email,
+      type: options.type,
     },
     () => ({
       ok: true,
-      publications: localPublications,
+      publications: filterPublicationsByType(localPublications, options.type),
     }),
   );
 
@@ -122,7 +229,7 @@ export async function getPublicationFeed(session: SoyibaSession) {
     throw new Error(response.error || 'No fue posible cargar las publicaciones.');
   }
 
-  return normalizePublications(response.publications || []);
+  return normalizePublications(response.publications || [], options.type);
 }
 
 export async function createPublication(session: SoyibaSession, payload: PublicationPayload) {
@@ -262,6 +369,32 @@ export async function togglePublicationSave(session: SoyibaSession, publicationI
   }
 
   return Boolean(response.saved);
+}
+
+export async function toggleEventGoing(session: SoyibaSession, publicationId: string, going: boolean): Promise<ToggleEventGoingResult> {
+  const response = await callAppsScript<PublicationsResponse>(
+    'Publicaciones',
+    'toggleYoVoy',
+    {
+      publicationId,
+      going,
+      user: getUserRequest(session.user),
+      token: session.token,
+    },
+    () => ({
+      ok: true,
+      going,
+    }),
+  );
+
+  if (!response.ok) {
+    throw new Error(response.error || 'No fue posible actualizar Yo voy.');
+  }
+
+  return {
+    going: Boolean(response.going),
+    publication: response.publication ? normalizePublication(response.publication) : undefined,
+  };
 }
 
 export async function recordPublicationView(session: SoyibaSession, publicationId: string) {
@@ -450,8 +583,13 @@ function getUserRequest(user: SoyibaUser) {
   };
 }
 
-function normalizePublications(value: unknown[]) {
-  return value.map(normalizePublication).sort((first, second) => Date.parse(second.createdAt) - Date.parse(first.createdAt));
+function filterPublicationsByType(publications: SoyibaPublication[], type?: PublicationType) {
+  return type ? publications.filter((publication) => publication.type === type) : publications;
+}
+
+function normalizePublications(value: unknown[], type?: PublicationType) {
+  const publications = value.map(normalizePublication);
+  return filterPublicationsByType(publications, type).sort((first, second) => Date.parse(second.createdAt) - Date.parse(first.createdAt));
 }
 
 function normalizePublication(value: unknown): SoyibaPublication {
@@ -483,6 +621,46 @@ function normalizePublication(value: unknown): SoyibaPublication {
     viewsCount: numberFrom(record.viewsCount || record.views),
     sharedCount: numberFrom(record.sharedCount || record.compartidos),
     savedByCurrentUser: isTrue(record.savedByCurrentUser || record.saved_by_current_user),
+    event: normalizeEventDetails(record),
+  };
+}
+
+function normalizeEventDetails(record: Record<string, unknown>): PublicationEventDetails {
+  const event = (record.event && typeof record.event === 'object' ? record.event : {}) as Record<string, unknown>;
+  const dateTime = stringFrom(valueFrom(event.dateTime, event.fechaHora, record.eventDateTime, record.fecha_hora_evento, record.fecha_evento));
+  const place = stringFrom(valueFrom(event.place, record.eventPlace, record.lugar_evento));
+  const validFrom = stringFrom(valueFrom(event.validFrom, record.eventValidFrom, record.fecha_inicio_vigencia));
+  const validUntil = stringFrom(valueFrom(event.validUntil, record.eventValidUntil, record.fecha_caducidad));
+  const attendeesCount = numberFrom(valueFrom(event.attendeesCount, event.yoVoy, record.attendeesCount, record.yovoy));
+  const rawCapacityTotal = numberFrom(valueFrom(event.capacityTotal, record.capacityTotal, record.cupos_total, record.cupos_totales));
+  const rawCapacityAvailable = valueFrom(event.capacityAvailable, event.spotsAvailable, record.capacityAvailable, record.cupos);
+  const capacityAvailable = rawCapacityAvailable === undefined ? Math.max(0, rawCapacityTotal - attendeesCount) : numberFrom(rawCapacityAvailable);
+  const capacityTotal = rawCapacityTotal || capacityAvailable + attendeesCount;
+
+  return {
+    dateTime,
+    place,
+    validFrom,
+    validUntil,
+    capacityAvailable,
+    attendeesCount,
+    capacityTotal,
+    currentUserGoing: isTrue(valueFrom(event.currentUserGoing, record.currentUserGoing, record.yovoy_by_current_user)),
+    expired: isEventExpired(validUntil),
+  };
+}
+
+function emptyEventDetails(): PublicationEventDetails {
+  return {
+    dateTime: '',
+    place: '',
+    validFrom: '',
+    validUntil: '',
+    capacityAvailable: 0,
+    attendeesCount: 0,
+    capacityTotal: 0,
+    currentUserGoing: false,
+    expired: false,
   };
 }
 
@@ -617,4 +795,17 @@ function stringFrom(value: unknown) {
 function numberFrom(value: unknown) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function valueFrom(...values: unknown[]) {
+  return values.find((value) => value !== undefined && value !== null && String(value).trim() !== '');
+}
+
+function isEventExpired(validUntil: string) {
+  if (!validUntil) {
+    return false;
+  }
+
+  const timestamp = Date.parse(validUntil);
+  return Number.isFinite(timestamp) && timestamp < Date.now();
 }
