@@ -1,7 +1,7 @@
 import { callAppsScript } from '../../services/appsScriptClient';
 import type { SoyibaSession, SoyibaUser } from '../Auth/auth.service';
 
-export const PUBLICATION_TYPES = ['Publicacion', 'Evento', 'Grupo ECO', 'Transmision'] as const;
+export const PUBLICATION_TYPES = ['Publicacion', 'Devocional', 'Evento', 'Grupo ECO', 'Transmision'] as const;
 export const PUBLICATION_CTA_TYPES = ['Ninguno', 'Enlace', 'Inscripcion', 'Whatsapp'] as const;
 
 export type PublicationType = (typeof PUBLICATION_TYPES)[number];
@@ -534,8 +534,16 @@ export async function toggleEcoAttendance(
   const normalizedPublication = response.publication ? normalizePublication(response.publication) : undefined;
 
   if (normalizedPublication) {
+    if (normalizedPublication.eco.currentUserAttending) {
+      clearOtherCachedEcoAttendance(session, publicationId);
+    }
+
     updateCachedPublication(session, publicationId, () => normalizedPublication);
   } else {
+    if (Boolean(response.attending)) {
+      clearOtherCachedEcoAttendance(session, publicationId);
+    }
+
     updateCachedPublication(session, publicationId, (publication) => {
       const nextAttending = Boolean(response.attending);
       const delta =
@@ -1090,6 +1098,35 @@ function updateCachedPublication(
       publicationFeedCache.set(key, clonePublications(nextPublications));
     }
   }
+}
+
+function updateCachedPublications(session: SoyibaSession, updater: (publication: SoyibaPublication) => SoyibaPublication) {
+  const userKey = `${session.user.id || session.user.email || 'anon'}::`;
+
+  for (const [key, cachedPublications] of publicationFeedCache.entries()) {
+    if (!key.startsWith(userKey)) {
+      continue;
+    }
+
+    publicationFeedCache.set(key, clonePublications(cachedPublications.map((publication) => updater(clonePublication(publication)))));
+  }
+}
+
+function clearOtherCachedEcoAttendance(session: SoyibaSession, activePublicationId: string) {
+  updateCachedPublications(session, (publication) => {
+    if (publication.id === activePublicationId || publication.type !== 'Grupo ECO' || !publication.eco.currentUserAttending) {
+      return publication;
+    }
+
+    return {
+      ...publication,
+      eco: {
+        ...publication.eco,
+        currentUserAttending: false,
+        attendeesCount: Math.max(0, publication.eco.attendeesCount - 1),
+      },
+    };
+  });
 }
 
 function invalidatePublicationFeedCache(session: SoyibaSession) {

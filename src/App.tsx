@@ -8,6 +8,7 @@ import type { SoyibaSession } from './screens/Auth/auth.service';
 import { InicioScreen } from './screens/Inicio/InicioScreen';
 import { ProfileScreen } from './screens/Perfil/ProfileScreen';
 import { PublicationsFeed } from './screens/Publicaciones/PublicationsFeed';
+import type { SoyibaPublication } from './screens/Publicaciones/publicaciones.service';
 
 type ScreenId = 'inicio' | 'eventos' | 'eco' | 'donaciones' | 'perfil';
 type AuthMode = 'login' | 'register';
@@ -92,6 +93,11 @@ export default function App() {
     setActiveScreen('eco');
   }
 
+  function handleOpenPublicationFromProfile(publication: SoyibaPublication) {
+    setPublicationToOpenId(publication.id);
+    setActiveScreen(getPublicationScreen(publication));
+  }
+
   if (!session) {
     if (authMode || !publicationToOpenId) {
       return <AuthScreen onSignedIn={handleSignedIn} initialMode={authMode || undefined} />;
@@ -135,6 +141,7 @@ export default function App() {
         setActiveScreen('inicio');
         setPublicationComposerSignal(Date.now());
       }}
+      onOpenPublicationFromProfile={handleOpenPublicationFromProfile}
     />
   );
 }
@@ -156,6 +163,7 @@ function SoyibaShell({
   onLogout,
   onSessionUpdated,
   onCreatePublication,
+  onOpenPublicationFromProfile,
 }: {
   activeScreen: ScreenId;
   session: SoyibaSession;
@@ -173,6 +181,7 @@ function SoyibaShell({
   onLogout?: () => void;
   onSessionUpdated?: (session: SoyibaSession) => void;
   onCreatePublication?: () => void;
+  onOpenPublicationFromProfile?: (publication: SoyibaPublication) => void;
 }) {
   return (
     <div className="soyiba-app-backdrop h-[100dvh] overflow-hidden text-slate-950">
@@ -233,6 +242,7 @@ function SoyibaShell({
                 onNavigate={onNavigate || (() => undefined)}
                 onSessionUpdated={onSessionUpdated || (() => undefined)}
                 onCreatePublication={onCreatePublication || (() => undefined)}
+                onOpenPublication={onOpenPublicationFromProfile || (() => undefined)}
               />
             ) : null}
           </AnimatePresence>
@@ -242,6 +252,12 @@ function SoyibaShell({
       </div>
     </div>
   );
+}
+
+function getPublicationScreen(publication: SoyibaPublication): ScreenId {
+  if (publication.type === 'Evento') return 'eventos';
+  if (publication.type === 'Grupo ECO') return 'eco';
+  return 'inicio';
 }
 
 function readSharedPublicationTarget(): { screen: ScreenId; publicationId: string } | null {

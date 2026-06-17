@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type ChangeEvent, type InputHTMLAttributes } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type InputHTMLAttributes } from 'react';
 import { motion } from 'framer-motion';
 import {
   CalendarDays,
@@ -32,7 +32,11 @@ import {
   type SoyibaUser,
   type UpdateProfilePayload,
 } from '../Auth/auth.service';
-import { primaryAssets } from '../../lib/assets';
+import {
+  getCachedPublicationFeed,
+  getPublicationFeed,
+  type SoyibaPublication,
+} from '../Publicaciones/publicaciones.service';
 
 type ScreenTarget = 'inicio' | 'eventos' | 'eco' | 'donaciones' | 'perfil';
 
@@ -42,6 +46,7 @@ type ProfileScreenProps = {
   onNavigate?: (target: ScreenTarget) => void;
   onSessionUpdated: (session: SoyibaSession) => void;
   onCreatePublication?: () => void;
+  onOpenPublication?: (publication: SoyibaPublication) => void;
 };
 
 type AdminAction = {
@@ -56,7 +61,7 @@ type AdminAction = {
   action?: 'createPublication';
 };
 
-type ActivityType = 'saved' | 'events' | 'posts';
+type ActivityType = 'saved' | 'events' | 'eco' | 'posts';
 
 const adminTone = {
   blue: {
@@ -76,30 +81,6 @@ const adminTone = {
     button: 'border-[#059669]/50 text-[#047857] hover:bg-[#059669] hover:text-white',
   },
 };
-
-const activityCards: Array<{ id: ActivityType; label: string; count: number; icon: LucideIcon; tone: string }> = [
-  { id: 'saved', label: 'Publicaciones guardadas', count: 12, icon: Heart, tone: 'bg-[#EAF2FF] text-[#145CFF]' },
-  { id: 'events', label: 'Eventos a los que asistire', count: 4, icon: CalendarDays, tone: 'bg-[#ECEBFF] text-[#3D4BFF]' },
-  { id: 'posts', label: 'Mis publicaciones', count: 8, icon: FileText, tone: 'bg-[#E2F8EC] text-[#059669]' },
-];
-
-const sampleItems = [
-  {
-    title: 'Devocional semanal',
-    date: '15 junio 2026',
-    image: primaryAssets.loginHero,
-  },
-  {
-    title: 'Alabanza y adoracion',
-    date: '10 junio 2026',
-    image: primaryAssets.backHero,
-  },
-  {
-    title: 'Estudio biblico',
-    date: '5 junio 2026',
-    image: primaryAssets.logoAntioquia,
-  },
-];
 
 function isTrue(value: unknown) {
   if (typeof value === 'boolean') return value;
@@ -124,7 +105,49 @@ function getInitials(user: SoyibaUser) {
     .toUpperCase();
 }
 
-export function ProfileScreen({ session, onLogout, onNavigate, onSessionUpdated, onCreatePublication }: ProfileScreenProps) {
+function isPublicationAuthor(publication: SoyibaPublication, user: SoyibaUser) {
+  return Boolean(
+    (publication.author.id && user.id && publication.author.id === user.id) ||
+      (publication.author.email && user.email && normalizeEmail(publication.author.email) === normalizeEmail(user.email)),
+  );
+}
+
+function normalizeEmail(value: unknown) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function formatEcoSummary(publication: SoyibaPublication) {
+  return [
+    [publication.eco.neighborhood, publication.eco.city].filter(Boolean).join(', '),
+    [publication.eco.day, publication.eco.time].filter(Boolean).join(' - '),
+  ]
+    .filter(Boolean)
+    .join(' | ') || 'Grupo ECO';
+}
+
+function getPublicationActivityMeta(publication: SoyibaPublication) {
+  if (publication.type === 'Evento') {
+    return [formatDateLabel(publication.event.dateTime), publication.event.place].filter(Boolean).join(' | ') || 'Evento';
+  }
+
+  if (publication.type === 'Grupo ECO') {
+    return formatEcoSummary(publication);
+  }
+
+  return formatDateLabel(publication.createdAt) || 'Publicacion';
+}
+
+function formatDateLabel(value: string) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return '';
+  }
+
+  return new Intl.DateTimeFormat('es-CO', { day: 'numeric', month: 'short', year: 'numeric' }).format(date);
+}
+
+export function ProfileScreen({ session, onLogout, onNavigate, onSessionUpdated, onCreatePublication, onOpenPublication }: ProfileScreenProps) {
   const user = session.user;
   const photoInputRef = useRef<HTMLInputElement>(null);
   const [editOpen, setEditOpen] = useState(false);
@@ -132,7 +155,72 @@ export function ProfileScreen({ session, onLogout, onNavigate, onSessionUpdated,
   const [openActivity, setOpenActivity] = useState<ActivityType>('saved');
   const [photoSaving, setPhotoSaving] = useState(false);
   const [photoError, setPhotoError] = useState('');
+  const cachedPublications = getCachedPublicationFeed(session, {});
+  const [publications, setPublications] = useState<SoyibaPublication[]>(() => cachedPublications || []);
+  const [activityLoading, setActivityLoading] = useState(() => !cachedPublications);
+  const [activityError, setActivityError] = useState('');
   const displayName = getDisplayName(user);
+
+  useEffect(() => {
+    let isMounted = true;
+    const cached = getCachedPublicationFeed(session, {});
+
+    if (cached) {
+      setPublications(cached);
+      setActivityLoading(false);
+      setActivityError('');
+    } else {
+      setActivityLoading(true);
+    }
+
+    getPublicationFeed(session)
+      .then((items) => {
+        if (!isMounted) {
+          return;
+        }
+
+        setPublications(items);
+        setActivityError('');
+      })
+      .catch((error) => {
+        if (isMounted) {
+          setActivityError(error instanceof Error ? error.message : 'No fue posible cargar tu actividad.');
+        }
+      })
+      .finally(() => {
+        if (isMounted) {
+          setActivityLoading(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [session]);
+
+  const activityGroups = useMemo(
+    () => {
+      const saved = publications.filter((publication) => publication.savedByCurrentUser);
+      const events = publications.filter((publication) => publication.type === 'Evento' && publication.event.currentUserGoing);
+      const eco = publications.filter((publication) => publication.type === 'Grupo ECO' && publication.eco.currentUserAttending).slice(0, 1);
+      const posts = publications.filter((publication) => isPublicationAuthor(publication, user));
+
+      return { saved, events, eco, posts };
+    },
+    [publications, user],
+  );
+  const activityCards = useMemo<Array<{ id: ActivityType; label: string; count: number; icon: LucideIcon; tone: string }>>(
+    () => [
+      { id: 'saved', label: 'Publicaciones guardadas', count: activityGroups.saved.length, icon: Heart, tone: 'bg-[#EAF2FF] text-[#145CFF]' },
+      { id: 'events', label: 'Eventos a los que asistire', count: activityGroups.events.length, icon: CalendarDays, tone: 'bg-[#ECEBFF] text-[#3D4BFF]' },
+      { id: 'eco', label: 'Grupo ECO al que asistire', count: activityGroups.eco.length, icon: Home, tone: 'bg-[#EAF2FF] text-[#145CFF]' },
+      { id: 'posts', label: 'Mis publicaciones', count: activityGroups.posts.length, icon: FileText, tone: 'bg-[#F8FBFF] text-[#0B1F5B]' },
+    ],
+    [activityGroups],
+  );
+  const activeActivity = activityCards.find((item) => item.id === openActivity) || activityCards[0];
+  const activeItems = activityGroups[openActivity];
+  const currentEco = activityGroups.eco[0] || null;
 
   async function handlePhotoSelected(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -276,25 +364,50 @@ export function ProfileScreen({ session, onLogout, onNavigate, onSessionUpdated,
 
       <section className="space-y-2">
         <h2 className="text-base font-black text-[#0B1F5B]">Mi ECO</h2>
-        <article className="rounded-[20px] border border-dashed border-[#B8C9E7] bg-white/90 p-5 text-center shadow-[0_18px_42px_rgba(15,23,42,0.06)]">
-          <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#EAF2FF] text-[#145CFF]">
-            <Home size={28} />
-          </div>
-          <p className="mt-3 text-sm font-black text-[#0B1F5B]">No perteneces actualmente a ningun Grupo ECO.</p>
-          <button
-            type="button"
-            onClick={() => onNavigate?.('eco')}
-            className="mt-4 inline-flex h-10 items-center gap-2 rounded-[12px] bg-[#145CFF] px-5 text-xs font-black text-white shadow-[0_12px_26px_rgba(20,92,255,0.28)]"
-          >
-            Buscar un ECO
-            <ChevronRight size={16} />
-          </button>
-        </article>
+        {currentEco ? (
+          <article className="rounded-[20px] border border-[#DCE6F5] bg-white/90 p-4 shadow-[0_18px_42px_rgba(15,23,42,0.06)]">
+            <div className="flex min-w-0 items-start gap-3">
+              <div className="grid h-14 w-14 shrink-0 place-items-center rounded-full bg-[#EAF2FF] text-[#145CFF]">
+                <Home size={28} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[11px] font-black uppercase tracking-normal text-[#145CFF]">Asistire a</p>
+                <h3 className="mt-1 line-clamp-2 break-words text-[16px] font-black leading-5 text-[#0B1F5B]">{currentEco.title}</h3>
+                <p className="mt-1 line-clamp-2 break-words text-[12px] font-semibold leading-4 text-[#637295]">
+                  {formatEcoSummary(currentEco)}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => onOpenPublication?.(currentEco)}
+              className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 rounded-[12px] bg-[#145CFF] px-5 text-xs font-black text-white shadow-[0_12px_26px_rgba(20,92,255,0.28)]"
+            >
+              Abrir Grupo ECO
+              <ChevronRight size={16} />
+            </button>
+          </article>
+        ) : (
+          <article className="rounded-[20px] border border-dashed border-[#B8C9E7] bg-white/90 p-5 text-center shadow-[0_18px_42px_rgba(15,23,42,0.06)]">
+            <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#EAF2FF] text-[#145CFF]">
+              <Home size={28} />
+            </div>
+            <p className="mt-3 text-sm font-black text-[#0B1F5B]">No perteneces actualmente a ningun Grupo ECO.</p>
+            <button
+              type="button"
+              onClick={() => onNavigate?.('eco')}
+              className="mt-4 inline-flex h-10 items-center gap-2 rounded-[12px] bg-[#145CFF] px-5 text-xs font-black text-white shadow-[0_12px_26px_rgba(20,92,255,0.28)]"
+            >
+              Buscar un ECO
+              <ChevronRight size={16} />
+            </button>
+          </article>
+        )}
       </section>
 
       <section className="space-y-2">
         <h2 className="text-base font-black text-[#0B1F5B]">Mi actividad</h2>
-        <div className="grid gap-2 min-[430px]:grid-cols-3">
+        <div className="grid grid-cols-2 gap-2 min-[560px]:grid-cols-4">
           {activityCards.map((item) => {
             const Icon = item.icon;
 
@@ -303,18 +416,20 @@ export function ProfileScreen({ session, onLogout, onNavigate, onSessionUpdated,
                 key={item.id}
                 type="button"
                 onClick={() => setOpenActivity(item.id)}
-                className={`flex min-h-[98px] items-center gap-2 rounded-[16px] border bg-white p-3 text-left shadow-[0_14px_32px_rgba(15,23,42,0.06)] ${
+                className={`flex min-h-[124px] min-w-0 flex-col items-start gap-2 rounded-[16px] border bg-white p-3 text-left shadow-[0_14px_32px_rgba(15,23,42,0.06)] ${
                   openActivity === item.id ? 'border-[#145CFF]/30 ring-1 ring-[#145CFF]/20' : 'border-[#E7EDF8]'
                 }`}
               >
-                <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-full ${item.tone}`}>
-                  <Icon size={23} />
+                <span className="flex w-full min-w-0 items-center justify-between gap-2">
+                  <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-full ${item.tone}`}>
+                    <Icon size={22} />
+                  </span>
+                  <ChevronRight size={16} className={`shrink-0 text-[#637295] transition ${openActivity === item.id ? 'rotate-90 text-[#145CFF]' : ''}`} />
                 </span>
-                <span className="min-w-0 flex-1">
+                <span className="block min-w-0">
                   <span className="block text-2xl font-black leading-7 text-[#0B1F5B]">{item.count}</span>
-                  <span className="mt-1 block text-[10px] font-bold leading-[13px] text-[#51617A]">{item.label}</span>
+                  <span className="mt-1 block break-words text-[11px] font-bold leading-4 text-[#51617A]">{item.label}</span>
                 </span>
-                <ChevronRight size={16} className={openActivity === item.id ? 'rotate-90' : ''} />
               </button>
             );
           })}
@@ -323,21 +438,30 @@ export function ProfileScreen({ session, onLogout, onNavigate, onSessionUpdated,
         <div className="overflow-hidden rounded-[16px] border border-[#D8E5F7] bg-[#F8FBFF] shadow-[0_14px_32px_rgba(15,23,42,0.06)]">
           <div className="flex items-center gap-2 border-b border-[#E2EAF6] px-3 py-2.5">
             <ChevronDown size={16} className="text-[#145CFF]" />
-            <h3 className="text-xs font-black text-[#0B1F5B]">{activityCards.find((item) => item.id === openActivity)?.label}</h3>
+            <h3 className="min-w-0 break-words text-xs font-black text-[#0B1F5B]">{activeActivity?.label}</h3>
           </div>
-          <div className="flex gap-3 overflow-x-auto px-3 pb-3 pt-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            {sampleItems.map((item) => (
-              <article key={item.title} className="w-[150px] shrink-0 overflow-hidden rounded-[13px] border border-[#DFE8F7] bg-white shadow-[0_10px_22px_rgba(15,23,42,0.06)]">
-                <img src={item.image} alt="" className="h-[76px] w-full object-cover" />
-                <div className="p-2.5">
-                  <h4 className="min-h-[30px] text-[11px] font-black leading-[14px] text-[#0B1F5B]">{item.title}</h4>
-                  <p className="mt-1 text-[9px] font-bold leading-3 text-[#64748B]">{item.date}</p>
-                  <button type="button" className="mt-2 h-8 w-full rounded-[8px] border border-[#145CFF]/50 bg-white text-[10px] font-black text-[#145CFF]">
-                    Visualizar
-                  </button>
-                </div>
-              </article>
-            ))}
+          <div className="space-y-2 px-3 pb-3 pt-3">
+            {activityLoading ? (
+              <div className="flex h-24 items-center justify-center text-[#145CFF]">
+                <LoaderCircle size={20} className="animate-spin" />
+              </div>
+            ) : null}
+
+            {!activityLoading && activityError ? (
+              <p className="rounded-[12px] border border-rose-100 bg-rose-50 px-3 py-2 text-[11px] font-bold leading-4 text-rose-700">{activityError}</p>
+            ) : null}
+
+            {!activityLoading && !activityError && !activeItems.length ? (
+              <p className="rounded-[12px] border border-dashed border-[#B8C9E7] bg-white px-3 py-4 text-center text-[12px] font-bold leading-5 text-[#637295]">
+                Aun no hay elementos en esta actividad.
+              </p>
+            ) : null}
+
+            {!activityLoading && !activityError
+              ? activeItems.map((publication) => (
+                  <ActivityPublicationItem key={publication.id} publication={publication} onOpen={() => onOpenPublication?.(publication)} />
+                ))
+              : null}
           </div>
         </div>
       </section>
@@ -371,6 +495,33 @@ export function ProfileScreen({ session, onLogout, onNavigate, onSessionUpdated,
         />
       ) : null}
     </section>
+  );
+}
+
+function ActivityPublicationItem({ publication, onOpen }: { publication: SoyibaPublication; onOpen: () => void }) {
+  const image = publication.mediaItems.find((item) => item.type === 'image')?.url || '';
+
+  return (
+    <article className="grid min-w-0 grid-cols-[58px_minmax(0,1fr)_40px] items-center gap-3 rounded-[13px] border border-[#DFE8F7] bg-white p-2.5 shadow-[0_10px_22px_rgba(15,23,42,0.05)]">
+      <div className="grid h-[58px] w-[58px] overflow-hidden rounded-[11px] bg-[#EAF2FF] text-[#145CFF]">
+        {image ? <img src={image} alt="" className="h-full w-full object-cover" /> : <FileText className="m-auto" size={22} />}
+      </div>
+      <div className="min-w-0">
+        <span className="inline-flex max-w-full rounded-full bg-[#EAF2FF] px-2 py-0.5 text-[9px] font-black uppercase text-[#145CFF]">
+          <span className="truncate">{publication.type}</span>
+        </span>
+        <h4 className="mt-1 line-clamp-2 break-words text-[12px] font-black leading-4 text-[#0B1F5B]">{publication.title}</h4>
+        <p className="mt-0.5 line-clamp-1 break-words text-[10px] font-bold leading-4 text-[#64748B]">{getPublicationActivityMeta(publication)}</p>
+      </div>
+      <button
+        type="button"
+        aria-label={`Abrir ${publication.title}`}
+        onClick={onOpen}
+        className="grid h-10 w-10 place-items-center rounded-[11px] border border-[#145CFF]/40 bg-white text-[#145CFF]"
+      >
+        <ChevronRight size={17} />
+      </button>
+    </article>
   );
 }
 

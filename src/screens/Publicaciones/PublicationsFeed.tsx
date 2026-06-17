@@ -487,6 +487,7 @@ export function PublicationsFeed({
     }
 
     const nextAttending = !publication.eco.currentUserAttending;
+    const previousPublications = publications;
     const optimisticEco = {
       ...publication.eco,
       currentUserAttending: nextAttending,
@@ -494,14 +495,52 @@ export function PublicationsFeed({
     };
 
     setEcoAttendanceBusyId(publication.id);
-    updatePublicationState(publication.id, { eco: optimisticEco });
+    setPublications((current) =>
+      current.map((item) => {
+        if (item.id === publication.id) {
+          return { ...item, eco: optimisticEco };
+        }
+
+        if (nextAttending && item.type === 'Grupo ECO' && item.eco.currentUserAttending) {
+          return {
+            ...item,
+            eco: {
+              ...item.eco,
+              currentUserAttending: false,
+              attendeesCount: Math.max(0, item.eco.attendeesCount - 1),
+            },
+          };
+        }
+
+        return item;
+      }),
+    );
 
     try {
       const result = await toggleEcoAttendance(session, publication.id, nextAttending);
 
       if (result.publication) {
         setPublications((current) =>
-          sortPublications(current.map((item) => (item.id === result.publication?.id ? mergeServerPublication(result.publication, item) : item))),
+          sortPublications(
+            current.map((item) => {
+              if (item.id === result.publication?.id) {
+                return mergeServerPublication(result.publication, item);
+              }
+
+              if (result.publication?.eco.currentUserAttending && item.type === 'Grupo ECO' && item.eco.currentUserAttending) {
+                return {
+                  ...item,
+                  eco: {
+                    ...item.eco,
+                    currentUserAttending: false,
+                    attendeesCount: Math.max(0, item.eco.attendeesCount - 1),
+                  },
+                };
+              }
+
+              return item;
+            }),
+          ),
         );
       } else {
         updatePublicationState(publication.id, {
@@ -513,7 +552,7 @@ export function PublicationsFeed({
       }
     } catch (attendanceError) {
       setError(attendanceError instanceof Error ? attendanceError.message : 'No fue posible actualizar la asistencia al Grupo ECO.');
-      updatePublicationState(publication.id, { eco: publication.eco });
+      setPublications(previousPublications);
     } finally {
       setEcoAttendanceBusyId('');
     }
@@ -526,9 +565,10 @@ export function PublicationsFeed({
 
     setActiveMenuId('');
     const shareUrl = buildPublicationShareUrl(publication);
+    const shareText = buildPublicationShareText(publication, shareUrl);
     const shareData = {
       title: publication.title,
-      text: publication.description || publication.title,
+      text: publication.title,
       url: shareUrl,
     };
 
@@ -546,12 +586,12 @@ export function PublicationsFeed({
     }
 
     if (!shared) {
-      shared = await copyTextToClipboard(shareUrl);
-      setNotice(shared ? 'Enlace copiado para compartir.' : 'No se pudo copiar automaticamente. Te muestro el enlace para copiarlo.');
+      shared = await copyTextToClipboard(shareText);
+      setNotice(shared ? 'Titulo y enlace copiados para compartir.' : 'No se pudo copiar automaticamente. Te muestro el texto para copiarlo.');
     }
 
     if (!shared) {
-      window.prompt('Copia este enlace para compartir la publicacion:', shareUrl);
+      window.prompt('Copia este texto para compartir la publicacion:', shareText);
       shared = true;
     }
 
@@ -2861,6 +2901,10 @@ function sortPublications(items: SoyibaPublication[]) {
 function buildPublicationShareUrl(publication: SoyibaPublication) {
   const screen = publication.type === 'Evento' ? 'eventos' : publication.type === 'Grupo ECO' ? 'eco' : 'inicio';
   return `${window.location.origin}${window.location.pathname}#${screen}/publicacion-${encodeURIComponent(publication.id)}`;
+}
+
+function buildPublicationShareText(publication: SoyibaPublication, shareUrl: string) {
+  return `${publication.title}\n${shareUrl}`;
 }
 
 function filterEventsByStatus(publications: SoyibaPublication[], status: 'proximos' | 'todos' | 'pasados') {

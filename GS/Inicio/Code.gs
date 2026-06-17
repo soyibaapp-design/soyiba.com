@@ -1043,10 +1043,27 @@ function soyibaPublicacionesToggleEcoAttendance_(data) {
     }
 
     var attendanceSheet = soyibaAsistenciasEcoGetSheet_();
-    var foundAttendance = soyibaPublicacionesFindEcoAttendanceRow_(attendanceSheet, publicationId, user);
     var shouldAttend = data.attending === true ||
       data.asistir === true ||
       String(data.attending || data.asistir || '').toLowerCase() === 'true';
+
+    if (shouldAttend) {
+      var existingAttendances = soyibaPublicacionesFindEcoAttendanceRowsForUser_(attendanceSheet, user);
+      for (var existingIndex = existingAttendances.length - 1; existingIndex >= 0; existingIndex -= 1) {
+        var existing = existingAttendances[existingIndex];
+        if (existing.publicationId === publicationId) {
+          continue;
+        }
+
+        var previousPublication = soyibaPublicacionesFindRow_(publicationSheet, existing.publicationId);
+        if (previousPublication.row > 0) {
+          soyibaPublicacionesIncrement_(publicationSheet, previousPublication.row, 'asistentes', -1);
+        }
+        attendanceSheet.deleteRow(existing.row);
+      }
+    }
+
+    var foundAttendance = soyibaPublicacionesFindEcoAttendanceRow_(attendanceSheet, publicationId, user);
 
     if (shouldAttend && foundAttendance.row < 1) {
       attendanceSheet.appendRow([
@@ -1559,6 +1576,32 @@ function soyibaPublicacionesFindEcoAttendanceRow_(sheet, publicationId, user) {
   return { row: -1 };
 }
 
+function soyibaPublicacionesFindEcoAttendanceRowsForUser_(sheet, user) {
+  var headers = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), SOYIBA_ASISTENCIAS_ECO_HEADERS.length)).getValues()[0];
+  var publicationColumn = headers.indexOf('idPublicacion');
+  var userColumn = headers.indexOf('idUsuario');
+  var values = sheet.getDataRange().getValues();
+  var userKey = soyibaPublicacionesEcoUserKey_(user);
+  var rows = [];
+
+  if (!userKey) {
+    return rows;
+  }
+
+  for (var rowIndex = 1; rowIndex < values.length; rowIndex += 1) {
+    var rowUser = String(values[rowIndex][userColumn] || '').trim();
+
+    if (rowUser === userKey) {
+      rows.push({
+        row: rowIndex + 1,
+        publicationId: String(values[rowIndex][publicationColumn] || '').trim()
+      });
+    }
+  }
+
+  return rows;
+}
+
 function soyibaPublicacionesEcoUserKey_(user) {
   return String((user && (user.id || user.email)) || '').trim();
 }
@@ -1681,6 +1724,10 @@ function soyibaPublicacionesNormalizeType_(value) {
 
   if (text.indexOf('eco') >= 0) {
     return 'Grupo ECO';
+  }
+
+  if (text.indexOf('devoc') >= 0) {
+    return 'Devocional';
   }
 
   if (text.indexOf('trans') >= 0) {
