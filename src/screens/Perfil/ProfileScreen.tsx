@@ -18,6 +18,7 @@ import {
   Music2,
   PencilLine,
   Phone,
+  Radio,
   Save,
   ShieldCheck,
   UserRound,
@@ -45,6 +46,8 @@ type ProfileScreenProps = {
   onLogout: () => void;
   onNavigate?: (target: ScreenTarget) => void;
   onSessionUpdated: (session: SoyibaSession) => void;
+  liveBadgeTestEnabled?: boolean;
+  onLiveBadgeTestChange?: (enabled: boolean) => void;
   onCreatePublication?: () => void;
   onOpenPublication?: (publication: SoyibaPublication) => void;
 };
@@ -147,7 +150,16 @@ function formatDateLabel(value: string) {
   return new Intl.DateTimeFormat('es-CO', { day: 'numeric', month: 'short', year: 'numeric' }).format(date);
 }
 
-export function ProfileScreen({ session, onLogout, onNavigate, onSessionUpdated, onCreatePublication, onOpenPublication }: ProfileScreenProps) {
+export function ProfileScreen({
+  session,
+  onLogout,
+  onNavigate,
+  onSessionUpdated,
+  liveBadgeTestEnabled = false,
+  onLiveBadgeTestChange,
+  onCreatePublication,
+  onOpenPublication,
+}: ProfileScreenProps) {
   const user = session.user;
   const photoInputRef = useRef<HTMLInputElement>(null);
   const [editOpen, setEditOpen] = useState(false);
@@ -269,7 +281,7 @@ export function ProfileScreen({ session, onLogout, onNavigate, onSessionUpdated,
         },
         {
           id: 'users',
-          title: 'Gestion de usuarios',
+          title: 'Gestión de usuarios',
           description: 'Roles, estados, tipos y permisos.',
           buttonLabel: 'Abrir',
           icon: UsersRound,
@@ -278,7 +290,7 @@ export function ProfileScreen({ session, onLogout, onNavigate, onSessionUpdated,
         },
         {
           id: 'eco',
-          title: 'Gestion de ECO',
+          title: 'Gestión de ECO',
           description: 'Crear, editar y administrar grupos.',
           buttonLabel: 'Abrir',
           icon: Home,
@@ -288,7 +300,7 @@ export function ProfileScreen({ session, onLogout, onNavigate, onSessionUpdated,
         },
         {
           id: 'events',
-          title: 'Gestion de eventos',
+          title: 'Gestión de eventos',
           description: 'Crear, editar y administrar eventos.',
           buttonLabel: 'Abrir',
           icon: CalendarDays,
@@ -360,6 +372,10 @@ export function ProfileScreen({ session, onLogout, onNavigate, onSessionUpdated,
             ))}
           </div>
         </section>
+      ) : null}
+
+      {isManager(user) ? (
+        <LiveBadgeTestPanel enabled={liveBadgeTestEnabled} onChange={onLiveBadgeTestChange || (() => undefined)} />
       ) : null}
 
       <section className="space-y-2">
@@ -453,7 +469,7 @@ export function ProfileScreen({ session, onLogout, onNavigate, onSessionUpdated,
 
             {!activityLoading && !activityError && !activeItems.length ? (
               <p className="rounded-[12px] border border-dashed border-[#B8C9E7] bg-white px-3 py-4 text-center text-[12px] font-bold leading-5 text-[#637295]">
-                Aun no hay elementos en esta actividad.
+                Aún no hay elementos en esta actividad.
               </p>
             ) : null}
 
@@ -472,7 +488,7 @@ export function ProfileScreen({ session, onLogout, onNavigate, onSessionUpdated,
         className="flex h-14 w-full items-center justify-center gap-2 rounded-[16px] border border-[#FFD1CF] bg-[#FFF0EF] text-sm font-black text-[#D92D2D] shadow-[0_14px_32px_rgba(230,55,55,0.10)]"
       >
         <LogOut size={20} />
-        Cerrar sesion
+        Cerrar sesión
       </button>
 
       {editOpen ? (
@@ -494,6 +510,31 @@ export function ProfileScreen({ session, onLogout, onNavigate, onSessionUpdated,
           }}
         />
       ) : null}
+    </section>
+  );
+}
+
+function LiveBadgeTestPanel({ enabled, onChange }: { enabled: boolean; onChange: (enabled: boolean) => void }) {
+  return (
+    <section className="rounded-[20px] border border-[#FFD1CF] bg-[#FFF7F6] p-3.5 shadow-[0_18px_42px_rgba(230,55,55,0.08)]">
+      <div className="flex items-center gap-3">
+        <span className="grid h-12 w-12 shrink-0 place-items-center rounded-[14px] bg-[#FFE8E8] text-[#E63737]">
+          <Radio size={24} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <h2 className="text-sm font-black leading-5 text-[#0B1F5B]">Prueba del badge LIVE</h2>
+          <p className="mt-0.5 text-[11px] font-bold leading-4 text-[#637295]">Activa el indicador rojo del menú inferior para revisar la transmisión en vivo.</p>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={enabled}
+          onClick={() => onChange(!enabled)}
+          className={`relative h-8 w-14 shrink-0 rounded-full p-1 transition ${enabled ? 'bg-[#E63737]' : 'bg-[#CBD8EA]'}`}
+        >
+          <span className={`block h-6 w-6 rounded-full bg-white shadow-[0_6px_14px_rgba(15,23,42,0.18)] transition ${enabled ? 'translate-x-6' : 'translate-x-0'}`} />
+        </button>
+      </div>
     </section>
   );
 }
@@ -633,12 +674,12 @@ function EditProfileModal({ session, onClose, onSaved }: EditProfileModalProps) 
     setSecurityError('');
 
     if (passwordForm.newPassword !== passwordForm.confirmPassword) {
-      setSecurityError('La confirmacion de contrasena no coincide.');
+      setSecurityError('La confirmación de contraseña no coincide.');
       return;
     }
 
     if (rules.some((rule) => !rule.ok)) {
-      setSecurityError('La nueva contrasena debe cumplir todos los requisitos.');
+      setSecurityError('La nueva contraseña debe cumplir todos los requisitos.');
       return;
     }
 
@@ -653,7 +694,7 @@ function EditProfileModal({ session, onClose, onSaved }: EditProfileModalProps) 
         setSecurityError(result.error);
       }
     } catch (error) {
-      setSecurityError(error instanceof Error ? error.message : 'No fue posible actualizar la contrasena.');
+      setSecurityError(error instanceof Error ? error.message : 'No fue posible actualizar la contraseña.');
     } finally {
       setSecuritySaving(false);
     }
@@ -681,7 +722,7 @@ function EditProfileModal({ session, onClose, onSaved }: EditProfileModalProps) 
             >
               <span className="flex items-center gap-2">
                 <UserRound size={16} />
-                Informacion personal
+                Información personal
               </span>
               <ChevronDown size={16} className={openPanel === 'personal' ? 'rotate-180' : ''} />
             </button>
@@ -703,7 +744,7 @@ function EditProfileModal({ session, onClose, onSaved }: EditProfileModalProps) 
                     autoComplete="family-name"
                   />
                   <EditableField
-                    label="Numero de telefono"
+                    label="Número de teléfono"
                     value={profileForm.phone}
                     onChange={(value) => updateProfileField('phone', value)}
                     icon={Phone}
@@ -756,7 +797,7 @@ function EditProfileModal({ session, onClose, onSaved }: EditProfileModalProps) 
                   autoComplete="current-password"
                 />
                 <EditableField
-                  label="Nueva contrasena"
+                  label="Nueva contraseña"
                   type="password"
                   value={passwordForm.newPassword}
                   onChange={(value) => updatePasswordField('newPassword', value)}
@@ -764,7 +805,7 @@ function EditProfileModal({ session, onClose, onSaved }: EditProfileModalProps) 
                   autoComplete="new-password"
                 />
                 <EditableField
-                  label="Confirmacion de contrasena"
+                  label="Confirmación de contraseña"
                   type="password"
                   value={passwordForm.confirmPassword}
                   onChange={(value) => updatePasswordField('confirmPassword', value)}
@@ -787,7 +828,7 @@ function EditProfileModal({ session, onClose, onSaved }: EditProfileModalProps) 
                   className="inline-flex h-11 items-center justify-center gap-2 rounded-[12px] bg-[#145CFF] px-4 text-xs font-black text-white shadow-[0_12px_26px_rgba(20,92,255,0.24)] disabled:cursor-not-allowed disabled:bg-slate-400"
                 >
                   {securitySaving ? <LoaderCircle size={16} className="animate-spin" /> : <ShieldCheck size={16} />}
-                  Actualizar contrasena
+                  Actualizar contraseña
                 </button>
               </div>
             ) : null}
@@ -875,9 +916,9 @@ function getFieldValue(value: unknown) {
 
 function getPasswordRules(password: string) {
   return [
-    { label: 'Minimo 8 caracteres', ok: password.length >= 8 },
+    { label: 'Mínimo 8 caracteres', ok: password.length >= 8 },
     { label: 'Al menos una letra mayuscula', ok: /[A-Z]/.test(password) },
-    { label: 'Al menos un numero', ok: /\d/.test(password) },
+    { label: 'Al menos un número', ok: /\d/.test(password) },
     { label: 'Al menos un caracter especial', ok: /[^A-Za-z0-9]/.test(password) },
   ];
 }
@@ -948,13 +989,13 @@ function ConfirmLogout({ onCancel, onConfirm }: { onCancel: () => void; onConfir
         <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#FFE9E8] text-[#E63737]">
           <LogOut size={28} />
         </div>
-        <h2 className="mt-4 text-lg font-black text-[#0B1F5B]">Deseas cerrar sesion?</h2>
+        <h2 className="mt-4 text-lg font-black text-[#0B1F5B]">¿Deseas cerrar sesión?</h2>
         <div className="mt-5 grid grid-cols-2 gap-3">
           <button type="button" onClick={onCancel} className="h-11 rounded-[12px] border border-[#CBD8EA] bg-white text-xs font-black text-[#51617A]">
             Cancelar
           </button>
           <button type="button" onClick={onConfirm} className="h-11 rounded-[12px] bg-[#E63737] text-xs font-black text-white">
-            Cerrar sesion
+            Cerrar sesión
           </button>
         </div>
       </section>

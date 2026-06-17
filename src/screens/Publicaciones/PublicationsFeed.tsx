@@ -23,9 +23,12 @@ import {
   MoreVertical,
   Music2,
   Navigation,
+  Pause,
   PencilLine,
   Phone,
+  Play,
   Plus,
+  Radio,
   RefreshCw,
   Search,
   Share2,
@@ -42,7 +45,6 @@ import {
   getGoogleDriveFileUrl,
   getGoogleDriveImageCandidates,
   getGoogleDriveImageUrl,
-  getGoogleDrivePreviewUrl,
 } from '../../services/googleDrive';
 import type { SoyibaSession } from '../Auth/auth.service';
 import {
@@ -85,9 +87,11 @@ type PublicationsFeedProps = {
   openPublicationId?: string;
   onPublicationOpened?: () => void;
   onOpenEventFromHome?: (publicationId: string) => void;
+  onOpenEventsFromHome?: () => void;
   onOpenEcoFromHome?: (publicationId: string) => void;
   publicMode?: boolean;
   onAuthRequired?: (mode: 'login' | 'register') => void;
+  showLiveBadge?: boolean;
 };
 
 type ImagePreview = {
@@ -146,9 +150,11 @@ export function PublicationsFeed({
   openPublicationId,
   onPublicationOpened,
   onOpenEventFromHome,
+  onOpenEventsFromHome,
   onOpenEcoFromHome,
   publicMode = false,
   onAuthRequired,
+  showLiveBadge = false,
 }: PublicationsFeedProps) {
   const cachedPublications = getCachedPublicationFeed(session, filterType ? { type: filterType } : {});
   const [publications, setPublications] = useState<SoyibaPublication[]>(() => cachedPublications || []);
@@ -168,6 +174,7 @@ export function PublicationsFeed({
   const [userLocation, setUserLocation] = useState<GeoPoint | null>(null);
   const [locationStatus, setLocationStatus] = useState<'idle' | 'requesting' | 'ready' | 'blocked' | 'unsupported'>('idle');
   const [notice, setNotice] = useState('');
+  const [homeStoryStartIndex, setHomeStoryStartIndex] = useState<number | null>(null);
   const lastComposerSignal = useRef(0);
   const lastOpenPublicationId = useRef('');
   const permittedTypes = useMemo(() => getPermittedPublicationTypes(session.user), [session.user]);
@@ -178,6 +185,8 @@ export function PublicationsFeed({
   const canCreate = !publicMode && composerTypes.length > 0;
   const feedTitle = title || (variant === 'eventos' ? 'Eventos' : variant === 'eco' ? 'Grupos ECO' : 'Publicaciones');
   const feedSubtitle = subtitle || (variant === 'eventos' ? 'Conectate y participa en lo que Dios esta haciendo.' : 'Comunidad SOY IBA');
+  const homeTransmission = useMemo(() => getLatestTransmission(publications), [publications]);
+  const homeEvents = useMemo(() => sortHomeEvents(publications.filter((publication) => publication.type === 'Evento')), [publications]);
   const visiblePublications = useMemo(() => {
     let items = publications;
 
@@ -390,7 +399,7 @@ export function PublicationsFeed({
     try {
       await deletePublication(session, publication.id);
     } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : 'No fue posible eliminar la publicacion.');
+      setError(deleteError instanceof Error ? deleteError.message : 'No fue posible eliminar la publicación.');
       setPublications((current) => sortPublications([publication, ...current]));
     }
   }
@@ -432,7 +441,7 @@ export function PublicationsFeed({
     }
 
     if (publication.event.expired) {
-      setNotice('Este evento ya caduco.');
+      setNotice('Este evento ya caducó.');
       return;
     }
 
@@ -587,11 +596,11 @@ export function PublicationsFeed({
 
     if (!shared) {
       shared = await copyTextToClipboard(shareText);
-      setNotice(shared ? 'Titulo y enlace copiados para compartir.' : 'No se pudo copiar automaticamente. Te muestro el texto para copiarlo.');
+      setNotice(shared ? 'Título y enlace copiados para compartir.' : 'No se pudo copiar automáticamente. Te muestro el texto para copiarlo.');
     }
 
     if (!shared) {
-      window.prompt('Copia este texto para compartir la publicacion:', shareText);
+      window.prompt('Copia este texto para compartir la publicación:', shareText);
       shared = true;
     }
 
@@ -648,6 +657,47 @@ export function PublicationsFeed({
         <div className="rounded-[14px] border border-[#BFD0EA] bg-[#EAF2FF] px-4 py-3 text-xs font-black text-[#0B1F5B]">{notice}</div>
       ) : null}
 
+      {variant === 'feed' && !isLoading ? (
+        <div className="space-y-5">
+          <HomeTransmissionCard
+            publication={homeTransmission}
+            publicMode={publicMode}
+            showLiveBadge={showLiveBadge}
+            menuOpen={Boolean(homeTransmission && activeMenuId === homeTransmission.id)}
+            canManage={Boolean(homeTransmission && !publicMode && canManagePublication(session.user, homeTransmission))}
+            onMenuToggle={() => {
+              if (!homeTransmission) {
+                return;
+              }
+
+              setActiveMenuId((current) => (current === homeTransmission.id ? '' : homeTransmission.id));
+            }}
+            onShare={() => {
+              if (homeTransmission) {
+                handleShare(homeTransmission);
+              }
+            }}
+            onEdit={() => {
+              if (homeTransmission) {
+                openEditComposer(homeTransmission);
+              }
+            }}
+            onDelete={() => {
+              if (homeTransmission) {
+                handleDeletePublication(homeTransmission);
+              }
+            }}
+            onOpenDetails={() => {
+              if (homeTransmission) {
+                setActivePublicationId(homeTransmission.id);
+              }
+            }}
+            onOpenImage={(preview) => setImagePreview(preview)}
+          />
+          <HomeEventsStrip events={homeEvents} onOpenStory={setHomeStoryStartIndex} onOpenAllEvents={onOpenEventsFromHome} />
+        </div>
+      ) : null}
+
       {variant === 'eco' && !isLoading ? (
         <div className="space-y-3">
           <EcoAboutAccordion />
@@ -667,7 +717,7 @@ export function PublicationsFeed({
       {!isLoading && !visiblePublications.length ? (
         <div className="rounded-[18px] border border-dashed border-[#B8C9E7] bg-white p-5 text-center shadow-[0_14px_32px_rgba(15,23,42,0.05)]">
           <FileText className="mx-auto h-9 w-9 text-[#145CFF]" />
-          <p className="mt-3 text-sm font-black text-[#0B1F5B]">Aun no hay {feedTitle.toLowerCase()}.</p>
+          <p className="mt-3 text-sm font-black text-[#0B1F5B]">Aún no hay {feedTitle.toLowerCase()}.</p>
         </div>
       ) : null}
 
@@ -746,6 +796,20 @@ export function PublicationsFeed({
       </AnimatePresence>
 
       <AnimatePresence>
+        {homeStoryStartIndex !== null && homeEvents.length ? (
+          <HomeEventStoryViewer
+            events={homeEvents}
+            initialIndex={homeStoryStartIndex}
+            onClose={() => setHomeStoryStartIndex(null)}
+            onViewEvent={(publication) => {
+              setHomeStoryStartIndex(null);
+              setActivePublicationId(publication.id);
+            }}
+          />
+        ) : null}
+      </AnimatePresence>
+
+      <AnimatePresence>
         {activeDetailPublication ? (
           activeDetailPublication.type === 'Grupo ECO' ? (
             <EcoGroupModal
@@ -798,7 +862,7 @@ function EventsHeader({
 }) {
   const filters: Array<{ id: 'todos' | 'proximos' | 'pasados'; label: string }> = [
     { id: 'todos', label: 'Todos' },
-    { id: 'proximos', label: 'Proximos' },
+    { id: 'proximos', label: 'Próximos' },
     { id: 'pasados', label: 'Pasados' },
   ];
 
@@ -874,13 +938,13 @@ function EcoHeader({
 }) {
   const statusLabel =
     locationStatus === 'ready' && userLocation
-      ? 'Ubicacion actual detectada'
+      ? 'Ubicación actual detectada'
       : locationStatus === 'requesting'
         ? 'Buscando tu ubicacion'
         : locationStatus === 'unsupported'
-          ? 'Ubicacion no disponible'
+          ? 'Ubicación no disponible'
           : locationStatus === 'blocked'
-            ? 'Ubicacion pendiente'
+            ? 'Ubicación pendiente'
             : 'Grupos cerca de ti';
 
   return (
@@ -895,6 +959,486 @@ function EcoHeader({
         <span className="truncate">{statusLabel}</span>
       </div>
     </div>
+  );
+}
+
+function HomeTransmissionCard({
+  publication,
+  publicMode,
+  showLiveBadge,
+  menuOpen,
+  canManage,
+  onMenuToggle,
+  onShare,
+  onEdit,
+  onDelete,
+  onOpenDetails,
+  onOpenImage,
+}: {
+  publication: SoyibaPublication | null;
+  publicMode: boolean;
+  showLiveBadge: boolean;
+  menuOpen: boolean;
+  canManage: boolean;
+  onMenuToggle: () => void;
+  onShare: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+  onOpenDetails: () => void;
+  onOpenImage: (preview: ImagePreview) => void;
+}) {
+  const [descriptionExpanded, setDescriptionExpanded] = useState(false);
+
+  if (!publication) {
+    return (
+      <section className="space-y-3">
+        <div className="flex items-center gap-2">
+          <h2 className="text-[18px] font-black leading-6 text-[#0B1F5B]">Última transmisión</h2>
+          <span className="rounded-full bg-[#EAF2FF] px-3 py-1 text-[10px] font-black uppercase text-[#145CFF]">Domingo</span>
+        </div>
+        <article className="rounded-[18px] border border-dashed border-[#B8C9E7] bg-white p-5 text-center shadow-[0_16px_38px_rgba(15,23,42,0.06)]">
+          <Radio className="mx-auto h-9 w-9 text-[#145CFF]" />
+          <p className="mt-3 text-sm font-black text-[#0B1F5B]">Aún no hay transmisiones publicadas.</p>
+        </article>
+      </section>
+    );
+  }
+
+  const videoItem = publication.mediaItems.find((item) => item.type === 'youtube' || item.type === 'driveVideo');
+  const imageItem = publication.mediaItems.find((item) => item.type === 'image');
+  const spotifyItem = publication.mediaItems.find((item) => item.type === 'spotify');
+  const displayItem = videoItem || imageItem;
+  const externalUrl = getPublicationCtaUrl(publication) || videoItem?.url || '';
+  const descriptionIsLong = publication.description.length > 145 || publication.description.split(/\r?\n/).length > 2;
+
+  return (
+    <section className="space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <h2 className="min-w-0 text-[18px] font-black leading-6 text-[#0B1F5B]">Última transmisión</h2>
+          <span className="shrink-0 rounded-full bg-[#2338B8] px-3 py-1 text-[10px] font-black uppercase text-white shadow-[0_10px_20px_rgba(35,56,184,0.20)]">
+            Domingo
+          </span>
+        </div>
+      </div>
+
+      <article className="relative overflow-hidden rounded-[20px] border border-white/80 bg-white shadow-[0_18px_44px_rgba(15,23,42,0.10)]">
+        {showLiveBadge ? (
+          <span
+            className={cx(
+              'soyiba-live-badge pointer-events-none absolute top-3 z-20 inline-flex h-8 items-center gap-2 rounded-full border border-white/70 bg-[#E63737] px-3 text-[10px] font-black uppercase tracking-[0.14em] text-white shadow-[0_14px_28px_rgba(230,55,55,0.34)]',
+              publicMode ? 'right-3' : 'right-16',
+            )}
+          >
+            <span className="soyiba-live-dot h-2.5 w-2.5 rounded-full bg-white shadow-[0_0_0_4px_rgba(255,255,255,0.18)]" />
+            LIVE
+          </span>
+        ) : null}
+
+        {!publicMode ? (
+          <div className="absolute right-3 top-3 z-30">
+            <button
+              type="button"
+              aria-label="Opciones de la transmisión"
+              onClick={onMenuToggle}
+              className="grid h-10 w-10 place-items-center rounded-full border border-white/70 bg-white/92 text-[#0B1F5B] shadow-[0_12px_26px_rgba(15,23,42,0.14)] backdrop-blur transition hover:bg-[#EAF2FF]"
+            >
+              <MoreVertical size={21} />
+            </button>
+
+            <AnimatePresence>
+              {menuOpen ? (
+                <motion.div
+                  initial={{ opacity: 0, y: -4, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -4, scale: 0.98 }}
+                  className="absolute right-0 top-11 z-30 w-44 overflow-hidden rounded-[14px] border border-[#DCE5F2] bg-white py-1 shadow-[0_18px_42px_rgba(15,23,42,0.16)]"
+                >
+                  <MenuAction icon={Share2} label="Compartir" onClick={onShare} />
+                  {canManage ? <MenuAction icon={PencilLine} label="Editar" onClick={onEdit} /> : null}
+                  {canManage ? <MenuAction icon={Trash2} label="Eliminar" danger onClick={onDelete} /> : null}
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
+          </div>
+        ) : null}
+
+        <div className="grid gap-0 min-[430px]:grid-cols-[minmax(0,1.12fr)_minmax(0,0.88fr)]">
+          <div className="relative bg-[#071426]">
+            <div className="aspect-[16/10] overflow-hidden min-[430px]:h-full min-[430px]:min-h-[210px] min-[430px]:aspect-auto">
+              {displayItem ? (
+                <PublicationMedia item={displayItem} publicationTitle={publication.title} allowExternalOpen={!publicMode} onOpenImage={onOpenImage} />
+              ) : (
+                <button type="button" onClick={onOpenDetails} className="grid h-full min-h-[210px] w-full place-items-center bg-[#EAF2FF] text-[#145CFF]">
+                  <Play size={42} className="fill-current" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="flex min-w-0 flex-col p-4 min-[430px]:p-5">
+            <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-[#EAF2FF] px-3 py-1 text-[10px] font-black uppercase text-[#145CFF]">
+              <span className="h-2 w-2 rounded-full bg-[#145CFF]" />
+              Transmision
+            </span>
+            <h3 className="mt-4 line-clamp-3 break-words text-[22px] font-black leading-7 text-[#0B1F5B] min-[430px]:text-[24px]">
+              {publication.title}
+            </h3>
+            {publication.description ? (
+              <div className="mt-2">
+                <p className={cx('whitespace-pre-line break-words text-[13px] font-semibold leading-5 text-[#52637C]', !descriptionExpanded && 'line-clamp-2')}>
+                  {publication.description}
+                </p>
+                {descriptionIsLong ? (
+                  <button
+                    type="button"
+                    onClick={() => setDescriptionExpanded((current) => !current)}
+                    className="mt-1 block w-full text-right text-[12px] font-black text-[#145CFF]"
+                  >
+                    {descriptionExpanded ? 'Ver menos' : 'Ver más'}
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+            <p className="mt-1 truncate text-[13px] font-black text-[#2338B8]">{publication.author.name}</p>
+            <p className="mt-4 inline-flex min-w-0 items-center gap-2 text-[12px] font-bold text-[#52637C]">
+              <CalendarDays size={16} className="shrink-0 text-[#0B1F5B]" />
+              <span className="truncate">{formatBroadcastDate(publication.createdAt)}</span>
+            </p>
+
+            <div className="mt-auto pt-4">
+              {externalUrl ? (
+                <a
+                  href={externalUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex h-11 max-w-full items-center justify-center gap-2 rounded-[14px] bg-[#0B1F5B] px-4 text-[12px] font-black text-white shadow-[0_12px_24px_rgba(11,31,91,0.20)] transition hover:bg-[#145CFF]"
+                >
+                  <Video size={16} className="shrink-0" />
+                  <span className="truncate">Ver transmisión</span>
+                </a>
+              ) : (
+                <button
+                  type="button"
+                  onClick={onOpenDetails}
+                  className="inline-flex h-11 max-w-full items-center justify-center gap-2 rounded-[14px] bg-[#0B1F5B] px-4 text-[12px] font-black text-white shadow-[0_12px_24px_rgba(11,31,91,0.20)] transition hover:bg-[#145CFF]"
+                >
+                  <Play size={16} className="shrink-0 fill-current" />
+                  <span className="truncate">Ver detalles</span>
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {spotifyItem ? (
+          <div className="border-t border-[#E4EBF6] bg-[#F8FBFF] px-3 py-3">
+            <div className="overflow-hidden rounded-[16px] bg-white shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
+              <div className="flex min-w-0 items-center gap-3 px-3 py-3">
+                <span className="grid h-12 w-12 shrink-0 place-items-center rounded-[12px] bg-[#0B1F5B] text-white">
+                  <Music2 size={22} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-[12px] font-black text-[#0B1F5B]">Canciones del culto</p>
+                  <p className="mt-0.5 truncate text-[12px] font-bold text-[#637295]">{spotifyItem.title || 'Playlist SOY IBA'}</p>
+                </div>
+              </div>
+              <iframe
+                className="block h-[152px] w-full border-0"
+                src={getSpotifyEmbedUrl(spotifyItem.url)}
+                title={spotifyItem.title || 'Canciones del culto'}
+                allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+                loading="lazy"
+              />
+            </div>
+          </div>
+        ) : null}
+      </article>
+    </section>
+  );
+}
+
+function HomeEventsStrip({
+  events,
+  onOpenStory,
+  onOpenAllEvents,
+}: {
+  events: SoyibaPublication[];
+  onOpenStory: (index: number) => void;
+  onOpenAllEvents?: () => void;
+}) {
+  const [openedEventIds, setOpenedEventIds] = useState<Set<string>>(() => new Set(events.filter((event) => readHomeEventOpened(event.id)).map((event) => event.id)));
+
+  function handleOpenStory(publication: SoyibaPublication, index: number) {
+    storeHomeEventOpened(publication.id);
+    setOpenedEventIds((current) => {
+      const next = new Set(current);
+      next.add(publication.id);
+      return next;
+    });
+    onOpenStory(index);
+  }
+
+  return (
+    <section className="space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="min-w-0 text-[18px] font-black leading-6 text-[#0B1F5B]">Próximos eventos</h2>
+        <button
+          type="button"
+          onClick={onOpenAllEvents}
+          disabled={!onOpenAllEvents}
+          className="inline-flex h-9 shrink-0 items-center gap-1 rounded-full bg-white px-3 text-[11px] font-black text-[#145CFF] shadow-[0_10px_24px_rgba(15,23,42,0.08)] disabled:opacity-70"
+        >
+          {events.length ? `${events.length} eventos` : 'Sin eventos'}
+          <ChevronRight size={14} />
+        </button>
+      </div>
+
+      {events.length ? (
+        <div className="-mx-4 overflow-x-auto px-4 pb-1 [scrollbar-width:none]">
+          <div className="flex w-max gap-3">
+            {events.map((publication, index) => (
+              <HomeEventStoryCard
+                key={publication.id}
+                publication={publication}
+                isNew={!openedEventIds.has(publication.id) && !readHomeEventOpened(publication.id)}
+                onOpen={() => handleOpenStory(publication, index)}
+              />
+            ))}
+          </div>
+        </div>
+      ) : (
+        <article className="rounded-[18px] border border-dashed border-[#B8C9E7] bg-white p-5 text-center shadow-[0_14px_32px_rgba(15,23,42,0.05)]">
+          <CalendarDays className="mx-auto h-9 w-9 text-[#145CFF]" />
+          <p className="mt-3 text-sm font-black text-[#0B1F5B]">Aún no hay eventos publicados.</p>
+        </article>
+      )}
+    </section>
+  );
+}
+
+function HomeEventStoryCard({ publication, isNew, onOpen }: { publication: SoyibaPublication; isNew: boolean; onOpen: () => void }) {
+  const dateParts = formatEventDateParts(publication.event.dateTime || publication.createdAt);
+  const imageSources = getHomeEventImageSources(publication);
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="relative h-[236px] w-[164px] shrink-0 overflow-hidden rounded-[16px] border border-white/70 bg-[#071426] text-left shadow-[0_14px_32px_rgba(15,23,42,0.14)] transition active:scale-[0.98]"
+    >
+      {imageSources.length ? (
+        <PublicationDriveImage sources={imageSources} alt={publication.title} className="absolute inset-0 h-full w-full object-cover" />
+      ) : (
+        <div className="absolute inset-0 grid place-items-center bg-[#0B1F5B] text-white/70">
+          <ImageIcon size={30} />
+        </div>
+      )}
+      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(5,14,34,0.18)_0%,rgba(5,14,34,0.08)_36%,rgba(5,14,34,0.86)_100%)]" />
+      <span className="absolute left-2 top-2 grid h-[54px] w-[50px] place-items-center rounded-[11px] bg-[#0B1F5B]/95 px-1 text-center text-white shadow-[0_12px_26px_rgba(11,31,91,0.26)]">
+        <span className="block text-[19px] font-black leading-5">{dateParts.day}</span>
+        <span className="block text-[11px] font-black uppercase leading-3 text-white/82">{dateParts.month}</span>
+      </span>
+      {isNew ? <span className="soyiba-new-event-dot absolute right-3 top-3 h-3 w-3 rounded-full bg-[#1D8CFF] shadow-[0_0_0_4px_rgba(29,140,255,0.18)]" /> : null}
+      <div className="absolute inset-x-0 bottom-0 p-3">
+        <h3 className="line-clamp-2 min-h-[40px] break-words text-[15px] font-black leading-5 text-white">{publication.title}</h3>
+        <p className="mt-2 flex min-w-0 items-center gap-1 text-[10px] font-bold text-white/86">
+          <Clock3 size={12} className="shrink-0 text-white/78" />
+          <span className="truncate">{formatEventTime(publication.event.dateTime)}</span>
+        </p>
+        <p className="mt-1 flex min-w-0 items-center gap-1 text-[10px] font-bold text-white/86">
+          <MapPin size={12} className="shrink-0 text-white/78" />
+          <span className="truncate">{publication.event.place || 'Lugar por confirmar'}</span>
+        </p>
+      </div>
+    </button>
+  );
+}
+
+function HomeEventStoryViewer({
+  events,
+  initialIndex,
+  onClose,
+  onViewEvent,
+}: {
+  events: SoyibaPublication[];
+  initialIndex: number;
+  onClose: () => void;
+  onViewEvent: (publication: SoyibaPublication) => void;
+}) {
+  const [activeIndex, setActiveIndex] = useState(() => clampIndex(initialIndex, events.length));
+  const [progress, setProgress] = useState(0);
+  const [paused, setPaused] = useState(false);
+  const activeEvent = events[clampIndex(activeIndex, events.length)];
+  const dateParts = activeEvent ? formatEventDateParts(activeEvent.event.dateTime || activeEvent.createdAt) : null;
+  const imageSources = activeEvent ? getHomeEventImageSources(activeEvent) : [];
+  const used = activeEvent?.event.attendeesCount || 0;
+  const available = activeEvent?.event.capacityAvailable || 0;
+  const total = activeEvent?.event.capacityTotal || used + available;
+
+  useEffect(() => {
+    setActiveIndex(clampIndex(initialIndex, events.length));
+    setProgress(0);
+    setPaused(false);
+  }, [events.length, initialIndex]);
+
+  useEffect(() => {
+    setProgress(0);
+    setPaused(false);
+  }, [activeIndex]);
+
+  useEffect(() => {
+    if (paused || !activeEvent) {
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      setProgress((current) => Math.min(1, current + 80 / 5000));
+    }, 80);
+
+    return () => window.clearInterval(interval);
+  }, [activeEvent, paused]);
+
+  useEffect(() => {
+    if (progress < 1) {
+      return;
+    }
+
+    if (activeIndex >= events.length - 1) {
+      onClose();
+      return;
+    }
+
+    setActiveIndex((current) => Math.min(events.length - 1, current + 1));
+  }, [activeIndex, events.length, onClose, progress]);
+
+  if (!activeEvent || !dateParts) {
+    return null;
+  }
+
+  function goNext() {
+    if (activeIndex >= events.length - 1) {
+      onClose();
+      return;
+    }
+
+    setProgress(0);
+    setActiveIndex((current) => Math.min(events.length - 1, current + 1));
+  }
+
+  function goPrevious() {
+    setProgress(0);
+    setActiveIndex((current) => Math.max(0, current - 1));
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[130] h-[100dvh] overflow-hidden bg-[#071426] text-white"
+      role="dialog"
+      aria-modal="true"
+    >
+      {imageSources.length ? (
+        <PublicationDriveImage sources={imageSources} alt={activeEvent.title} className="absolute inset-0 h-full w-full object-cover" loading="eager" />
+      ) : (
+        <div className="absolute inset-0 grid place-items-center bg-[#0B1F5B] text-white/70">
+          <ImageIcon size={48} />
+        </div>
+      )}
+      <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(5,12,28,0.76)_0%,rgba(5,12,28,0.20)_38%,rgba(5,12,28,0.88)_100%)]" />
+
+      <div className="absolute inset-x-3 top-[calc(12px+env(safe-area-inset-top))] z-30 flex gap-1">
+        {events.map((publication, index) => (
+          <span key={publication.id} className="h-1 flex-1 overflow-hidden rounded-full bg-white/28">
+            <span
+              className="block h-full rounded-full bg-white transition-[width] duration-75"
+              style={{ width: `${index < activeIndex ? 100 : index === activeIndex ? Math.round(progress * 100) : 0}%` }}
+            />
+          </span>
+        ))}
+      </div>
+
+      <button
+        type="button"
+        aria-label="Cerrar historias"
+        onClick={onClose}
+        className="absolute right-3 top-[calc(26px+env(safe-area-inset-top))] z-40 grid h-11 w-11 place-items-center rounded-full bg-black/38 text-white backdrop-blur"
+      >
+        <X size={24} />
+      </button>
+
+      <button type="button" aria-label="Evento anterior" onClick={goPrevious} className="absolute inset-y-0 left-0 z-30 flex w-[33%] items-center justify-start pl-3 text-white/82">
+        <span className="grid h-10 w-10 place-items-center rounded-full bg-black/24 backdrop-blur">
+          <ChevronLeft size={24} />
+        </span>
+      </button>
+      <button
+        type="button"
+        aria-label="Pausar historia"
+        onPointerDown={() => setPaused(true)}
+        onPointerUp={() => setPaused(false)}
+        onPointerCancel={() => setPaused(false)}
+        onPointerLeave={() => setPaused(false)}
+        className="absolute inset-y-0 left-[33%] z-30 flex w-[34%] items-center justify-center text-white/78"
+      >
+        <span className="grid h-10 w-10 place-items-center rounded-full bg-black/18 opacity-70 backdrop-blur">
+          <Pause size={20} />
+        </span>
+      </button>
+      <button type="button" aria-label="Siguiente evento" onClick={goNext} className="absolute inset-y-0 right-0 z-30 flex w-[33%] items-center justify-end pr-3 text-white/82">
+        <span className="grid h-10 w-10 place-items-center rounded-full bg-black/24 backdrop-blur">
+          <ChevronRight size={24} />
+        </span>
+      </button>
+
+      <div className="pointer-events-none relative z-20 flex h-full flex-col items-start justify-end px-5 pb-[calc(28px+env(safe-area-inset-bottom))] pt-[calc(72px+env(safe-area-inset-top))]">
+        <div className="w-full max-w-xl text-left">
+          <div className="grid h-[72px] w-[68px] place-items-center rounded-[16px] bg-[#145CFF] px-2 text-center text-white shadow-[0_18px_36px_rgba(20,92,255,0.34)]">
+            <span className="block text-[29px] font-black leading-8">{dateParts.day}</span>
+            <span className="block text-[13px] font-black uppercase leading-4 text-white/85">{dateParts.month}</span>
+          </div>
+          <h2 className="mt-4 break-words text-[30px] font-black leading-9 text-white">{activeEvent.title}</h2>
+          {activeEvent.description ? (
+            <p className="mt-3 line-clamp-3 whitespace-pre-line text-[15px] font-semibold leading-6 text-white/86">{activeEvent.description}</p>
+          ) : null}
+
+          <div className="mt-4 grid grid-cols-2 gap-2">
+            <StoryMeta icon={Clock3} label={formatEventTime(activeEvent.event.dateTime)} />
+            <StoryMeta icon={MapPin} label={activeEvent.event.place || 'Lugar por confirmar'} />
+          </div>
+
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <span className="rounded-[13px] bg-white/14 px-3 py-2 text-[12px] font-black text-white backdrop-blur">
+              {formatCount(used)} usados
+            </span>
+            <span className="rounded-[13px] bg-white/14 px-3 py-2 text-[12px] font-black text-white backdrop-blur">
+              {formatCount(available)} disponibles
+            </span>
+          </div>
+          {total ? <p className="mt-2 text-[11px] font-bold text-white/72">Cupos totales: {formatCount(total)}</p> : null}
+
+          <button
+            type="button"
+            onClick={() => onViewEvent(activeEvent)}
+            className="pointer-events-auto relative z-40 mt-5 inline-flex h-12 w-full items-center justify-center gap-2 rounded-[15px] bg-white px-5 text-[13px] font-black text-[#0B1F5B] shadow-[0_18px_36px_rgba(0,0,0,0.22)]"
+          >
+            <CalendarDays size={17} />
+            Ver evento
+          </button>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+function StoryMeta({ icon: Icon, label }: { icon: LucideIcon; label: string }) {
+  return (
+    <span className="flex min-h-[46px] min-w-0 items-center gap-2 rounded-[13px] bg-white/14 px-3 py-2 text-[12px] font-black text-white backdrop-blur">
+      <Icon size={16} className="shrink-0 text-white/84" />
+      <span className="line-clamp-2 break-words">{label}</span>
+    </span>
   );
 }
 
@@ -920,7 +1464,7 @@ function EcoMapPanel({
     const position = getEcoCoordinates(publication) as GeoPoint;
     const distanceKm = getEcoDistanceKm(publication, userLocation);
     const distanceLabel = distanceKm === null ? '' : formatDistance(distanceKm);
-    const locationLabel = formatEcoLocation(publication) || 'Ubicacion del Grupo ECO';
+    const locationLabel = formatEcoLocation(publication) || 'Ubicación del Grupo ECO';
 
     return {
       id: publication.id,
@@ -943,7 +1487,7 @@ function EcoMapPanel({
         <div className="min-w-0">
           <h3 className="text-[15px] font-black text-[#0B1F5B]">Mapa de Grupos ECO</h3>
           <p className="text-[12px] font-semibold text-[#637295]">
-            {locationStatus === 'ready' ? 'Tu ubicacion aparece como punto azul. Los ECO aparecen como casas.' : 'Ubicaciones disponibles.'}
+            {locationStatus === 'ready' ? 'Tu ubicación aparece como punto azul. Los ECO aparecen como casas.' : 'Ubicaciones disponibles.'}
           </p>
         </div>
         <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#EAF2FF] text-[#145CFF]">
@@ -963,7 +1507,7 @@ function EcoMapPanel({
 
       {!mappedPublications.length ? (
         <div className="border-t border-[#E0E7F0] bg-[#FFF9ED] px-4 py-3 text-[12px] font-bold leading-5 text-[#8A5A00]">
-          Tu ubicacion ya esta en el mapa. Para mostrar casas de Grupos ECO, cada publicacion ECO debe tener latitud y longitud.
+          Tu ubicación ya está en el mapa. Para mostrar casas de Grupos ECO, cada publicación ECO debe tener latitud y longitud.
         </div>
       ) : null}
 
@@ -980,7 +1524,7 @@ function EcoMapPanel({
             >
               <span className="min-w-0">
                 <span className="block truncate text-[13px] font-black text-[#0B1F5B]">{publication.title}</span>
-                <span className="mt-0.5 block truncate text-[11px] font-bold text-[#637295]">{formatEcoLocation(publication) || 'Ubicacion por confirmar'}</span>
+                <span className="mt-0.5 block truncate text-[11px] font-bold text-[#637295]">{formatEcoLocation(publication) || 'Ubicación por confirmar'}</span>
               </span>
               {distanceKm !== null ? <span className="rounded-full bg-[#EAF2FF] px-2.5 py-1 text-[11px] font-black text-[#145CFF]">{formatDistance(distanceKm)}</span> : null}
             </button>
@@ -1071,7 +1615,7 @@ function EcoGroupCard({
           </div>
 
           <div className="mt-3 grid gap-2 text-[11px] font-bold text-[#273653] min-[520px]:grid-cols-2">
-            <EcoCardMeta icon={CalendarDays} label={publication.eco.day || 'Dia por confirmar'} />
+            <EcoCardMeta icon={CalendarDays} label={publication.eco.day || 'Día por confirmar'} />
             <EcoCardMeta icon={Clock3} label={publication.eco.time || 'Hora por confirmar'} />
             <EcoCardMeta icon={House} label={publication.eco.host || 'Anfitrion por confirmar'} />
             <EcoCardMeta icon={UserCheck} label={publication.eco.moderator || 'Moderador por confirmar'} />
@@ -1325,8 +1869,8 @@ function PublicationDetailsModal({
                   {publication.description}
                 </p>
                 {descriptionIsLong ? (
-                  <button type="button" onClick={() => setDescriptionExpanded((current) => !current)} className="mt-1 text-[14px] font-black text-[#145CFF]">
-                    {descriptionExpanded ? 'Ver menos' : 'Ver mas'}
+                  <button type="button" onClick={() => setDescriptionExpanded((current) => !current)} className="mt-1 block w-full text-right text-[14px] font-black text-[#145CFF]">
+                    {descriptionExpanded ? 'Ver menos' : 'Ver más'}
                   </button>
                 ) : null}
               </div>
@@ -1479,7 +2023,7 @@ function EcoGroupModal({
             {publication.description ? <p className="whitespace-pre-line text-[14px] font-medium leading-6 text-[#202B3C]">{publication.description}</p> : null}
 
             <div className="grid overflow-hidden rounded-[14px] border border-[#DCE6F5] bg-[#F8FBFF] min-[440px]:grid-cols-2">
-              <EventInfoTile icon={CalendarDays} label="Dia" value={publication.eco.day || 'Por confirmar'} />
+              <EventInfoTile icon={CalendarDays} label="Día" value={publication.eco.day || 'Por confirmar'} />
               <EventInfoTile icon={Clock3} label="Hora" value={publication.eco.time || 'Por confirmar'} />
               <EventInfoTile icon={MapPin} label="Barrio" value={publication.eco.neighborhood || 'Por confirmar'} subvalue={publication.eco.city} />
               <EventInfoTile icon={House} label="Punto de encuentro" value={publication.eco.address || 'Por confirmar'} />
@@ -1563,11 +2107,11 @@ function EcoAboutAccordion() {
                 ECO significa Evangelio, Comunidad y Oracion. Son espacios de encuentro de la Iglesia Biblica Antioquia donde los miembros se reunen en hogares para crecer juntos en su relacion con Dios y fortalecer la vida en comunidad.
               </p>
               <p>
-                A diferencia de una celula enfocada principalmente en el alcance evangelistico, los Grupos ECO estan orientados a profundizar en los temas compartidos durante la predica, promover la comunion entre hermanos, acompanarse mutuamente en oracion y fomentar el discipulado practico.
+                A diferencia de una célula enfocada principalmente en el alcance evangelístico, los Grupos ECO están orientados a profundizar en los temas compartidos durante la prédica, promover la comunión entre hermanos, acompañarse mutuamente en oración y fomentar el discipulado práctico.
               </p>
 
               <div className="grid gap-2 min-[440px]:grid-cols-3">
-                <EcoPrincipleCard title="Evangelio" body="Reflexionamos y profundizamos en las ensenanzas biblicas para aplicarlas a la vida diaria." icon={BookOpen} />
+                <EcoPrincipleCard title="Evangelio" body="Reflexionamos y profundizamos en las enseñanzas bíblicas para aplicarlas a la vida diaria." icon={BookOpen} />
                 <EcoPrincipleCard title="Comunidad" body="Construimos relaciones sanas y significativas como familia en Cristo." icon={UsersRound} />
                 <EcoPrincipleCard title="Oracion" body="Compartimos necesidades, damos gracias y oramos unos por otros." icon={MessageCircle} />
               </div>
@@ -1671,9 +2215,9 @@ function PublicAuthGate({
     <div className={cx('rounded-[14px] border border-[#DCE6F5] bg-[#F8FBFF] p-3 shadow-[0_8px_18px_rgba(15,23,42,0.04)]', className)}>
       {!compact ? (
         <>
-          <p className="text-[13px] font-black leading-5 text-[#0B1F5B]">Inicia sesion o crea tu cuenta para participar.</p>
+          <p className="text-[13px] font-black leading-5 text-[#0B1F5B]">Inicia sesión o crea tu cuenta para participar.</p>
           <p className="mt-1 text-[12px] font-semibold leading-5 text-[#637295]">
-            Al entrar podras ver enlaces, abrir botones de accion, marcar Yo voy y guardar publicaciones.
+            Al entrar podrás ver enlaces, abrir botones de acción, marcar Yo voy y guardar publicaciones.
           </p>
         </>
       ) : (
@@ -1686,7 +2230,7 @@ function PublicAuthGate({
           onClick={() => onAuthRequired?.('login')}
           className="h-10 rounded-[12px] bg-[#0B1F5B] px-3 text-[12px] font-black text-white shadow-[0_10px_22px_rgba(11,31,91,0.18)] transition hover:bg-[#145CFF]"
         >
-          Iniciar sesion
+          Iniciar sesión
         </button>
         <button
           type="button"
@@ -1821,7 +2365,7 @@ function PublicationCard({
         <div className="relative">
           <button
             type="button"
-            aria-label="Opciones de publicacion"
+            aria-label="Opciones de publicación"
             onClick={onMenuToggle}
             className="grid h-10 w-9 place-items-center rounded-full text-[#0B1F5B] transition hover:bg-[#F2F5FA]"
           >
@@ -1912,16 +2456,16 @@ function PublicationCard({
               <button
                 type="button"
                 onClick={() => setDescriptionExpanded((current) => !current)}
-                className="mt-1 text-[14px] font-black text-[#145CFF]"
+                className="mt-1 block w-full text-right text-[14px] font-black text-[#145CFF]"
               >
-                {descriptionExpanded ? 'Ver menos' : 'Ver mas'}
+                {descriptionExpanded ? 'Ver menos' : 'Ver más'}
               </button>
             ) : null}
           </div>
         ) : null}
 
         {!onOpenEvent && !onOpenEco ? (
-          <button type="button" onClick={onOpenDetails} className="mt-3 text-[14px] font-black text-[#145CFF]">
+          <button type="button" onClick={onOpenDetails} className="ml-auto mt-3 block text-right text-[14px] font-black text-[#145CFF]">
             Ver detalles
           </button>
         ) : null}
@@ -2018,7 +2562,11 @@ function PublicationMediaCarousel({
       <div
         className={cx(
           'w-full overflow-hidden bg-black',
-          activeItem.type === 'driveVideo' ? 'aspect-[4/5] min-[560px]:aspect-video' : 'aspect-[16/8.5]',
+          activeItem.type === 'spotify'
+            ? 'h-[352px]'
+            : activeItem.type === 'driveVideo'
+              ? 'aspect-[4/5] min-[560px]:aspect-video'
+              : 'aspect-[16/8.5]',
         )}
       >
         <div className="relative h-full w-full">
@@ -2076,9 +2624,9 @@ function PublicationMedia({
 
   if (item.type === 'spotify') {
     return (
-      <div className="flex h-full items-center bg-[#0F172A] p-3">
+      <div className="h-full bg-[#0F172A]">
         <iframe
-          className="h-[152px] w-full rounded-[12px]"
+          className="h-full w-full border-0"
           src={getSpotifyEmbedUrl(item.url)}
           title={item.title || publicationTitle}
           allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
@@ -2156,56 +2704,56 @@ function PublicationDriveImage({
 
 function DriveVideoPlayer({ url, title, allowExternalOpen }: { url: string; title: string; allowExternalOpen: boolean }) {
   const directUrl = getGoogleDriveDownloadUrl(url);
-  const previewUrl = getGoogleDrivePreviewUrl(url);
   const fileUrl = getGoogleDriveFileUrl(url);
-  const [mode, setMode] = useState<'direct' | 'preview'>(directUrl ? 'direct' : 'preview');
+  const videoSources = Array.from(new Set([directUrl, url, fileUrl].filter(Boolean)));
+  const [sourceIndex, setSourceIndex] = useState(0);
   const [reloadKey, setReloadKey] = useState(0);
+  const currentSource = videoSources[Math.min(sourceIndex, Math.max(0, videoSources.length - 1))] || url;
+  const failed = sourceIndex >= videoSources.length;
 
   useEffect(() => {
-    setMode(directUrl ? 'direct' : 'preview');
+    setSourceIndex(0);
     setReloadKey(0);
-  }, [directUrl, previewUrl]);
+  }, [directUrl, fileUrl, url]);
 
-  if (mode === 'direct' && directUrl) {
-    return (
-      <div className="relative h-full w-full bg-black">
-        <video
-          key={`${directUrl}-${reloadKey}`}
-          className="h-full w-full object-contain"
-          src={directUrl}
-          title={title}
-          controls
-          playsInline
-          preload="metadata"
-          onError={() => setMode('preview')}
-        />
-        {allowExternalOpen ? (
-          <a
-            href={fileUrl}
-            target="_blank"
-            rel="noreferrer"
-            aria-label="Abrir video en Drive"
-            title="Abrir video en Drive"
-            className="absolute right-3 top-3 grid h-9 w-9 place-items-center rounded-full bg-black/70 text-white backdrop-blur"
-          >
-            <ExternalLink size={16} />
-          </a>
-        ) : null}
-      </div>
-    );
+  function handleVideoError() {
+    setSourceIndex((current) => current + 1);
   }
 
   return (
     <div className="relative h-full w-full bg-black">
-      <iframe key={`${previewUrl}-${reloadKey}`} className="h-full w-full" src={previewUrl} title={title} allow="autoplay" allowFullScreen />
-      <div className="absolute inset-x-3 bottom-3 flex items-center gap-2 rounded-[12px] bg-black/78 px-3 py-2 text-white shadow-[0_14px_32px_rgba(0,0,0,0.22)] backdrop-blur">
-        <p className="min-w-0 flex-1 text-[11px] font-bold leading-4">Drive esta procesando el video. Puede tardar unos minutos.</p>
+      {!failed ? (
+        <video
+          key={`${currentSource}-${reloadKey}`}
+          className="h-full w-full object-contain"
+          title={title}
+          controls
+          playsInline
+          preload="metadata"
+          onError={handleVideoError}
+        >
+          <source src={currentSource} />
+        </video>
+      ) : (
+        <div className="grid h-full w-full place-items-center px-4 text-center text-white">
+          <div>
+            <Video className="mx-auto h-10 w-10 text-white/72" />
+            <p className="mt-3 text-[13px] font-black">No fue posible reproducir el video aquí.</p>
+            <p className="mt-1 text-[11px] font-semibold leading-4 text-white/70">Puedes reintentar o abrirlo directamente en Drive.</p>
+          </div>
+        </div>
+      )}
+
+      <div className="absolute right-3 top-3 flex gap-2">
         <button
           type="button"
           aria-label="Reintentar video"
           title="Reintentar video"
-          onClick={() => setReloadKey((current) => current + 1)}
-          className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/14 text-white transition hover:bg-white/24"
+          onClick={() => {
+            setSourceIndex(0);
+            setReloadKey((current) => current + 1);
+          }}
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-black/70 text-white backdrop-blur transition hover:bg-black/82"
         >
           <RefreshCw size={15} />
         </button>
@@ -2216,9 +2764,9 @@ function DriveVideoPlayer({ url, title, allowExternalOpen }: { url: string; titl
             rel="noreferrer"
             aria-label="Abrir video en Drive"
             title="Abrir video en Drive"
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/14 text-white transition hover:bg-white/24"
+            className="grid h-9 w-9 place-items-center rounded-full bg-black/70 text-white backdrop-blur transition hover:bg-black/82"
           >
-            <ExternalLink size={15} />
+            <ExternalLink size={16} />
           </a>
         ) : null}
       </div>
@@ -2336,7 +2884,7 @@ function PublicationComposerModal({
 
       await onSave(payload);
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : 'No fue posible guardar la publicacion.');
+      setError(saveError instanceof Error ? saveError.message : 'No fue posible guardar la publicación.');
     } finally {
       setIsSubmitting(false);
     }
@@ -2360,7 +2908,7 @@ function PublicationComposerModal({
         onMouseDown={(event) => event.stopPropagation()}
       >
         <header className="flex h-14 items-center justify-between border-b border-[#E3EAF5] px-4">
-          <h2 className="text-sm font-black text-[#0B1F5B]">{publication ? 'Editar publicacion' : 'Crear publicacion'}</h2>
+          <h2 className="text-sm font-black text-[#0B1F5B]">{publication ? 'Editar publicación' : 'Crear publicación'}</h2>
           <button type="button" aria-label="Cerrar" onClick={onClose} className="grid h-9 w-9 place-items-center rounded-full text-[#0B1F5B] hover:bg-[#EAF2FF]">
             <X size={20} />
           </button>
@@ -2369,10 +2917,10 @@ function PublicationComposerModal({
         <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-[#F8FBFF] p-3.5">
           <div className="grid gap-3 min-[520px]:grid-cols-2">
             <SelectField label="Tipo" value={form.type} onChange={(value) => updateField('type', value as PublicationType)} options={typeOptions} />
-            <TextField label="Titulo" value={form.title} onChange={(value) => updateField('title', value)} icon={FileText} />
+            <TextField label="Título" value={form.title} onChange={(value) => updateField('title', value)} icon={FileText} />
           </div>
 
-          <TextAreaField label="Descripcion" value={form.description} onChange={(value) => updateField('description', value)} rows={4} />
+          <TextAreaField label="Descripción" value={form.description} onChange={(value) => updateField('description', value)} rows={4} />
 
           {form.type === 'Evento' ? (
             <div className="grid gap-3 rounded-[14px] border border-[#DCE6F5] bg-white p-3 shadow-[0_10px_24px_rgba(15,23,42,0.04)] min-[520px]:grid-cols-2">
@@ -2417,14 +2965,14 @@ function PublicationComposerModal({
 
           {form.type === 'Grupo ECO' ? (
             <div className="grid gap-3 rounded-[14px] border border-[#DCE6F5] bg-white p-3 shadow-[0_10px_24px_rgba(15,23,42,0.04)] min-[520px]:grid-cols-2">
-              <TextField label="Dia de reunion" value={form.ecoDay} onChange={(value) => updateField('ecoDay', value)} icon={CalendarDays} placeholder="Viernes" />
+              <TextField label="Día de reunión" value={form.ecoDay} onChange={(value) => updateField('ecoDay', value)} icon={CalendarDays} placeholder="Viernes" />
               <TextField label="Hora de reunion" value={form.ecoTime} onChange={(value) => updateField('ecoTime', value)} icon={Clock3} placeholder="7:00 p.m." />
               <TextField label="Anfitrion" value={form.ecoHost} onChange={(value) => updateField('ecoHost', value)} icon={House} placeholder="Nombre del anfitrion" />
               <TextField label="Moderador" value={form.ecoModerator} onChange={(value) => updateField('ecoModerator', value)} icon={UserCheck} placeholder="Nombre del moderador" />
               <TextField label="Telefono de contacto" value={form.ecoPhone} onChange={(value) => updateField('ecoPhone', value)} icon={Phone} type="tel" placeholder="+57..." />
               <TextField label="Barrio o sector" value={form.ecoNeighborhood} onChange={(value) => updateField('ecoNeighborhood', value)} icon={MapPin} placeholder="Barrio" />
               <TextField label="Ciudad" value={form.ecoCity} onChange={(value) => updateField('ecoCity', value)} icon={MapPinned} placeholder="Ibague" />
-              <TextField label="Direccion o punto de encuentro" value={form.ecoAddress} onChange={(value) => updateField('ecoAddress', value)} icon={Navigation} placeholder="Direccion o referencia" />
+              <TextField label="Dirección o punto de encuentro" value={form.ecoAddress} onChange={(value) => updateField('ecoAddress', value)} icon={Navigation} placeholder="Dirección o referencia" />
               <TextField label="Latitud" value={form.ecoLatitude} onChange={(value) => updateField('ecoLatitude', value)} icon={Compass} type="number" placeholder="4.4389" />
               <TextField label="Longitud" value={form.ecoLongitude} onChange={(value) => updateField('ecoLongitude', value)} icon={Compass} type="number" placeholder="-75.2322" />
               <TextField label="Inicio de vigencia" value={form.ecoValidFrom} onChange={(value) => updateField('ecoValidFrom', value)} icon={Clock3} type="datetime-local" />
@@ -2455,7 +3003,7 @@ function PublicationComposerModal({
           />
 
           <TextField
-            label="Cancion"
+            label="Canción"
             value={form.songUrl}
             onChange={(value) => updateField('songUrl', value)}
             icon={Music2}
@@ -2898,6 +3446,62 @@ function sortPublications(items: SoyibaPublication[]) {
   return [...items].sort((first, second) => Date.parse(second.createdAt) - Date.parse(first.createdAt));
 }
 
+function getLatestTransmission(publications: SoyibaPublication[]) {
+  return sortPublications(publications.filter((publication) => publication.type === 'Transmision'))[0] || null;
+}
+
+function sortHomeEvents(publications: SoyibaPublication[]) {
+  return [...publications].sort((first, second) => getEventSortTimestamp(second) - getEventSortTimestamp(first));
+}
+
+function getEventSortTimestamp(publication: SoyibaPublication) {
+  const eventTimestamp = Date.parse(publication.event.dateTime);
+
+  if (Number.isFinite(eventTimestamp)) {
+    return eventTimestamp;
+  }
+
+  const createdTimestamp = Date.parse(publication.createdAt);
+  return Number.isFinite(createdTimestamp) ? createdTimestamp : 0;
+}
+
+function getHomeEventImageSources(publication: SoyibaPublication) {
+  const imageItem = publication.mediaItems.find((item) => item.type === 'image');
+  return imageItem ? getGoogleDriveImageCandidates(imageItem.url) : [];
+}
+
+function clampIndex(index: number, length: number) {
+  if (length <= 0) {
+    return 0;
+  }
+
+  return Math.min(Math.max(index, 0), length - 1);
+}
+
+function readHomeEventOpened(publicationId: string) {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  try {
+    return window.localStorage.getItem(`soyiba.homeEventOpened.${publicationId}`) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function storeHomeEventOpened(publicationId: string) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(`soyiba.homeEventOpened.${publicationId}`, '1');
+  } catch {
+    // Local storage can be disabled in private contexts.
+  }
+}
+
 function buildPublicationShareUrl(publication: SoyibaPublication) {
   const screen = publication.type === 'Evento' ? 'eventos' : publication.type === 'Grupo ECO' ? 'eco' : 'inicio';
   return `${window.location.origin}${window.location.pathname}#${screen}/publicacion-${encodeURIComponent(publication.id)}`;
@@ -3077,6 +3681,18 @@ function formatEventLongDate(value: string) {
 
   return new Intl.DateTimeFormat('es-CO', {
     weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  }).format(new Date(value));
+}
+
+function formatBroadcastDate(value: string) {
+  if (!value || !Number.isFinite(Date.parse(value))) {
+    return 'Fecha por confirmar';
+  }
+
+  return new Intl.DateTimeFormat('es-CO', {
     day: 'numeric',
     month: 'long',
     year: 'numeric',

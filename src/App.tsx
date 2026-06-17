@@ -14,6 +14,7 @@ type ScreenId = 'inicio' | 'eventos' | 'eco' | 'donaciones' | 'perfil';
 type AuthMode = 'login' | 'register';
 
 const SESSION_STORAGE_KEY = 'soyiba.session';
+const LIVE_BADGE_TEST_STORAGE_KEY = 'soyiba.liveBadgeTest';
 
 const navigation: BottomNavItem<ScreenId>[] = [
   { id: 'inicio', label: 'Inicio', icon: Home },
@@ -46,6 +47,9 @@ export default function App() {
   const [publicationComposerOpen, setPublicationComposerOpen] = useState(false);
   const [publicationToOpenId, setPublicationToOpenId] = useState(initialSharedTarget?.publicationId || '');
   const [authMode, setAuthMode] = useState<AuthMode | null>(null);
+  const [liveNow, setLiveNow] = useState(() => isSundayLiveWindow(new Date()));
+  const [liveBadgeTestEnabled, setLiveBadgeTestEnabled] = useState(() => loadLiveBadgeTestFlag());
+  const showLiveBadge = liveNow || (liveBadgeTestEnabled && isLiveBadgeTestUser(session));
 
   useEffect(() => {
   function handleHashChange() {
@@ -62,6 +66,16 @@ export default function App() {
 
     window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
+
+  useEffect(() => {
+    function updateLiveState() {
+      setLiveNow(isSundayLiveWindow(new Date()));
+    }
+
+    updateLiveState();
+    const interval = window.setInterval(updateLiveState, 30000);
+    return () => window.clearInterval(interval);
   }, []);
 
   function handleSignedIn(nextSession: SoyibaSession) {
@@ -83,8 +97,18 @@ export default function App() {
     setActiveScreen('inicio');
   }
 
+  function handleLiveBadgeTestChange(enabled: boolean) {
+    setLiveBadgeTestEnabled(enabled);
+    storeLiveBadgeTestFlag(enabled);
+  }
+
   function handleOpenEventFromHome(publicationId: string) {
     setPublicationToOpenId(publicationId);
+    setActiveScreen('eventos');
+  }
+
+  function handleOpenEventsFromHome() {
+    setPublicationToOpenId('');
     setActiveScreen('eventos');
   }
 
@@ -114,9 +138,11 @@ export default function App() {
         onNotificationsClick={() => setAuthMode('login')}
         onComposerOpenChange={setPublicationComposerOpen}
         onOpenEventFromHome={handleOpenEventFromHome}
+        onOpenEventsFromHome={handleOpenEventsFromHome}
         onOpenEcoFromHome={handleOpenEcoFromHome}
         onPublicationOpened={() => undefined}
         onAuthRequired={setAuthMode}
+        showLiveBadge={liveNow}
       />
     );
   }
@@ -131,12 +157,16 @@ export default function App() {
       onNotificationsClick={() => setActiveScreen('perfil')}
       onComposerOpenChange={setPublicationComposerOpen}
       onOpenEventFromHome={handleOpenEventFromHome}
+      onOpenEventsFromHome={handleOpenEventsFromHome}
       onOpenEcoFromHome={handleOpenEcoFromHome}
       onPublicationOpened={() => setPublicationToOpenId('')}
       onAuthRequired={setAuthMode}
       onNavigate={setActiveScreen}
       onLogout={handleLogout}
       onSessionUpdated={handleSessionUpdated}
+      showLiveBadge={showLiveBadge}
+      liveBadgeTestEnabled={liveBadgeTestEnabled}
+      onLiveBadgeTestChange={handleLiveBadgeTestChange}
       onCreatePublication={() => {
         setActiveScreen('inicio');
         setPublicationComposerSignal(Date.now());
@@ -156,12 +186,16 @@ function SoyibaShell({
   onNotificationsClick,
   onComposerOpenChange,
   onOpenEventFromHome,
+  onOpenEventsFromHome,
   onOpenEcoFromHome,
   onPublicationOpened,
   onAuthRequired,
+  showLiveBadge = false,
   onNavigate,
   onLogout,
   onSessionUpdated,
+  liveBadgeTestEnabled = false,
+  onLiveBadgeTestChange,
   onCreatePublication,
   onOpenPublicationFromProfile,
 }: {
@@ -174,12 +208,16 @@ function SoyibaShell({
   onNotificationsClick: () => void;
   onComposerOpenChange: (open: boolean) => void;
   onOpenEventFromHome: (publicationId: string) => void;
+  onOpenEventsFromHome: () => void;
   onOpenEcoFromHome: (publicationId: string) => void;
   onPublicationOpened: () => void;
   onAuthRequired?: (mode: AuthMode) => void;
+  showLiveBadge?: boolean;
   onNavigate?: (screen: ScreenId) => void;
   onLogout?: () => void;
   onSessionUpdated?: (session: SoyibaSession) => void;
+  liveBadgeTestEnabled?: boolean;
+  onLiveBadgeTestChange?: (enabled: boolean) => void;
   onCreatePublication?: () => void;
   onOpenPublicationFromProfile?: (publication: SoyibaPublication) => void;
 }) {
@@ -196,11 +234,13 @@ function SoyibaShell({
                 openPublicationComposerSignal={publicationComposerSignal}
                 onPublicationComposerOpenChange={onComposerOpenChange}
                 onOpenEvent={onOpenEventFromHome}
+                onOpenEventsScreen={onOpenEventsFromHome}
                 onOpenEco={onOpenEcoFromHome}
                 openPublicationId={publicationToOpenId}
                 onPublicationOpened={onPublicationOpened}
                 publicMode={publicMode}
                 onAuthRequired={onAuthRequired}
+                showLiveBadge={showLiveBadge}
               />
             ) : null}
             {activeScreen === 'eventos' ? (
@@ -241,6 +281,8 @@ function SoyibaShell({
                 onLogout={onLogout || (() => undefined)}
                 onNavigate={onNavigate || (() => undefined)}
                 onSessionUpdated={onSessionUpdated || (() => undefined)}
+                liveBadgeTestEnabled={liveBadgeTestEnabled}
+                onLiveBadgeTestChange={onLiveBadgeTestChange}
                 onCreatePublication={onCreatePublication || (() => undefined)}
                 onOpenPublication={onOpenPublicationFromProfile || (() => undefined)}
               />
@@ -248,7 +290,9 @@ function SoyibaShell({
           </AnimatePresence>
         </main>
 
-        {publicMode || publicationComposerOpen ? null : <BottomNav activeTab={activeScreen} items={navigation} onChange={onNavigate || (() => undefined)} />}
+        {publicMode || publicationComposerOpen ? null : (
+          <BottomNav activeTab={activeScreen} items={navigation} showLiveBadge={showLiveBadge} onChange={onNavigate || (() => undefined)} />
+        )}
       </div>
     </div>
   );
@@ -258,6 +302,11 @@ function getPublicationScreen(publication: SoyibaPublication): ScreenId {
   if (publication.type === 'Evento') return 'eventos';
   if (publication.type === 'Grupo ECO') return 'eco';
   return 'inicio';
+}
+
+function isLiveBadgeTestUser(session: SoyibaSession | null) {
+  const role = String(session?.user.rolSistema || session?.user.role || '').trim().toLowerCase();
+  return role === 'admin' || role === 'moderador';
 }
 
 function readSharedPublicationTarget(): { screen: ScreenId; publicationId: string } | null {
@@ -320,6 +369,49 @@ function storeSession(session: SoyibaSession) {
 function clearStoredSession() {
   if (typeof window !== 'undefined') {
     window.localStorage.removeItem(SESSION_STORAGE_KEY);
+  }
+}
+
+function isSundayLiveWindow(date: Date) {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Bogota',
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(date);
+  const weekday = parts.find((part) => part.type === 'weekday')?.value || '';
+  const hour = Number(parts.find((part) => part.type === 'hour')?.value || 0);
+  const minute = Number(parts.find((part) => part.type === 'minute')?.value || 0);
+  const minutes = hour * 60 + minute;
+  return weekday === 'Sun' && minutes >= 9 * 60 + 50 && minutes <= 12 * 60 + 10;
+}
+
+function loadLiveBadgeTestFlag() {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  try {
+    return window.localStorage.getItem(LIVE_BADGE_TEST_STORAGE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function storeLiveBadgeTestFlag(enabled: boolean) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    if (enabled) {
+      window.localStorage.setItem(LIVE_BADGE_TEST_STORAGE_KEY, '1');
+    } else {
+      window.localStorage.removeItem(LIVE_BADGE_TEST_STORAGE_KEY);
+    }
+  } catch {
+    // Local storage can be disabled in private contexts.
   }
 }
 

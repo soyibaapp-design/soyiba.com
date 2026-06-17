@@ -186,7 +186,7 @@ export async function updateUserProfile(session: SoyibaSession, payload: UpdateP
 
 export async function updateUserPassword(session: SoyibaSession, currentPassword: string, newPassword: string): Promise<AuthResult> {
   if (!currentPassword || !newPassword) {
-    return { ok: false, error: 'Ingresa la contrasena actual y la nueva contrasena.' };
+    return { ok: false, error: 'Ingresa la contraseña actual y la nueva contraseña.' };
   }
 
   const response = await callAppsScript<AuthResponse>(
@@ -206,7 +206,7 @@ export async function updateUserPassword(session: SoyibaSession, currentPassword
     }),
   );
 
-  return preserveLocalOnlyUserFields(normalizeAuthResponse(response, 'No fue posible actualizar la contrasena.'), session);
+  return preserveLocalOnlyUserFields(normalizeAuthResponse(response, 'No fue posible actualizar la contraseña.'), session);
 }
 
 function normalizeAuthResponse(response: AuthResponse, fallbackError: string): AuthResult {

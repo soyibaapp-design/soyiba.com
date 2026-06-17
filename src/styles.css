@@ -17,6 +17,9 @@
 html {
   min-width: 320px;
   min-height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+  background: #f8fbff;
   -webkit-text-size-adjust: 100%;
 }
 
@@ -24,7 +27,9 @@ body {
   min-width: 320px;
   min-height: 100vh;
   margin: 0;
-  background: #061c4a;
+  overflow: hidden;
+  overscroll-behavior: none;
+  background: #f8fbff;
 }
 
 button,
@@ -33,7 +38,9 @@ input {
 }
 
 #root {
-  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
+  overscroll-behavior: none;
 }
 
 .safe-area {
@@ -44,7 +51,74 @@ input {
 }
 
 .soyiba-app-backdrop {
+  overscroll-behavior: none;
   background:
     linear-gradient(180deg, rgba(6, 28, 74, 0.55) 0%, rgba(248, 250, 252, 0.84) 42%, rgba(248, 250, 252, 0.96) 100%),
     url('../PrimaryAssets/back.png') center top / cover fixed no-repeat;
+}
+
+.soyiba-new-event-dot {
+  animation: soyiba-new-event-dot-pulse 1.35s ease-in-out infinite;
+  transform-origin: center;
+}
+
+@keyframes soyiba-new-event-dot-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 4px rgba(29, 140, 255, 0.18);
+    opacity: 1;
+    transform: translateZ(0) scale(1);
+  }
+
+  50% {
+    box-shadow: 0 0 0 9px rgba(29, 140, 255, 0);
+    opacity: 0.86;
+    transform: translateZ(0) scale(1.26);
+  }
+}
+
+.soyiba-live-badge {
+  animation: soyiba-live-badge-pulse 1.9s ease-in-out infinite;
+  transform-origin: center;
+}
+
+.soyiba-live-dot {
+  animation: soyiba-live-dot-pulse 1.15s ease-in-out infinite;
+  transform-origin: center;
+}
+
+@keyframes soyiba-live-badge-pulse {
+  0%,
+  100% {
+    box-shadow: 0 14px 28px rgba(230, 55, 55, 0.34), 0 0 0 0 rgba(230, 55, 55, 0.28);
+    transform: translateZ(0) scale(1);
+  }
+
+  50% {
+    box-shadow: 0 16px 34px rgba(230, 55, 55, 0.42), 0 0 0 7px rgba(230, 55, 55, 0);
+    transform: translateZ(0) scale(1.035);
+  }
+}
+
+@keyframes soyiba-live-dot-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.18);
+    opacity: 1;
+    transform: scale(1);
+  }
+
+  50% {
+    box-shadow: 0 0 0 7px rgba(255, 255, 255, 0);
+    opacity: 0.82;
+    transform: scale(1.28);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .soyiba-new-event-dot,
+  .soyiba-live-badge,
+  .soyiba-live-dot {
+    animation: none;
+  }
 }

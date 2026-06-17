@@ -141,7 +141,7 @@ const localPublications: SoyibaPublication[] = [
     type: 'Publicacion',
     title: '5 Claves para una vida de sabiduria',
     description:
-      'Descubre principios practicos que te ayudaran a tomar mejores decisiones y a vivir conforme a la voluntad de Dios.\nUn espacio para crecer juntos durante esta semana.',
+      'Descubre principios prácticos que te ayudarán a tomar mejores decisiones y a vivir conforme a la voluntad de Dios.\nUn espacio para crecer juntos durante esta semana.',
     createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
     author: {
       id: 'local-publisher',
@@ -222,10 +222,182 @@ const localPublications: SoyibaPublication[] = [
     eco: emptyEcoDetails(),
   },
   {
+    id: 'local-transmision-domingo',
+    type: 'Transmision',
+    title: 'Dios sigue obrando',
+    description:
+      'Prédica dominical para estudiar en casa y compartir con la familia.\nUna enseñanza sobre la fidelidad de Dios en cada temporada.',
+    createdAt: new Date(Date.now() - 20 * 60 * 60 * 1000).toISOString(),
+    author: {
+      id: 'local-publisher',
+      name: 'Pastor Alejandro X.',
+    },
+    mediaItems: [
+      {
+        id: 'media-local-transmision-image',
+        type: 'image',
+        url: 'https://images.unsplash.com/photo-1507692049790-de58290a4334?auto=format&fit=crop&w=1200&q=85',
+        title: 'Culto dominical SOY IBA',
+      },
+      {
+        id: 'media-local-transmision-video',
+        type: 'youtube',
+        url: 'https://www.youtube.com/watch?v=ysz5S6PUM-U',
+        title: 'Dios sigue obrando',
+      },
+      {
+        id: 'media-local-transmision-spotify',
+        type: 'spotify',
+        url: 'https://open.spotify.com/playlist/37i9dQZF1DX4sWSpwq3LiO',
+        title: 'IBA en Casa',
+      },
+    ],
+    cta: {
+      type: 'Enlace',
+      url: 'https://www.youtube.com/watch?v=ysz5S6PUM-U',
+    },
+    relatedLinks: [
+      {
+        id: 'link-local-transmision-guia',
+        title: 'Guia de estudio',
+        url: 'https://soyiba.org',
+      },
+    ],
+    savedCount: 18,
+    viewsCount: 240,
+    sharedCount: 9,
+    savedByCurrentUser: false,
+    event: emptyEventDetails(),
+    eco: emptyEcoDetails(),
+  },
+  {
+    id: 'local-noche-eco',
+    type: 'Evento',
+    title: 'Noche de Amistad ECO',
+    description:
+      'Un encuentro para invitar amigos, compartir la palabra y fortalecer los grupos de casa.\nTendremos cena sencilla, oración y dinámicas por sectores.',
+    createdAt: new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString(),
+    author: {
+      id: 'local-publisher',
+      name: 'Equipo ECO',
+    },
+    mediaItems: [
+      {
+        id: 'media-local-evento-eco',
+        type: 'image',
+        url: 'https://images.unsplash.com/photo-1511632765486-a01980e01a18?auto=format&fit=crop&w=1200&q=85',
+        title: 'Noche de Amistad ECO',
+      },
+    ],
+    cta: {
+      type: 'Inscripcion',
+      url: 'https://soyiba.org',
+    },
+    relatedLinks: [],
+    savedCount: 4,
+    viewsCount: 62,
+    sharedCount: 5,
+    savedByCurrentUser: false,
+    event: {
+      dateTime: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      place: 'En casas ECO',
+      validFrom: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+      validUntil: new Date(Date.now() + 6 * 24 * 60 * 60 * 1000).toISOString(),
+      capacityAvailable: 18,
+      attendeesCount: 22,
+      capacityTotal: 40,
+      currentUserGoing: false,
+      expired: false,
+    },
+    eco: emptyEcoDetails(),
+  },
+  {
+    id: 'local-jornada-servicio',
+    type: 'Evento',
+    title: 'Jornada de Servicio',
+    description:
+      'Serviremos juntos a familias de la ciudad con oración, alimentos y acompañamiento.\nPuedes participar con tu familia o con tu Grupo ECO.',
+    createdAt: new Date(Date.now() - 10 * 60 * 60 * 1000).toISOString(),
+    author: {
+      id: 'local-publisher',
+      name: 'Servicio IBA',
+    },
+    mediaItems: [
+      {
+        id: 'media-local-evento-servicio',
+        type: 'image',
+        url: 'https://images.unsplash.com/photo-1488521787991-ed7bbaae773c?auto=format&fit=crop&w=1200&q=85',
+        title: 'Jornada de Servicio',
+      },
+    ],
+    cta: {
+      type: 'Whatsapp',
+      phone: '573001112233',
+    },
+    relatedLinks: [],
+    savedCount: 6,
+    viewsCount: 95,
+    sharedCount: 8,
+    savedByCurrentUser: false,
+    event: {
+      dateTime: new Date(Date.now() + 18 * 24 * 60 * 60 * 1000).toISOString(),
+      place: 'IBA Sede Principal',
+      validFrom: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+      validUntil: new Date(Date.now() + 17 * 24 * 60 * 60 * 1000).toISOString(),
+      capacityAvailable: 9,
+      attendeesCount: 31,
+      capacityTotal: 40,
+      currentUserGoing: false,
+      expired: false,
+    },
+    eco: emptyEcoDetails(),
+  },
+  {
+    id: 'local-taller-matrimonios',
+    type: 'Evento',
+    title: 'Taller para Matrimonios',
+    description:
+      'Un espacio práctico para conversar, orar y fortalecer acuerdos de pareja desde la palabra.\nIncluye material de trabajo y café.',
+    createdAt: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
+    author: {
+      id: 'local-publisher',
+      name: 'Familias IBA',
+    },
+    mediaItems: [
+      {
+        id: 'media-local-evento-matrimonios',
+        type: 'image',
+        url: 'https://images.unsplash.com/photo-1529634806980-85c3dd6d34ac?auto=format&fit=crop&w=1200&q=85',
+        title: 'Taller para Matrimonios',
+      },
+    ],
+    cta: {
+      type: 'Inscripcion',
+      url: 'https://soyiba.org',
+    },
+    relatedLinks: [],
+    savedCount: 2,
+    viewsCount: 44,
+    sharedCount: 3,
+    savedByCurrentUser: false,
+    event: {
+      dateTime: new Date(Date.now() + 28 * 24 * 60 * 60 * 1000).toISOString(),
+      place: 'Auditorio IBA',
+      validFrom: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
+      validUntil: new Date(Date.now() + 27 * 24 * 60 * 60 * 1000).toISOString(),
+      capacityAvailable: 12,
+      attendeesCount: 28,
+      capacityTotal: 40,
+      currentUserGoing: false,
+      expired: false,
+    },
+    eco: emptyEcoDetails(),
+  },
+  {
     id: 'local-eco-centro',
     type: 'Grupo ECO',
     title: 'Grupo ECO Centro',
-    description: 'Encuentro semanal para orar, compartir la palabra y acompanar nuevos procesos de fe.',
+    description: 'Encuentro semanal para orar, compartir la palabra y acompañar nuevos procesos de fe.',
     createdAt: new Date(Date.now() - 26 * 60 * 60 * 1000).toISOString(),
     author: {
       id: 'local-eco-publisher',
@@ -330,7 +502,7 @@ export async function createPublication(session: SoyibaSession, payload: Publica
   );
 
   if (!response.ok || !response.publication) {
-    throw new Error(response.error || 'No fue posible crear la publicacion.');
+    throw new Error(response.error || 'No fue posible crear la publicación.');
   }
 
   invalidatePublicationFeedCache(session);
@@ -366,7 +538,7 @@ export async function updatePublication(session: SoyibaSession, publicationId: s
   );
 
   if (!response.ok || !response.publication) {
-    throw new Error(response.error || 'No fue posible actualizar la publicacion.');
+    throw new Error(response.error || 'No fue posible actualizar la publicación.');
   }
 
   invalidatePublicationFeedCache(session);
@@ -386,7 +558,7 @@ export async function deletePublication(session: SoyibaSession, publicationId: s
   );
 
   if (!response.ok) {
-    throw new Error(response.error || 'No fue posible eliminar la publicacion.');
+    throw new Error(response.error || 'No fue posible eliminar la publicación.');
   }
 
   invalidatePublicationFeedCache(session);
@@ -730,7 +902,7 @@ export function getPublicationCtaUrl(publication: SoyibaPublication) {
 
   if (publication.cta.type === 'Whatsapp') {
     const phone = String(publication.cta.phone || '').replace(/\D/g, '');
-    const message = `Bendiciones, quiero mas informacion sobre ${publication.title}`;
+    const message = `Bendiciones, quiero más información sobre ${publication.title}`;
     return phone ? `https://wa.me/${phone}?text=${encodeURIComponent(message)}` : '';
   }
 
