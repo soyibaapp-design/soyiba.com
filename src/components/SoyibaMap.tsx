@@ -106,16 +106,16 @@ export function SoyibaMap({
     };
   }, [center, focusUserLocation, markerKey, markers, userLocation, userZoom, zoom]);
 
-  return <div ref={containerRef} className={`min-h-72 w-full overflow-hidden rounded-lg ${className ?? ''}`} />;
+  return <div ref={containerRef} className={`relative z-0 min-h-72 w-full isolate overflow-hidden rounded-lg ${className ?? ''}`} />;
 }
 
 function buildMarkerPopup(marker: SoyibaMapMarker) {
   return [
     '<div style="min-width:190px">',
-    '<span style="display:inline-block;margin-bottom:6px;border-radius:9999px;background:#E6FAF1;padding:4px 9px;color:#087A57;font-size:11px;font-weight:900">Grupo ECO</span>',
+    '<span style="display:inline-block;margin-bottom:6px;border-radius:9999px;background:#EAF2FF;padding:4px 9px;color:#145CFF;font-size:11px;font-weight:900">Grupo ECO</span>',
     `<strong style="display:block;color:#0B1F5B;font-size:14px;line-height:18px">${escapeHtml(marker.title)}</strong>`,
     marker.locationLabel ? `<span style="display:block;margin-top:4px;color:#52637C;font-size:12px;font-weight:700">${escapeHtml(marker.locationLabel)}</span>` : '',
-    marker.distanceLabel ? `<span style="display:block;margin-top:8px;color:#087A57;font-size:12px;font-weight:900">Distancia: ${escapeHtml(marker.distanceLabel)}</span>` : '',
+    marker.distanceLabel ? `<span style="display:block;margin-top:8px;color:#145CFF;font-size:12px;font-weight:900">Distancia: ${escapeHtml(marker.distanceLabel)}</span>` : '',
     marker.subtitle && !marker.locationLabel && !marker.distanceLabel ? `<span style="display:block;margin-top:6px;color:#52637C;font-size:12px;font-weight:700">${escapeHtml(marker.subtitle)}</span>` : '',
     marker.mapsUrl
       ? `<a href="${escapeAttribute(marker.mapsUrl)}" target="_blank" rel="noreferrer" style="display:inline-block;margin-top:10px;font-weight:900;color:#145CFF">Abrir en Google Maps</a>`
@@ -126,7 +126,7 @@ function buildMarkerPopup(marker: SoyibaMapMarker) {
 
 function buildEcoHouseIconHtml() {
   return [
-    '<span style="display:grid;place-items:center;width:42px;height:42px;border-radius:18px 18px 18px 4px;background:#087A57;border:4px solid white;box-shadow:0 14px 30px rgba(8,122,87,.3);transform:rotate(-45deg)">',
+    '<span style="display:grid;place-items:center;width:42px;height:42px;border-radius:18px 18px 18px 4px;background:#145CFF;border:4px solid white;box-shadow:0 14px 30px rgba(20,92,255,.28);transform:rotate(-45deg)">',
     '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" style="transform:rotate(45deg);color:white" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">',
     '<path d="m3 10.5 9-7 9 7"></path>',
     '<path d="M5 9.5V20h14V9.5"></path>',

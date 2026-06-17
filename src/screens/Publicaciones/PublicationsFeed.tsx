@@ -608,8 +608,14 @@ export function PublicationsFeed({
         <div className="rounded-[14px] border border-[#BFD0EA] bg-[#EAF2FF] px-4 py-3 text-xs font-black text-[#0B1F5B]">{notice}</div>
       ) : null}
 
-      {variant === 'eco' && !isLoading && visiblePublications.length ? (
-        <EcoMapPanel publications={visiblePublications} userLocation={userLocation} locationStatus={locationStatus} onOpen={setActivePublicationId} />
+      {variant === 'eco' && !isLoading ? (
+        <div className="space-y-3">
+          <EcoAboutAccordion />
+          <EcoOpenHomeCard />
+          {visiblePublications.length ? (
+            <EcoMapPanel publications={visiblePublications} userLocation={userLocation} locationStatus={locationStatus} onOpen={setActivePublicationId} />
+          ) : null}
+        </div>
       ) : null}
 
       {isLoading ? (
@@ -844,7 +850,7 @@ function EcoHeader({
         <p className="mt-2 max-w-sm text-[14px] font-semibold leading-5 text-[#637295]">{subtitle}</p>
       </div>
 
-      <div className="inline-flex max-w-full items-center gap-2 rounded-full border border-[#CFE9DC] bg-[#F2FFF8] px-3 py-2 text-[12px] font-black text-[#087A57] shadow-[0_10px_24px_rgba(8,122,87,0.08)]">
+      <div className="inline-flex max-w-full items-center gap-2 rounded-full border border-[#BFD0EA] bg-[#EAF2FF] px-3 py-2 text-[12px] font-black text-[#145CFF] shadow-[0_10px_24px_rgba(20,92,255,0.08)]">
         <Compass size={16} className="shrink-0" />
         <span className="truncate">{statusLabel}</span>
       </div>
@@ -936,7 +942,7 @@ function EcoMapPanel({
                 <span className="block truncate text-[13px] font-black text-[#0B1F5B]">{publication.title}</span>
                 <span className="mt-0.5 block truncate text-[11px] font-bold text-[#637295]">{formatEcoLocation(publication) || 'Ubicacion por confirmar'}</span>
               </span>
-              {distanceKm !== null ? <span className="rounded-full bg-[#E6FAF1] px-2.5 py-1 text-[11px] font-black text-[#087A57]">{formatDistance(distanceKm)}</span> : null}
+              {distanceKm !== null ? <span className="rounded-full bg-[#EAF2FF] px-2.5 py-1 text-[11px] font-black text-[#145CFF]">{formatDistance(distanceKm)}</span> : null}
             </button>
           );
         })}
@@ -972,9 +978,9 @@ function EcoGroupCard({
   const sources = imageItem ? getGoogleDriveImageCandidates(imageItem.url) : [];
 
   return (
-    <article className="overflow-hidden rounded-[18px] border border-[#D7EFE4] bg-white shadow-[0_16px_38px_rgba(15,23,42,0.08)]">
+    <article className="overflow-hidden rounded-[18px] border border-[#DCE6F5] bg-white shadow-[0_16px_38px_rgba(15,23,42,0.08)]">
       <div className="grid min-h-[190px] grid-cols-[124px_minmax(0,1fr)] min-[520px]:grid-cols-[220px_minmax(0,1fr)]">
-        <div className="relative bg-[#EAF7F0]">
+        <div className="relative bg-[#EAF2FF]">
           {imageItem ? (
             <PublicationDriveImage sources={sources} alt={imageItem.title || publication.title} className="h-full min-h-[190px] w-full object-cover" />
           ) : (
@@ -983,7 +989,7 @@ function EcoGroupCard({
             </div>
           )}
 
-          <span className="absolute left-3 top-3 rounded-full bg-[#087A57]/92 px-3 py-1 text-[10px] font-black uppercase text-white shadow-[0_12px_26px_rgba(8,122,87,0.22)]">
+          <span className="absolute left-3 top-3 rounded-full bg-[#0B1F5B]/92 px-3 py-1 text-[10px] font-black uppercase text-white shadow-[0_12px_26px_rgba(11,31,91,0.22)]">
             ECO
           </span>
         </div>
@@ -992,7 +998,7 @@ function EcoGroupCard({
           <div className="flex min-w-0 items-start justify-between gap-2">
             <div className="min-w-0">
               <h3 className="line-clamp-2 text-[18px] font-black leading-5 text-[#0B1F5B]">{publication.title}</h3>
-              <p className="mt-1 truncate text-[12px] font-bold text-[#087A57]">{formatEcoLocation(publication) || 'Sector por confirmar'}</p>
+              <p className="mt-1 truncate text-[12px] font-bold text-[#145CFF]">{formatEcoLocation(publication) || 'Sector por confirmar'}</p>
             </div>
 
             {!publicMode ? (
@@ -1049,7 +1055,7 @@ function EcoGroupCard({
 function EcoCardMeta({ icon: Icon, label }: { icon: LucideIcon; label: string }) {
   return (
     <span className="inline-flex min-w-0 items-center gap-1.5">
-      <Icon size={14} className="shrink-0 text-[#087A57]" />
+      <Icon size={14} className="shrink-0 text-[#145CFF]" />
       <span className="truncate">{label}</span>
     </span>
   );
@@ -1299,7 +1305,7 @@ function PublicationDetailsModal({
                 />
               </div>
             ) : publication.type === 'Grupo ECO' ? (
-              <div className="mt-4 rounded-[14px] border border-[#D6F5E7] bg-[#F4FFF9] px-3 py-3 text-[13px] font-bold leading-5 text-[#0B5F45]">
+              <div className="mt-4 rounded-[14px] border border-[#DCE6F5] bg-[#F8FBFF] px-3 py-3 text-[13px] font-bold leading-5 text-[#145CFF]">
                 Publicacion de Grupo ECO
               </div>
             ) : null}
@@ -1373,8 +1379,6 @@ function EcoGroupModal({
   onAuthRequired?: (mode: 'login' | 'register') => void;
   onOpenImage: (preview: ImagePreview) => void;
 }) {
-  const mapsUrl = buildGoogleMapsUrl(publication);
-  const streetViewUrl = buildStreetViewUrl(publication);
   const distanceKm = getEcoDistanceKm(publication, userLocation);
 
   return (
@@ -1395,7 +1399,7 @@ function EcoGroupModal({
         onMouseDown={(event) => event.stopPropagation()}
       >
         <header className="flex items-center gap-3 px-4 py-3">
-          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#E6FAF1] text-[#087A57] ring-2 ring-[#EEF2F7]">
+          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#EAF2FF] text-[#145CFF] ring-2 ring-[#EEF2F7]">
             <House size={23} />
           </span>
 
@@ -1429,12 +1433,12 @@ function EcoGroupModal({
                 )}
               </div>
 
-              {distanceKm !== null ? <span className="rounded-full bg-[#E6FAF1] px-3 py-1.5 text-[12px] font-black text-[#087A57]">{formatDistance(distanceKm)}</span> : null}
+              {distanceKm !== null ? <span className="rounded-full bg-[#EAF2FF] px-3 py-1.5 text-[12px] font-black text-[#145CFF]">{formatDistance(distanceKm)}</span> : null}
             </div>
 
             {publication.description ? <p className="whitespace-pre-line text-[14px] font-medium leading-6 text-[#202B3C]">{publication.description}</p> : null}
 
-            <div className="grid overflow-hidden rounded-[14px] border border-[#D6F5E7] bg-[#F8FFFB] min-[440px]:grid-cols-2">
+            <div className="grid overflow-hidden rounded-[14px] border border-[#DCE6F5] bg-[#F8FBFF] min-[440px]:grid-cols-2">
               <EventInfoTile icon={CalendarDays} label="Dia" value={publication.eco.day || 'Por confirmar'} />
               <EventInfoTile icon={Clock3} label="Hora" value={publication.eco.time || 'Por confirmar'} />
               <EventInfoTile icon={MapPin} label="Barrio" value={publication.eco.neighborhood || 'Por confirmar'} subvalue={publication.eco.city} />
@@ -1444,10 +1448,6 @@ function EcoGroupModal({
               <EventInfoTile icon={Phone} label="Contacto" value={publication.eco.phone || 'Por confirmar'} />
               <EventInfoTile icon={UsersRound} label="Asistentes" value={`${formatCount(publication.eco.attendeesCount)} asistentes`} />
             </div>
-
-            <EcoAboutAccordion />
-            <EcoOpenHomeCard />
-            <EcoLocationFrame publication={publication} mapsUrl={mapsUrl} streetViewUrl={streetViewUrl} />
 
             {!publicMode && publication.relatedLinks.length ? (
               <div className="space-y-2">
@@ -1503,7 +1503,7 @@ function EcoAboutAccordion() {
         className="flex min-h-[54px] w-full items-center justify-between gap-3 px-3 text-left"
       >
         <span className="inline-flex min-w-0 items-center gap-2 text-[14px] font-black text-[#0B1F5B]">
-          <BookOpen size={18} className="shrink-0 text-[#087A57]" />
+          <BookOpen size={18} className="shrink-0 text-[#145CFF]" />
           <span className="truncate">¿Qué son los Grupos ECO?</span>
         </span>
         <ChevronDown size={18} className={cx('shrink-0 text-[#637295] transition', open && 'rotate-180')} />
@@ -1543,8 +1543,8 @@ function EcoAboutAccordion() {
 
 function EcoPrincipleCard({ title, body, icon: Icon }: { title: string; body: string; icon: LucideIcon }) {
   return (
-    <div className="rounded-[12px] border border-[#D6F5E7] bg-[#F8FFFB] p-3">
-      <span className="grid h-9 w-9 place-items-center rounded-full bg-[#E6FAF1] text-[#087A57]">
+    <div className="rounded-[12px] border border-[#DCE6F5] bg-[#F8FBFF] p-3">
+      <span className="grid h-9 w-9 place-items-center rounded-full bg-[#EAF2FF] text-[#145CFF]">
         <Icon size={17} />
       </span>
       <h4 className="mt-2 text-[12px] font-black text-[#0B1F5B]">{title}</h4>
@@ -1557,14 +1557,14 @@ function EcoOpenHomeCard() {
   const url = `https://wa.me/573243339375?text=${encodeURIComponent('Bendiciones, quiero abrir un nuevo Grupo ECO en mi hogar.')}`;
 
   return (
-    <section className="rounded-[14px] border border-[#D6F5E7] bg-[#F2FFF8] p-3 shadow-[0_8px_18px_rgba(8,122,87,0.06)]">
+    <section className="rounded-[14px] border border-[#BFD0EA] bg-[#EAF2FF] p-3 shadow-[0_8px_18px_rgba(20,92,255,0.08)]">
       <div className="flex items-start gap-3">
-        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white text-[#087A57] shadow-[0_8px_18px_rgba(8,122,87,0.12)]">
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-white text-[#145CFF] shadow-[0_8px_18px_rgba(20,92,255,0.12)]">
           <House size={19} />
         </span>
         <div className="min-w-0 flex-1">
           <h3 className="text-[14px] font-black text-[#0B1F5B]">Comunidad en casa</h3>
-          <p className="mt-1 text-[13px] font-black text-[#087A57]">¿Quieres abrir un nuevo ECO?</p>
+          <p className="mt-1 text-[13px] font-black text-[#145CFF]">¿Quieres abrir un nuevo ECO?</p>
           <p className="mt-1 text-[12px] font-semibold leading-5 text-[#52637C]">
             Ayudanos a seguir fortaleciendo nuestra comunidad. Si deseas abrir un Grupo ECO en tu hogar, contactanos.
           </p>
@@ -1574,72 +1574,11 @@ function EcoOpenHomeCard() {
         href={url}
         target="_blank"
         rel="noreferrer"
-        className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-[12px] bg-[#087A57] px-4 text-[12px] font-black text-white shadow-[0_12px_24px_rgba(8,122,87,0.18)] transition hover:bg-[#066347]"
+        className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-[12px] bg-[#0B1F5B] px-4 text-[12px] font-black text-white shadow-[0_12px_24px_rgba(11,31,91,0.18)] transition hover:bg-[#145CFF]"
       >
         Contactanos
         <ExternalLink size={15} />
       </a>
-    </section>
-  );
-}
-
-function EcoLocationFrame({
-  publication,
-  mapsUrl,
-  streetViewUrl,
-}: {
-  publication: SoyibaPublication;
-  mapsUrl: string;
-  streetViewUrl: string;
-}) {
-  const coordinates = getEcoCoordinates(publication);
-
-  if (!coordinates) {
-    return (
-      <section className="rounded-[14px] border border-[#DCE6F5] bg-[#F8FBFF] p-3 text-[13px] font-bold text-[#637295]">
-        Ubicacion en mapa por confirmar.
-      </section>
-    );
-  }
-
-  return (
-    <section className="overflow-hidden rounded-[14px] border border-[#DCE6F5] bg-white shadow-[0_8px_18px_rgba(15,23,42,0.04)]">
-      <div className="flex items-center justify-between gap-3 px-3 py-3">
-        <div className="min-w-0">
-          <h3 className="text-[14px] font-black text-[#0B1F5B]">Ubicacion</h3>
-          <p className="truncate text-[12px] font-semibold text-[#637295]">{publication.eco.address || formatEcoLocation(publication)}</p>
-        </div>
-        <MapPin size={19} className="shrink-0 text-[#145CFF]" />
-      </div>
-
-      <iframe
-        title={`Mapa de ${publication.title}`}
-        src={buildGoogleMapEmbedUrl(publication)}
-        className="h-[240px] w-full border-0"
-        loading="lazy"
-        referrerPolicy="no-referrer-when-downgrade"
-      />
-
-      <div className="grid gap-2 bg-[#F8FBFF] p-3 min-[420px]:grid-cols-2">
-        <a
-          href={mapsUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-[12px] bg-[#0B1F5B] px-3 text-[12px] font-black text-white transition hover:bg-[#145CFF]"
-        >
-          Google Maps
-          <ExternalLink size={15} />
-        </a>
-        <a
-          href={streetViewUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-[12px] border border-[#BFD0EA] bg-white px-3 text-[12px] font-black text-[#145CFF] transition hover:bg-[#EAF2FF]"
-        >
-          Street View
-          <ExternalLink size={15} />
-        </a>
-      </div>
     </section>
   );
 }
@@ -1654,8 +1593,8 @@ function EcoAttendButton({ publication, busy, onClick }: { publication: SoyibaPu
       disabled={busy}
       aria-pressed={active}
       className={cx(
-        'inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-[13px] px-5 text-sm font-black text-white shadow-[0_12px_24px_rgba(5,150,105,0.2)] transition disabled:cursor-not-allowed disabled:bg-slate-400 disabled:shadow-none',
-        active ? 'bg-[#07865B] hover:bg-[#04724D]' : 'bg-[#145CFF] hover:bg-[#0B4BE0]',
+        'inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-[13px] px-5 text-sm font-black text-white shadow-[0_12px_24px_rgba(20,92,255,0.2)] transition disabled:cursor-not-allowed disabled:bg-slate-400 disabled:shadow-none',
+        active ? 'bg-[#0B1F5B] hover:bg-[#145CFF]' : 'bg-[#145CFF] hover:bg-[#0B4BE0]',
       )}
     >
       {busy ? <LoaderCircle size={17} className="animate-spin" /> : <UserCheck size={17} />}
@@ -1671,7 +1610,7 @@ function PublicationTypeBadge({ publication }: { publication: SoyibaPublication 
 
   const tone =
     publication.type === 'Grupo ECO'
-      ? 'bg-[#E6FAF1] text-[#087A57]'
+      ? 'bg-[#EAF2FF] text-[#145CFF]'
       : publication.type === 'Evento'
         ? 'bg-[#EEF1F6] text-[#1F2937]'
         : 'bg-[#EAF2FF] text-[#145CFF]';
@@ -1906,7 +1845,7 @@ function PublicationCard({
             <button
               type="button"
               onClick={onOpenEco}
-              className="inline-flex h-11 shrink-0 items-center justify-center rounded-[12px] bg-[#087A57] px-4 text-sm font-black text-white shadow-[0_12px_24px_rgba(8,122,87,0.2)] transition hover:bg-[#066347]"
+              className="inline-flex h-11 shrink-0 items-center justify-center rounded-[12px] bg-[#0B1F5B] px-4 text-sm font-black text-white shadow-[0_12px_24px_rgba(11,31,91,0.2)] transition hover:bg-[#145CFF]"
             >
               Ver Grupo ECO
             </button>
@@ -2437,7 +2376,7 @@ function PublicationComposerModal({
           ) : null}
 
           {form.type === 'Grupo ECO' ? (
-            <div className="grid gap-3 rounded-[14px] border border-[#D6F5E7] bg-white p-3 shadow-[0_10px_24px_rgba(15,23,42,0.04)] min-[520px]:grid-cols-2">
+            <div className="grid gap-3 rounded-[14px] border border-[#DCE6F5] bg-white p-3 shadow-[0_10px_24px_rgba(15,23,42,0.04)] min-[520px]:grid-cols-2">
               <TextField label="Dia de reunion" value={form.ecoDay} onChange={(value) => updateField('ecoDay', value)} icon={CalendarDays} placeholder="Viernes" />
               <TextField label="Hora de reunion" value={form.ecoTime} onChange={(value) => updateField('ecoTime', value)} icon={Clock3} placeholder="7:00 p.m." />
               <TextField label="Anfitrion" value={form.ecoHost} onChange={(value) => updateField('ecoHost', value)} icon={House} placeholder="Nombre del anfitrion" />
@@ -2716,7 +2655,7 @@ function ImageLightbox({ preview, onClose }: { preview: ImagePreview; onClose: (
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-[90] flex flex-col bg-black/88 p-4"
+      className="fixed inset-0 z-[140] flex flex-col bg-black/88 p-4"
       onClick={onClose}
     >
       <div className="mx-auto flex h-12 w-full max-w-3xl items-center justify-between gap-3 text-white">
@@ -3009,25 +2948,6 @@ function buildGoogleMapsUrl(publication: SoyibaPublication) {
 
   const query = [publication.eco.address, publication.eco.neighborhood, publication.eco.city].filter(Boolean).join(', ');
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query || publication.title)}`;
-}
-
-function buildStreetViewUrl(publication: SoyibaPublication) {
-  const coordinates = getEcoCoordinates(publication);
-
-  if (!coordinates) {
-    return buildGoogleMapsUrl(publication);
-  }
-
-  return `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${coordinates.latitude},${coordinates.longitude}`;
-}
-
-function buildGoogleMapEmbedUrl(publication: SoyibaPublication) {
-  const coordinates = getEcoCoordinates(publication);
-  const query = coordinates
-    ? `${coordinates.latitude},${coordinates.longitude}`
-    : [publication.eco.address, publication.eco.neighborhood, publication.eco.city].filter(Boolean).join(', ') || publication.title;
-
-  return `https://www.google.com/maps?q=${encodeURIComponent(query)}&z=16&output=embed`;
 }
 
 function haversineDistanceKm(from: GeoPoint, to: GeoPoint) {
