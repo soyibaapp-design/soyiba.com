@@ -150,8 +150,8 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
   }
 
   return (
-    <main className="soyiba-app-backdrop min-h-screen overflow-x-hidden text-[#06245c]">
-      <div className="mx-auto min-h-[100svh] w-full max-w-3xl overflow-hidden bg-[#061c4a]/88 shadow-2xl shadow-slate-950/30 backdrop-blur-[1px]">
+    <main className="soyiba-app-backdrop h-[100dvh] overflow-x-hidden overflow-y-auto overscroll-contain text-[#06245c]">
+      <div className="mx-auto min-h-full w-full max-w-3xl bg-[#061c4a]/88 pb-5 shadow-2xl shadow-slate-950/30 backdrop-blur-[1px]">
         <AuthHero mode={mode} />
 
         <motion.section
@@ -159,17 +159,25 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
           initial={false}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.18, ease: 'easeOut' }}
-          className={`relative mx-auto mt-4 w-[90%] bg-white px-4 pb-[max(env(safe-area-inset-bottom),0.8rem)] shadow-[0_18px_50px_rgba(4,20,52,0.14)] sm:px-8 md:px-10 ${
+          className={`relative z-10 mx-auto -mt-5 w-[92%] bg-gradient-to-b from-white to-[#f8fbff] px-4 pb-[max(env(safe-area-inset-bottom),1rem)] shadow-[0_18px_50px_rgba(4,20,52,0.16)] ring-1 ring-white/80 sm:w-[84%] sm:px-6 md:px-7 ${
             isRegister
-              ? 'rounded-[26px] pt-4'
-              : 'rounded-[26px] pt-4'
+              ? 'max-w-[620px] rounded-[24px] pt-4'
+              : 'max-w-[520px] rounded-[24px] pt-4'
           }`}
         >
           {mode === 'login' ? (
-            <form onSubmit={handleLogin} className="mx-auto w-full max-w-xl">
-              <h1 className="text-[20px] font-bold leading-tight tracking-normal text-[#06245c]">Iniciar sesión</h1>
+            <form onSubmit={handleLogin} className="mx-auto w-full max-w-md">
+              <div className="flex items-center gap-3">
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-[#1459d4]/10 text-[#1459d4] ring-1 ring-[#1459d4]/10" aria-hidden="true">
+                  <LockKeyhole size={18} strokeWidth={2} />
+                </span>
+                <div className="min-w-0">
+                  <h1 className="text-[19px] font-bold leading-tight tracking-normal text-[#06245c]">Iniciar sesión</h1>
+                  <p className="mt-1 text-[12px] leading-4 text-[#5b6a8f]">Bienvenido de nuevo a SOY IBA.</p>
+                </div>
+              </div>
 
-              <div className="mt-4 space-y-3">
+              <div className="mt-4 space-y-2.5">
                 <AuthField
                   id="login-email"
                   label="Correo electrónico"
@@ -201,7 +209,7 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
                 />
               </div>
 
-              <div className="mt-2.5 flex justify-end">
+              <div className="mt-2 flex justify-end">
                 <button type="button" className="max-w-full whitespace-normal pr-1 text-right text-[11px] font-medium text-[#115bd8] transition hover:text-[#06245c]">
                   ¿Olvidaste tu contraseña?
                 </button>
@@ -214,7 +222,7 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
               <button
                 type="button"
                 onClick={() => switchMode('register')}
-                className="mt-3.5 flex h-11 w-full items-center justify-between rounded-xl border border-[#1459d4] bg-white px-4 text-sm font-semibold text-[#1459d4] transition hover:bg-blue-50"
+                className="mt-3 flex h-10 w-full items-center justify-between rounded-xl border border-[#1459d4] bg-white px-4 text-[13px] font-semibold text-[#1459d4] transition hover:bg-blue-50"
               >
                 <UserPlus size={18} aria-hidden="true" />
                 <span>Crear cuenta</span>
@@ -223,25 +231,28 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
               <AuthFooter />
             </form>
           ) : (
-            <form onSubmit={handleRegister} className="mx-auto w-full max-w-2xl">
-              <div className="flex items-start gap-5">
+            <form onSubmit={handleRegister} className="mx-auto w-full max-w-xl">
+              <div className="flex items-start gap-3">
                 <button
                   type="button"
                   onClick={() => switchMode('login')}
                   aria-label="Volver al inicio de sesión"
-                  className="mt-1 grid h-7 w-7 shrink-0 place-items-center rounded-full text-[#1459d4] transition hover:bg-blue-50"
+                  className="mt-1 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#1459d4]/10 text-[#1459d4] transition hover:bg-blue-50"
                 >
-                  <ArrowLeft size={20} aria-hidden="true" />
+                  <ArrowLeft size={18} aria-hidden="true" />
                 </button>
-                <div>
-                  <h1 className="text-[20px] font-bold leading-tight tracking-normal text-[#06245c]">Crear cuenta</h1>
-                  <p className="mt-2 text-[14px] leading-5 text-slate-500">
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-[#1459d4]/10 text-[#1459d4] ring-1 ring-[#1459d4]/10" aria-hidden="true">
+                  <UserPlus size={18} strokeWidth={2} />
+                </span>
+                <div className="min-w-0">
+                  <h1 className="text-[19px] font-bold leading-tight tracking-normal text-[#06245c]">Crear cuenta</h1>
+                  <p className="mt-1 text-[12px] leading-4 text-[#5b6a8f]">
                     Completa la información para crear tu cuenta.
                   </p>
                 </div>
               </div>
 
-              <div className="mt-5 grid gap-3.5 sm:grid-cols-2">
+              <div className="mt-4 grid gap-2.5 sm:grid-cols-2">
                 <AuthField
                   id="register-first-name"
                   label="Nombres"
@@ -262,7 +273,7 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
                 />
               </div>
 
-              <div className="mt-3.5 space-y-3.5">
+              <div className="mt-2.5 space-y-2.5">
                 <AuthField
                   id="register-email"
                   label="Correo electrónico"
@@ -287,7 +298,7 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
                 />
               </div>
 
-              <div className="mt-3.5 grid gap-3.5 sm:grid-cols-2">
+              <div className="mt-2.5 grid gap-2.5 sm:grid-cols-2">
                 <AuthField
                   id="register-password"
                   label="Contraseña"
@@ -324,16 +335,16 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
                 />
               </div>
 
-              <div className="mt-3.5 text-[11px] text-[#4d5b7d]">
+              <div className="mt-3 text-[11px] leading-4 text-[#4d5b7d]">
                 <p className="font-medium">Tu contraseña debe contener:</p>
-                <div className="mt-2 grid gap-1.5">
+                <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
                   {passwordRules.map((rule) => (
                     <PasswordRule key={rule.label} label={rule.label} isMet={rule.isMet} />
                   ))}
                 </div>
               </div>
 
-              <label className="mt-4 flex items-start gap-2.5 text-[11px] leading-5 text-[#06245c]">
+              <label className="mt-3 flex items-start gap-2.5 text-[11px] leading-4 text-[#06245c]">
                 <input
                   type="checkbox"
                   checked={acceptedTerms}
@@ -406,9 +417,9 @@ function AuthField({
 }: AuthFieldProps) {
   return (
     <label htmlFor={id} className="block">
-      <span className="mb-1 block text-xs font-semibold text-[#06245c]">{label}</span>
-      <span className="flex h-11 items-center gap-2.5 rounded-xl border border-[#d7ddec] bg-white px-3.5 text-[#97a0bd] shadow-[0_10px_30px_rgba(9,31,75,0.04)] transition focus-within:border-[#1459d4] focus-within:ring-4 focus-within:ring-blue-100">
-        <Icon size={18} strokeWidth={1.8} aria-hidden="true" className="shrink-0" />
+      <span className="mb-1 block text-[11px] font-semibold text-[#06245c]">{label}</span>
+      <span className="flex h-10 items-center gap-2 rounded-xl border border-[#d7ddec] bg-white px-3 text-[#97a0bd] shadow-[0_10px_30px_rgba(9,31,75,0.04)] transition focus-within:border-[#1459d4] focus-within:ring-4 focus-within:ring-blue-100">
+        <Icon size={16} strokeWidth={1.8} aria-hidden="true" className="shrink-0" />
         <input
           id={id}
           type={type}
@@ -417,7 +428,7 @@ function AuthField({
           inputMode={inputMode}
           onChange={(event) => onChange(event.target.value)}
           placeholder={placeholder}
-          className="h-full min-w-0 flex-1 bg-transparent text-xs font-medium text-[#06245c] outline-none placeholder:text-[#98a1bd]"
+          className="h-full min-w-0 flex-1 bg-transparent text-[12px] font-medium text-[#06245c] outline-none placeholder:text-[#98a1bd]"
           required
         />
         {rightSlot}
@@ -444,11 +455,11 @@ function PrimaryAuthButton({ label, isLoading }: { label: string; isLoading: boo
     <button
       type="submit"
       disabled={isLoading}
-      className="mt-3.5 flex h-11 w-full items-center justify-center rounded-xl bg-[#062b70] px-4 text-sm font-bold text-white shadow-[0_18px_45px_rgba(6,43,112,0.25)] transition hover:bg-[#041f55] disabled:cursor-not-allowed disabled:bg-slate-400"
+      className="mt-3 flex h-10 w-full items-center justify-center rounded-xl bg-[#062b70] px-4 text-[13px] font-bold text-white shadow-[0_18px_45px_rgba(6,43,112,0.25)] transition hover:bg-[#041f55] disabled:cursor-not-allowed disabled:bg-slate-400"
     >
       {isLoading ? <LoaderCircle className="mr-2 animate-spin" size={18} aria-hidden="true" /> : null}
       <span className="flex-1 text-center">{label}</span>
-      <ArrowRight size={22} strokeWidth={2} aria-hidden="true" />
+      <ArrowRight size={20} strokeWidth={2} aria-hidden="true" />
     </button>
   );
 }
@@ -457,8 +468,8 @@ function PasswordRule({ label, isMet }: { label: string; isMet: boolean }) {
   const Icon = isMet ? CheckCircle2 : Circle;
 
   return (
-    <div className="flex items-center gap-3 text-[#06245c]">
-      <Icon size={12} aria-hidden="true" className={isMet ? 'text-[#1459d4]' : 'text-slate-300'} />
+    <div className="flex items-center gap-2 text-[#06245c]">
+      <Icon size={11} aria-hidden="true" className={isMet ? 'text-[#1459d4]' : 'text-slate-300'} />
       <span>{label}</span>
     </div>
   );
@@ -469,7 +480,7 @@ function AuthError({ message }: { message: string }) {
     return null;
   }
 
-  return <p className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">{message}</p>;
+  return <p className="mt-2.5 rounded-xl bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">{message}</p>;
 }
 
 function InlineLink({ children, onClick }: { children: ReactNode; onClick: () => void }) {
@@ -540,12 +551,12 @@ const legalContent = {
 } as const;
 function AuthFooter() {
   return (
-    <footer className="mt-3 flex items-center justify-center gap-3">
+    <footer className="mt-2.5 flex items-center justify-center gap-3">
       <span className="h-px flex-1 bg-slate-300" aria-hidden="true" />
       <img
         src={iglesiaFooterLogo}
         alt="Iglesia Bíblica Antioquía"
-        className="h-auto w-24 shrink-0 select-none"
+        className="h-auto w-20 shrink-0 select-none"
         draggable={false}
       />
       <span className="h-px flex-1 bg-slate-300" aria-hidden="true" />
