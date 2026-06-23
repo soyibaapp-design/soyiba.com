@@ -28,6 +28,7 @@ type UsersManagementScreenProps = {
   session: SoyibaSession;
   onBack: () => void;
   onSessionUpdated: (session: SoyibaSession) => void;
+  onModalOpenChange?: (open: boolean) => void;
 };
 
 type PermissionKey = 'publicador' | 'publicadorEco' | 'publicadorEvento';
@@ -43,7 +44,7 @@ const permissionOptions: Array<{ id: PermissionKey; label: string; icon: LucideI
   { id: 'publicadorEvento', label: 'Eventos', icon: CheckCircle2, tone: 'bg-[#E2F8EC] text-[#047857]' },
 ];
 
-export function UsersManagementScreen({ session, onBack, onSessionUpdated }: UsersManagementScreenProps) {
+export function UsersManagementScreen({ session, onBack, onSessionUpdated, onModalOpenChange }: UsersManagementScreenProps) {
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
@@ -51,6 +52,11 @@ export function UsersManagementScreen({ session, onBack, onSessionUpdated }: Use
   const [editingUser, setEditingUser] = useState<ManagedUser | null>(null);
   const [savedMessage, setSavedMessage] = useState('');
   const canManage = isManager(session.user);
+
+  useEffect(() => {
+    onModalOpenChange?.(Boolean(editingUser));
+    return () => onModalOpenChange?.(false);
+  }, [editingUser, onModalOpenChange]);
 
   useEffect(() => {
     if (!canManage) {

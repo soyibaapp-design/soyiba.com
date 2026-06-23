@@ -226,6 +226,7 @@ function SoyibaShell({
 }) {
   const [sideMenuOpen, setSideMenuOpen] = useState(false);
   const [churchInfoOpen, setChurchInfoOpen] = useState(false);
+  const [usersManagementModalOpen, setUsersManagementModalOpen] = useState(false);
 
   return (
     <>
@@ -300,12 +301,13 @@ function SoyibaShell({
                   session={session}
                   onBack={() => onNavigate?.('perfil')}
                   onSessionUpdated={onSessionUpdated || (() => undefined)}
+                  onModalOpenChange={setUsersManagementModalOpen}
                 />
               ) : null}
             </AnimatePresence>
           </main>
 
-          {publicMode || publicationComposerOpen ? null : (
+          {publicMode || publicationComposerOpen || usersManagementModalOpen ? null : (
             <BottomNav activeTab={activeScreen} items={navigation} showLiveBadge={showLiveBadge} onChange={onNavigate || (() => undefined)} />
           )}
         </div>
