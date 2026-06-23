@@ -40,10 +40,7 @@ type SideMenuProps = {
 
 type StackCard = {
   id: string;
-  logo: string;
-  logoColor: string;
   title: string;
-  description: string;
   image: string;
   imageAlt: string;
 };
@@ -66,37 +63,25 @@ const menuItems: Array<{ id: SideMenuScreenId; label: string; icon: LucideIcon }
 const stackCards: StackCard[] = [
   {
     id: 'iglesia-biblica-antioquia',
-    logo: 'IBA',
-    logoColor: '#38bdf8',
     title: 'Iglesia Bíblica Antioquía',
-    description: 'Bienvenida',
     image: primaryAssets.ibaIntro,
     imageAlt: 'Iglesia Bíblica Antioquía',
   },
   {
     id: 'vision',
-    logo: 'VISIÓN',
-    logoColor: '#22c55e',
     title: 'Visión',
-    description: 'Nuestra visión',
     image: primaryAssets.vision,
     imageAlt: 'Visión de Iglesia Bíblica Antioquía',
   },
   {
     id: 'mision',
-    logo: 'MISIÓN',
-    logoColor: '#ff9900',
     title: 'Misión',
-    description: 'Nuestra misión',
     image: primaryAssets.mision,
     imageAlt: 'Misión de Iglesia Bíblica Antioquía',
   },
   {
     id: 'pastor-contacto',
-    logo: 'CONTACTO',
-    logoColor: '#facc15',
-    title: 'Misión',
-    description: 'Pastor y comunidad',
+    title: 'Pastor y comunidad',
     image: primaryAssets.pastor,
     imageAlt: 'Pastor de Iglesia Bíblica Antioquía',
   },
@@ -114,10 +99,34 @@ const socialLinks = [
 ] as const;
 
 const gospelHighlights = [
-  { title: 'Predicamos', line: 'el Evangelio', verse: 'Romanos 1:16-17', icon: BookOpenText },
-  { title: 'Cantamos', line: 'el Evangelio', verse: 'Efesios 5:19', icon: Music2 },
-  { title: 'Vivimos', line: 'el Evangelio', verse: 'Juan 13:34', icon: UsersRound },
-  { title: 'Proclamamos', line: 'el Evangelio', verse: 'Hechos 5:42', icon: Megaphone },
+  {
+    title: 'Predicamos',
+    line: 'el Evangelio',
+    verse: 'Romanos 1:16-17',
+    text: 'Porque no me avergüenzo del evangelio, pues es el poder de Dios para la salvación de todo el que cree; del judío primeramente y también del griego. Porque en el evangelio la justicia de Dios se revela por fe y para fe; como está escrito: Mas el justo por la fe vivirá.',
+    icon: BookOpenText,
+  },
+  {
+    title: 'Cantamos',
+    line: 'el Evangelio',
+    verse: 'Efesios 5:19',
+    text: 'Hablen entre ustedes con salmos, himnos y cantos espirituales, cantando y alabando con su corazón al Señor.',
+    icon: Music2,
+  },
+  {
+    title: 'Vivimos',
+    line: 'el Evangelio',
+    verse: 'Juan 13:34',
+    text: 'Un mandamiento nuevo les doy: “que se amen los unos a los otros”; que como Yo los he amado, así también se amen los unos a los otros.',
+    icon: UsersRound,
+  },
+  {
+    title: 'Proclamamos',
+    line: 'el Evangelio',
+    verse: 'Hechos 5:42',
+    text: 'Y todos los días, en el templo y de casa en casa, no cesaban de enseñar y proclamar el evangelio de Jesús como el Cristo.',
+    icon: Megaphone,
+  },
 ] as const;
 
 const ibaLocation: GeoPoint = {
@@ -242,6 +251,7 @@ export function IbaSlidesModal({ open, onClose }: { open: boolean; onClose: () =
   const [locationStatus, setLocationStatus] = useState<LocationStatus>('idle');
   const [directionsOpen, setDirectionsOpen] = useState(false);
   const [mapNotice, setMapNotice] = useState('');
+  const [activeGospelIndex, setActiveGospelIndex] = useState(0);
 
   useEffect(() => {
     if (!open) return;
@@ -454,7 +464,7 @@ export function IbaSlidesModal({ open, onClose }: { open: boolean; onClose: () =
                 <img src={primaryAssets.logoSoyiba} alt="Soy IBA" className="iba-brand-soyiba" />
               </div>
               <h1>Conoce nuestra iglesia</h1>
-              <p>Descubre nuestra identidad, misión y comunidad</p>
+              <p>Descubre nuestra visión, misión y comunidad</p>
               <span className="iba-gold-spark" aria-hidden="true" />
             </section>
 
@@ -477,11 +487,7 @@ export function IbaSlidesModal({ open, onClose }: { open: boolean; onClose: () =
                     <img src={card.image} alt={card.imageAlt} />
                     <div className="iba-card-overlay">
                       <div className="iba-card-content">
-                        <div className="iba-card-logo" style={{ color: card.logoColor }}>
-                          {card.logo}
-                        </div>
                         <div className="iba-card-title">{card.title}</div>
-                        <div className="iba-card-desc">{card.description}</div>
                       </div>
                     </div>
                   </article>
@@ -495,20 +501,43 @@ export function IbaSlidesModal({ open, onClose }: { open: boolean; onClose: () =
                 <small>Evangelio</small>
               </div>
               <div className="iba-gospel-wheel" aria-label="Nuestra vida en el Evangelio">
-                {gospelHighlights.map(({ title, line, verse, icon: Icon }) => (
-                  <div key={`${title}-${line}`} className="iba-gospel-tile">
+                {gospelHighlights.map(({ title, line, verse, icon: Icon }, index) => (
+                  <button
+                    key={`${title}-${line}`}
+                    type="button"
+                    className={`iba-gospel-tile ${activeGospelIndex === index ? 'is-active' : ''}`}
+                    aria-pressed={activeGospelIndex === index}
+                    onClick={() => setActiveGospelIndex(index)}
+                  >
                     <Icon size={24} strokeWidth={1.8} aria-hidden="true" />
                     <p>
                       {title}
                       <span>{line}</span>
                     </p>
                     <small>{verse}</small>
-                  </div>
+                  </button>
                 ))}
                 <span className="iba-gospel-plus" aria-hidden="true">
                   <Plus size={28} strokeWidth={2.2} />
                 </span>
               </div>
+              <AnimatePresence mode="wait">
+                <motion.article
+                  key={gospelHighlights[activeGospelIndex].verse}
+                  className="iba-gospel-verse-card"
+                  initial={{ opacity: 0, y: 12, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -8, scale: 0.98 }}
+                  transition={{ duration: 0.22, ease: 'easeOut' }}
+                >
+                  <span>{gospelHighlights[activeGospelIndex].verse}</span>
+                  <h3>
+                    {gospelHighlights[activeGospelIndex].title} {gospelHighlights[activeGospelIndex].line}
+                  </h3>
+                  <p>{gospelHighlights[activeGospelIndex].text}</p>
+                  <small>Nueva Biblia de las Américas (NBLA)</small>
+                </motion.article>
+              </AnimatePresence>
             </section>
 
             <section className="iba-location-section" aria-label="Ubicación de Iglesia Bíblica Antioquía">
@@ -575,32 +604,32 @@ export function IbaSlidesModal({ open, onClose }: { open: boolean; onClose: () =
               </AnimatePresence>
 
               {mapNotice ? <p className="iba-map-notice">{mapNotice}</p> : null}
-            </section>
 
-            <section className="iba-contact-footer" aria-label="Contacto Iglesia Bíblica Antioquía">
-              <div>
-                <p className="iba-contact-title">
-                  <span className="iba-contact-title-icon" aria-hidden="true">
-                    <Mail size={24} strokeWidth={2.2} />
-                  </span>
-                  Contacto
-                </p>
-                <p className="iba-contact-address">
-                  <MapPin size={15} strokeWidth={2.4} aria-hidden="true" />
-                  <span>{ibaAddress}</span>
-                </p>
-                <a className="iba-contact-email" href="mailto:info@iglesiaiba.org">
-                  <Mail size={16} strokeWidth={2.4} aria-hidden="true" />
-                  <span>info@iglesiaiba.org</span>
-                </a>
-              </div>
-              <div className="iba-social-links">
-                {socialLinks.map((link) => (
-                  <a key={link.label} className="iba-social-link" href={link.href} target="_blank" rel="noreferrer" aria-label={link.label}>
-                    <SocialLogo brand={link.brand} />
-                    <span>{link.label}</span>
+              <div className="iba-contact-footer" aria-label="Contacto Iglesia Bíblica Antioquía">
+                <div>
+                  <p className="iba-contact-title">
+                    <span className="iba-contact-title-icon" aria-hidden="true">
+                      <Mail size={24} strokeWidth={2.2} />
+                    </span>
+                    Contacto
+                  </p>
+                  <p className="iba-contact-address">
+                    <MapPin size={15} strokeWidth={2.4} aria-hidden="true" />
+                    <span>{ibaAddress}</span>
+                  </p>
+                  <a className="iba-contact-email" href="mailto:info@iglesiaiba.org">
+                    <Mail size={16} strokeWidth={2.4} aria-hidden="true" />
+                    <span>info@iglesiaiba.org</span>
                   </a>
-                ))}
+                </div>
+                <div className="iba-social-links">
+                  {socialLinks.map((link) => (
+                    <a key={link.label} className="iba-social-link" href={link.href} target="_blank" rel="noreferrer" aria-label={link.label}>
+                      <SocialLogo brand={link.brand} />
+                      <span>{link.label}</span>
+                    </a>
+                  ))}
+                </div>
               </div>
             </section>
 
