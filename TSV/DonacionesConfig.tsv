@@ -1,0 +1,2 @@
+id	banco	tipoCuenta	numeroCuenta	titular	nit	qrUrl	correoContacto	activo	updatedAt
+donaciones-oficial	Bancolombia	Ahorros	019-000067-75	Iglesia Biblica Antioquia	901692466	assets/qriba.jpg	contabilidad@iglesiaiba.org	TRUE	2026-06-23T00:00:00-05:00

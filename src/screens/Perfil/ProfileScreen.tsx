@@ -39,7 +39,7 @@ import {
   type SoyibaPublication,
 } from '../Publicaciones/publicaciones.service';
 
-type ScreenTarget = 'inicio' | 'eventos' | 'eco' | 'donaciones' | 'perfil';
+type ScreenTarget = 'inicio' | 'eventos' | 'eco' | 'donaciones' | 'perfil' | 'usuarios';
 
 type ProfileScreenProps = {
   session: SoyibaSession;
@@ -287,6 +287,7 @@ export function ProfileScreen({
           icon: UsersRound,
           tone: 'violet',
           visible: isManager(user),
+          target: 'usuarios',
         },
         {
           id: 'eco',

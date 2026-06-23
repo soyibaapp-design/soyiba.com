@@ -16,6 +16,7 @@ const tabTitles: Record<string, string> = {
   eco: 'Grupos ECO',
   donaciones: 'Donaciones',
   perfil: 'Perfil',
+  usuarios: 'Usuarios',
 };
 
 export function AppHeader({

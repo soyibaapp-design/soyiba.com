@@ -4,3 +4,4 @@ Un archivo TSV por modulo/pantalla. Cada TSV define la estructura inicial de la 
 
 - `Auth.tsv` -> hoja `Auth`
 - `Inicio.tsv` -> hoja `Inicio`
+- `DonacionesConfig.tsv` -> hoja `DonacionesConfig`

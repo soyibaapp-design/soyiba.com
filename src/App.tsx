@@ -1,16 +1,19 @@
 import { useEffect, useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
-import { CalendarDays, Heart, Home, UserRound, UsersRound, type LucideIcon } from 'lucide-react';
+import { AnimatePresence } from 'framer-motion';
+import { CalendarDays, Heart, Home, UserRound, UsersRound } from 'lucide-react';
 import { AppHeader } from './components/AppHeader';
 import { BottomNav, type BottomNavItem } from './components/BottomNav';
+import { IbaSlidesModal, SoyibaSideMenu, type SideMenuScreenId } from './components/ChurchInfoExperience';
 import { AuthScreen } from './screens/Auth/AuthScreen';
 import type { SoyibaSession } from './screens/Auth/auth.service';
+import { DonacionesScreen } from './screens/Donaciones/DonacionesScreen';
 import { InicioScreen } from './screens/Inicio/InicioScreen';
 import { ProfileScreen } from './screens/Perfil/ProfileScreen';
 import { PublicationsFeed } from './screens/Publicaciones/PublicationsFeed';
 import type { SoyibaPublication } from './screens/Publicaciones/publicaciones.service';
+import { UsersManagementScreen } from './screens/Usuarios/UsersManagementScreen';
 
-type ScreenId = 'inicio' | 'eventos' | 'eco' | 'donaciones' | 'perfil';
+type ScreenId = 'inicio' | 'eventos' | 'eco' | 'donaciones' | 'perfil' | 'usuarios';
 type AuthMode = 'login' | 'register';
 
 const SESSION_STORAGE_KEY = 'soyiba.session';
@@ -221,80 +224,104 @@ function SoyibaShell({
   onCreatePublication?: () => void;
   onOpenPublicationFromProfile?: (publication: SoyibaPublication) => void;
 }) {
+  const [sideMenuOpen, setSideMenuOpen] = useState(false);
+  const [churchInfoOpen, setChurchInfoOpen] = useState(false);
+
   return (
-    <div className="soyiba-app-backdrop h-[100dvh] overflow-hidden text-slate-950">
-      <div className="safe-area mx-auto flex h-full max-w-3xl flex-col overflow-hidden bg-white/78 shadow-2xl shadow-slate-950/10 backdrop-blur-[1px]">
-        <AppHeader activeTab={activeScreen} onNotificationsClick={onNotificationsClick} />
+    <>
+      <div className="soyiba-app-backdrop h-[100dvh] overflow-hidden text-slate-950">
+        <div className="safe-area mx-auto flex h-full max-w-3xl flex-col overflow-hidden bg-white/78 shadow-2xl shadow-slate-950/10 backdrop-blur-[1px]">
+          <AppHeader activeTab={activeScreen} onMenuClick={() => setSideMenuOpen(true)} onNotificationsClick={onNotificationsClick} />
 
-        <main className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 pb-[calc(112px+env(safe-area-inset-bottom))]">
-          <AnimatePresence mode="wait">
-            {activeScreen === 'inicio' ? (
-              <InicioScreen
-                session={session}
-                openPublicationComposerSignal={publicationComposerSignal}
-                onPublicationComposerOpenChange={onComposerOpenChange}
-                onOpenEvent={onOpenEventFromHome}
-                onOpenEventsScreen={onOpenEventsFromHome}
-                onOpenEco={onOpenEcoFromHome}
-                openPublicationId={publicationToOpenId}
-                onPublicationOpened={onPublicationOpened}
-                publicMode={publicMode}
-                onAuthRequired={onAuthRequired}
-                showLiveBadge={showLiveBadge}
-              />
-            ) : null}
-            {activeScreen === 'eventos' ? (
-              <PublicationsFeed
-                key="eventos"
-                session={session}
-                filterType="Evento"
-                variant="eventos"
-                title="Eventos"
-                subtitle="Conectate y participa en todo lo que Dios esta haciendo en nuestra iglesia."
-                openPublicationId={publicationToOpenId}
-                onPublicationOpened={onPublicationOpened}
-                onComposerOpenChange={onComposerOpenChange}
-                publicMode={publicMode}
-                onAuthRequired={onAuthRequired}
-              />
-            ) : null}
-            {activeScreen === 'eco' ? (
-              <PublicationsFeed
-                key="eco"
-                session={session}
-                filterType="Grupo ECO"
-                variant="eco"
-                title="Grupos ECO"
-                subtitle="Encuentra publicaciones y encuentros de los grupos ECO."
-                openPublicationId={publicationToOpenId}
-                onPublicationOpened={onPublicationOpened}
-                onComposerOpenChange={onComposerOpenChange}
-                publicMode={publicMode}
-                onAuthRequired={onAuthRequired}
-              />
-            ) : null}
-            {activeScreen === 'donaciones' ? <PlaceholderScreen key="donaciones" icon={Heart} title="Donaciones" /> : null}
-            {activeScreen === 'perfil' ? (
-              <ProfileScreen
-                key="perfil"
-                session={session}
-                onLogout={onLogout || (() => undefined)}
-                onNavigate={onNavigate || (() => undefined)}
-                onSessionUpdated={onSessionUpdated || (() => undefined)}
-                liveBadgeTestEnabled={liveBadgeTestEnabled}
-                onLiveBadgeTestChange={onLiveBadgeTestChange}
-                onCreatePublication={onCreatePublication || (() => undefined)}
-                onOpenPublication={onOpenPublicationFromProfile || (() => undefined)}
-              />
-            ) : null}
-          </AnimatePresence>
-        </main>
+          <main className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 pb-[calc(112px+env(safe-area-inset-bottom))]">
+            <AnimatePresence mode="wait">
+              {activeScreen === 'inicio' ? (
+                <InicioScreen
+                  session={session}
+                  openPublicationComposerSignal={publicationComposerSignal}
+                  onPublicationComposerOpenChange={onComposerOpenChange}
+                  onOpenEvent={onOpenEventFromHome}
+                  onOpenEventsScreen={onOpenEventsFromHome}
+                  onOpenEco={onOpenEcoFromHome}
+                  openPublicationId={publicationToOpenId}
+                  onPublicationOpened={onPublicationOpened}
+                  publicMode={publicMode}
+                  onAuthRequired={onAuthRequired}
+                  showLiveBadge={showLiveBadge}
+                />
+              ) : null}
+              {activeScreen === 'eventos' ? (
+                <PublicationsFeed
+                  key="eventos"
+                  session={session}
+                  filterType="Evento"
+                  variant="eventos"
+                  title="Eventos"
+                  subtitle="Conectate y participa en todo lo que Dios esta haciendo en nuestra iglesia."
+                  openPublicationId={publicationToOpenId}
+                  onPublicationOpened={onPublicationOpened}
+                  onComposerOpenChange={onComposerOpenChange}
+                  publicMode={publicMode}
+                  onAuthRequired={onAuthRequired}
+                />
+              ) : null}
+              {activeScreen === 'eco' ? (
+                <PublicationsFeed
+                  key="eco"
+                  session={session}
+                  filterType="Grupo ECO"
+                  variant="eco"
+                  title="Grupos ECO"
+                  subtitle="Encuentra publicaciones y encuentros de los grupos ECO."
+                  openPublicationId={publicationToOpenId}
+                  onPublicationOpened={onPublicationOpened}
+                  onComposerOpenChange={onComposerOpenChange}
+                  publicMode={publicMode}
+                  onAuthRequired={onAuthRequired}
+                />
+              ) : null}
+              {activeScreen === 'donaciones' ? <DonacionesScreen key="donaciones" session={session} /> : null}
+              {activeScreen === 'perfil' ? (
+                <ProfileScreen
+                  key="perfil"
+                  session={session}
+                  onLogout={onLogout || (() => undefined)}
+                  onNavigate={onNavigate || (() => undefined)}
+                  onSessionUpdated={onSessionUpdated || (() => undefined)}
+                  liveBadgeTestEnabled={liveBadgeTestEnabled}
+                  onLiveBadgeTestChange={onLiveBadgeTestChange}
+                  onCreatePublication={onCreatePublication || (() => undefined)}
+                  onOpenPublication={onOpenPublicationFromProfile || (() => undefined)}
+                />
+              ) : null}
+              {activeScreen === 'usuarios' ? (
+                <UsersManagementScreen
+                  key="usuarios"
+                  session={session}
+                  onBack={() => onNavigate?.('perfil')}
+                  onSessionUpdated={onSessionUpdated || (() => undefined)}
+                />
+              ) : null}
+            </AnimatePresence>
+          </main>
 
-        {publicMode || publicationComposerOpen ? null : (
-          <BottomNav activeTab={activeScreen} items={navigation} showLiveBadge={showLiveBadge} onChange={onNavigate || (() => undefined)} />
-        )}
+          {publicMode || publicationComposerOpen ? null : (
+            <BottomNav activeTab={activeScreen} items={navigation} showLiveBadge={showLiveBadge} onChange={onNavigate || (() => undefined)} />
+          )}
+        </div>
       </div>
-    </div>
+      <SoyibaSideMenu
+        open={sideMenuOpen}
+        activeScreen={activeScreen}
+        onClose={() => setSideMenuOpen(false)}
+        onNavigate={onNavigate ? (screen: SideMenuScreenId) => onNavigate(screen) : undefined}
+        onOpenChurchInfo={() => {
+          setSideMenuOpen(false);
+          setChurchInfoOpen(true);
+        }}
+      />
+      <IbaSlidesModal open={churchInfoOpen} onClose={() => setChurchInfoOpen(false)} />
+    </>
   );
 }
 
@@ -413,42 +440,4 @@ function storeLiveBadgeTestFlag(enabled: boolean) {
   } catch {
     // Local storage can be disabled in private contexts.
   }
-}
-
-type PlaceholderScreenProps = {
-  icon: LucideIcon;
-  title: string;
-  actionLabel?: string;
-  onAction?: () => void;
-};
-
-function PlaceholderScreen({ icon: Icon, title, actionLabel, onAction }: PlaceholderScreenProps) {
-  return (
-    <motion.section
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -10 }}
-      transition={{ duration: 0.22 }}
-      className="rounded-[24px] border border-slate-200/80 bg-white p-6 text-center shadow-[0_18px_45px_rgba(15,23,42,0.08)]"
-    >
-      <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#2563EB]/10 text-[#2563EB]">
-        <Icon size={26} aria-hidden="true" />
-      </div>
-      <h2 className="mt-4 text-xl font-bold text-slate-950">{title}</h2>
-      <p className="mt-2 text-sm leading-6 text-slate-600">Pantalla lista para su modulo Apps Script y su TSV.</p>
-      <div className="mt-5 flex items-center justify-center gap-2 rounded-2xl bg-slate-50 px-3 py-2 text-sm font-medium text-slate-600">
-        <UserRound size={16} aria-hidden="true" />
-        {title}/Code.gs
-      </div>
-      {actionLabel && onAction ? (
-        <button
-          type="button"
-          onClick={onAction}
-          className="mt-5 h-11 rounded-2xl bg-[#1E3A8A] px-5 text-sm font-black text-white shadow-[0_14px_28px_rgba(30,58,138,0.24)] transition hover:bg-[#2563EB]"
-        >
-          {actionLabel}
-        </button>
-      ) : null}
-    </motion.section>
-  );
 }

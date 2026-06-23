@@ -3,7 +3,7 @@ var SOYIBA_INICIO_SHEET = 'Inicio';
 var SOYIBA_INICIO_HEADERS = ['metric_id', 'label', 'value', 'sort_order', 'visible', 'updated_at'];
 var SOYIBA_AUTH_SPREADSHEET_ID = '1Sk6f6mScrMTcXfa-psxoY4boa_1gqJmFt7anP-lpErM';
 var SOYIBA_AUTH_SHEET = 'Auth';
-var SOYIBA_INICIO_CODE_VERSION = 'eco-groups-2026-06-16';
+var SOYIBA_INICIO_CODE_VERSION = 'users-management-2026-06-23';
 var SOYIBA_AUTH_HEADERS = [
   'user_id',
   'email',
@@ -103,6 +103,20 @@ var SOYIBA_ASISTENCIAS_ECO_HEADERS = [
   'idUsuario',
   'fechaRegistro'
 ];
+var SOYIBA_DONACIONES_SPREADSHEET_ID = SOYIBA_INICIO_SPREADSHEET_ID;
+var SOYIBA_DONACIONES_CONFIG_SHEET = 'DonacionesConfig';
+var SOYIBA_DONACIONES_CONFIG_HEADERS = [
+  'id',
+  'banco',
+  'tipoCuenta',
+  'numeroCuenta',
+  'titular',
+  'nit',
+  'qrUrl',
+  'correoContacto',
+  'activo',
+  'updatedAt'
+];
 
 function doGet(e) {
   var moduleName = e && e.parameter ? String(e.parameter.module || '') : '';
@@ -123,6 +137,10 @@ function doGet(e) {
     return soyibaInicioJson_({ ok: true, module: 'Publicaciones', screen: 'Publicaciones', version: SOYIBA_INICIO_CODE_VERSION });
   }
 
+  if (moduleName === 'Donaciones') {
+    return soyibaInicioJson_({ ok: true, module: 'Donaciones', screen: 'Donaciones', version: SOYIBA_INICIO_CODE_VERSION });
+  }
+
   return soyibaInicioJson_({ ok: true, module: 'Inicio', screen: 'Inicio', version: SOYIBA_INICIO_CODE_VERSION });
 }
 
@@ -139,13 +157,19 @@ function doPost(e) {
       action === 'login' ||
       action === 'updateFcmToken' ||
       action === 'updateProfile' ||
-      action === 'changePassword'
+      action === 'changePassword' ||
+      action === 'listUsers' ||
+      action === 'updateUserAccess'
     ) {
       return soyibaInicioJson_(soyibaAuthHandle_(action, data));
     }
 
     if (moduleName === 'Publicaciones') {
       return soyibaInicioJson_(soyibaPublicacionesHandle_(action, data));
+    }
+
+    if (moduleName === 'Donaciones') {
+      return soyibaInicioJson_(soyibaDonacionesHandle_(action, data));
     }
 
     if (action === 'health') {
@@ -193,6 +217,14 @@ function soyibaAuthHandle_(action, data) {
 
   if (action === 'changePassword') {
     return soyibaAuthChangePassword_(data);
+  }
+
+  if (action === 'listUsers') {
+    return soyibaAuthListUsers_(data);
+  }
+
+  if (action === 'updateUserAccess') {
+    return soyibaAuthUpdateUserAccess_(data);
   }
 
   return { ok: false, error: 'Accion no soportada: ' + action };
@@ -459,6 +491,81 @@ function soyibaAuthChangePassword_(data) {
   return soyibaAuthSessionFromRow_(sheet, found.row, data.token);
 }
 
+function soyibaAuthListUsers_(data) {
+  var sheet = soyibaAuthGetSheet_();
+  var actor = soyibaAuthFindUserByIdOrEmail_(sheet, data.actorUserId || data.userId, data.actorEmail || data.email);
+
+  if (!soyibaAuthCanManageUsers_(actor.user)) {
+    return { ok: false, error: 'No tienes permisos para gestionar usuarios.' };
+  }
+
+  var headers = soyibaAuthGetHeaders_(sheet);
+  var values = sheet.getDataRange().getValues();
+  var users = [];
+
+  for (var rowIndex = 1; rowIndex < values.length; rowIndex += 1) {
+    users.push(soyibaAuthBuildManagedUser_(soyibaAuthRowToObject_(headers, values[rowIndex])));
+  }
+
+  return { ok: true, users: users };
+}
+
+function soyibaAuthUpdateUserAccess_(data) {
+  var sheet = soyibaAuthGetSheet_();
+  var actor = soyibaAuthFindUserByIdOrEmail_(sheet, data.actorUserId || data.userId, data.actorEmail || data.email);
+
+  if (!soyibaAuthCanManageUsers_(actor.user)) {
+    return { ok: false, error: 'No tienes permisos para gestionar usuarios.' };
+  }
+
+  var found = soyibaAuthFindUserByIdOrEmail_(sheet, data.targetUserId || data.target_user_id, data.targetEmail || data.target_email);
+
+  if (found.row < 1) {
+    return { ok: false, error: 'Usuario no encontrado.' };
+  }
+
+  var headers = soyibaAuthGetHeaders_(sheet);
+  var rolSistema = soyibaAuthCleanOption_(data.rolSistema || data.rol_sistema || data.role, 'Usuario');
+  var tipoUsuario = soyibaAuthNormalizeTipoUsuario_(data.tipoUsuario || data.tipo_usuario);
+  var tituloUsuario = soyibaAuthNormalizeTituloUsuario_(data.tituloUsuario || data.titulo_usuario || tipoUsuario, tipoUsuario);
+  var estadoUsuario = soyibaAuthCleanOption_(data.estadoUsuario || data.estado_usuario, 'Activo');
+  var active = data.active === undefined ? soyibaAuthStateIsActive_(estadoUsuario) : soyibaAuthIsTrue_(data.active);
+  var publicador = soyibaAuthIsTrue_(data.publicador);
+  var publicadorEco = soyibaAuthIsTrue_(data.publicadorEco !== undefined ? data.publicadorEco : data.publicador_eco);
+  var publicadorEvento = soyibaAuthIsTrue_(data.publicadorEvento !== undefined ? data.publicadorEvento : data.publicador_evento);
+  var now = new Date().toISOString();
+
+  if (soyibaAuthIsAssistantAccess_(tipoUsuario)) {
+    rolSistema = 'Asistente';
+    tipoUsuario = 'Asistente';
+    tituloUsuario = 'Asistente';
+    publicador = false;
+    publicadorEco = false;
+    publicadorEvento = false;
+  } else {
+    rolSistema = soyibaAuthCoerceMemberValue_(rolSistema);
+    tipoUsuario = 'Miembro';
+    tituloUsuario = soyibaAuthCoerceMemberValue_(tituloUsuario);
+  }
+
+  soyibaAuthSetCell_(sheet, headers, found.row, 'role', rolSistema);
+  soyibaAuthSetCell_(sheet, headers, found.row, 'rol_sistema', rolSistema);
+  soyibaAuthSetCell_(sheet, headers, found.row, 'tipo_usuario', tipoUsuario);
+  soyibaAuthSetCell_(sheet, headers, found.row, 'titulo_usuario', tituloUsuario);
+  soyibaAuthSetCell_(sheet, headers, found.row, 'estado_usuario', estadoUsuario);
+  soyibaAuthSetCell_(sheet, headers, found.row, 'publicador', publicador);
+  soyibaAuthSetCell_(sheet, headers, found.row, 'publicador_eco', publicadorEco);
+  soyibaAuthSetCell_(sheet, headers, found.row, 'publicador_evento', publicadorEvento);
+  soyibaAuthSetCell_(sheet, headers, found.row, 'active', active);
+  soyibaAuthSetCell_(sheet, headers, found.row, 'status', active && soyibaAuthStateIsActive_(estadoUsuario) ? 'active' : 'inactive');
+  soyibaAuthSetCell_(sheet, headers, found.row, 'updated_at', now);
+
+  return {
+    ok: true,
+    user: soyibaAuthBuildManagedUser_(soyibaAuthGetUserByRow_(sheet, found.row))
+  };
+}
+
 function soyibaAuthSessionFromRow_(sheet, row, token) {
   var headers = soyibaAuthGetHeaders_(sheet);
   var values = sheet.getRange(row, 1, 1, Math.max(sheet.getLastColumn(), SOYIBA_AUTH_HEADERS.length)).getValues()[0];
@@ -488,6 +595,15 @@ function soyibaAuthBuildUser_(user) {
     publicadorEvento: soyibaAuthIsTrue_(user.publicador_evento),
     active: user.active === '' || user.active === undefined ? user.status === 'active' : soyibaAuthIsTrue_(user.active)
   };
+}
+
+function soyibaAuthBuildManagedUser_(user) {
+  var managed = soyibaAuthBuildUser_(user);
+  managed.status = String(user.status || '');
+  managed.createdAt = String(user.created_at || '');
+  managed.updatedAt = String(user.updated_at || '');
+  managed.lastLoginAt = String(user.last_login_at || '');
+  return managed;
 }
 
 function soyibaAuthGetSheet_() {
@@ -549,6 +665,12 @@ function soyibaAuthFindUserByIdOrEmail_(sheet, userId, email) {
   return { row: -1, user: null };
 }
 
+function soyibaAuthGetUserByRow_(sheet, row) {
+  var headers = soyibaAuthGetHeaders_(sheet);
+  var values = sheet.getRange(row, 1, 1, Math.max(sheet.getLastColumn(), SOYIBA_AUTH_HEADERS.length)).getValues()[0];
+  return soyibaAuthRowToObject_(headers, values);
+}
+
 function soyibaAuthSetCell_(sheet, headers, row, header, value) {
   var column = headers.indexOf(header);
 
@@ -580,6 +702,61 @@ function soyibaAuthIsTrue_(value) {
   return ['true', '1', 'si', 'sí', 'yes'].indexOf(String(value || '').trim().toLowerCase()) >= 0;
 }
 
+function soyibaAuthCanManageUsers_(user) {
+  if (!user) {
+    return false;
+  }
+
+  var role = String(user.rol_sistema || user.rolSistema || user.role || '').trim().toLowerCase();
+  return role === 'admin' || role === 'moderador';
+}
+
+function soyibaAuthCleanOption_(value, fallback) {
+  var text = String(value || '').trim();
+  return text || fallback;
+}
+
+function soyibaAuthStateIsActive_(estadoUsuario) {
+  var state = String(estadoUsuario || '').trim().toLowerCase();
+  return state === 'activo' || state === 'active';
+}
+
+function soyibaAuthNormalizeTipoUsuario_(value) {
+  return soyibaAuthIsAssistantAccess_(value) ? 'Asistente' : 'Miembro';
+}
+
+function soyibaAuthNormalizeTituloUsuario_(value, tipoUsuario) {
+  var normalized = soyibaAuthNormalizeAccessText_(value);
+  var options = ['Asistente', 'Miembro', 'Servidor', 'Líder', 'Pastor', 'Administrativo', 'Músico', 'Audiovisuales', 'Creador de contenido'];
+
+  for (var index = 0; index < options.length; index += 1) {
+    if (soyibaAuthNormalizeAccessText_(options[index]) === normalized) {
+      return options[index];
+    }
+  }
+
+  return soyibaAuthIsAssistantAccess_(tipoUsuario) ? 'Asistente' : 'Miembro';
+}
+
+function soyibaAuthCoerceMemberValue_(value) {
+  return value && !soyibaAuthIsAssistantAccess_(value) ? value : 'Miembro';
+}
+
+function soyibaAuthIsAssistantAccess_(value) {
+  return soyibaAuthNormalizeAccessText_(value) === 'asistente';
+}
+
+function soyibaAuthNormalizeAccessText_(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[áàäâ]/g, 'a')
+    .replace(/[éèëê]/g, 'e')
+    .replace(/[íìïî]/g, 'i')
+    .replace(/[óòöô]/g, 'o')
+    .replace(/[úùüû]/g, 'u');
+}
+
 function soyibaAuthHashPassword_(password, salt) {
   var digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, salt + ':' + password, Utilities.Charset.UTF_8);
   return soyibaAuthBytesToHex_(digest);
@@ -597,6 +774,147 @@ function soyibaAuthBytesToHex_(bytes) {
   }
 
   return hex;
+}
+
+function soyibaDonacionesHandle_(action, data) {
+  if (action === 'health') {
+    return { ok: true, module: 'Donaciones', version: SOYIBA_INICIO_CODE_VERSION };
+  }
+
+  if (action === 'config' || action === 'getConfig' || action === 'activeConfig') {
+    return soyibaDonacionesGetActiveConfig_();
+  }
+
+  return { ok: false, error: 'Accion no soportada: ' + action };
+}
+
+function soyibaDonacionesGetActiveConfig_() {
+  var sheet = soyibaDonacionesGetConfigSheet_();
+  var values = sheet.getDataRange().getValues();
+  var headers = soyibaDonacionesGetHeaders_(sheet);
+  var activeConfigs = [];
+
+  for (var rowIndex = 1; rowIndex < values.length; rowIndex += 1) {
+    var record = soyibaDonacionesRowToObject_(headers, values[rowIndex]);
+
+    if (soyibaDonacionesIsTrue_(record.activo)) {
+      activeConfigs.push(record);
+    }
+  }
+
+  if (activeConfigs.length === 0) {
+    return {
+      ok: false,
+      error: 'No fue posible cargar la informacion de donacion. Por favor intenta mas tarde o comunicate con contabilidad.'
+    };
+  }
+
+  activeConfigs.sort(function (first, second) {
+    return soyibaDonacionesTimestamp_(second.updatedAt || second.updated_at) - soyibaDonacionesTimestamp_(first.updatedAt || first.updated_at);
+  });
+
+  var warning = '';
+
+  if (activeConfigs.length > 1) {
+    warning = 'Hay mas de una configuracion activa en DonacionesConfig. Se uso la mas reciente por updatedAt.';
+    console.warn(warning);
+  }
+
+  var config = soyibaDonacionesBuildConfig_(activeConfigs[0]);
+  var validationError = soyibaDonacionesValidateConfig_(config);
+
+  if (validationError) {
+    return {
+      ok: false,
+      error: 'No fue posible cargar la informacion de donacion. Por favor intenta mas tarde o comunicate con contabilidad.',
+      detail: validationError
+    };
+  }
+
+  return {
+    ok: true,
+    config: config,
+    warning: warning
+  };
+}
+
+function soyibaDonacionesBuildConfig_(record) {
+  return {
+    id: String(record.id || '').trim(),
+    banco: String(record.banco || '').trim(),
+    tipoCuenta: String(record.tipoCuenta || record.tipo_cuenta || '').trim(),
+    numeroCuenta: String(record.numeroCuenta || record.numero_cuenta || '').trim(),
+    titular: String(record.titular || record.nombreTitular || record.nombre_titular || '').trim(),
+    nit: String(record.nit || record.Nit || record.NIT || '').trim(),
+    qrUrl: String(record.qrUrl || record.qr_url || '').trim(),
+    correoContacto: String(record.correoContacto || record.correo_contacto || record.emailContacto || '').trim(),
+    updatedAt: String(record.updatedAt || record.updated_at || '').trim()
+  };
+}
+
+function soyibaDonacionesValidateConfig_(config) {
+  var missingFields = [];
+
+  ['banco', 'tipoCuenta', 'numeroCuenta', 'titular', 'correoContacto'].forEach(function (field) {
+    if (!config[field]) {
+      missingFields.push(field);
+    }
+  });
+
+  if (missingFields.length > 0) {
+    return 'Campos requeridos faltantes: ' + missingFields.join(', ');
+  }
+
+  return '';
+}
+
+function soyibaDonacionesGetConfigSheet_() {
+  var spreadsheet = SOYIBA_DONACIONES_SPREADSHEET_ID
+    ? SpreadsheetApp.openById(SOYIBA_DONACIONES_SPREADSHEET_ID)
+    : SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = spreadsheet.getSheetByName(SOYIBA_DONACIONES_CONFIG_SHEET) || spreadsheet.insertSheet(SOYIBA_DONACIONES_CONFIG_SHEET);
+  soyibaDonacionesEnsureHeaders_(sheet);
+  return sheet;
+}
+
+function soyibaDonacionesEnsureHeaders_(sheet) {
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(SOYIBA_DONACIONES_CONFIG_HEADERS);
+    return;
+  }
+
+  var headers = soyibaDonacionesGetHeaders_(sheet);
+  var needsRewrite = SOYIBA_DONACIONES_CONFIG_HEADERS.some(function (header) {
+    return headers.indexOf(header) === -1;
+  });
+
+  if (needsRewrite) {
+    sheet.getRange(1, 1, 1, SOYIBA_DONACIONES_CONFIG_HEADERS.length).setValues([SOYIBA_DONACIONES_CONFIG_HEADERS]);
+  }
+}
+
+function soyibaDonacionesGetHeaders_(sheet) {
+  return sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), SOYIBA_DONACIONES_CONFIG_HEADERS.length)).getValues()[0];
+}
+
+function soyibaDonacionesRowToObject_(headers, row) {
+  return headers.reduce(function (record, header, index) {
+    record[header] = row[index];
+    return record;
+  }, {});
+}
+
+function soyibaDonacionesTimestamp_(value) {
+  var timestamp = new Date(value).getTime();
+  return isNaN(timestamp) ? 0 : timestamp;
+}
+
+function soyibaDonacionesIsTrue_(value) {
+  if (value === true) {
+    return true;
+  }
+
+  return ['true', '1', 'si', 'yes', 'activo', 'active'].indexOf(String(value || '').trim().toLowerCase()) >= 0;
 }
 
 function soyibaPublicacionesHandle_(action, data) {

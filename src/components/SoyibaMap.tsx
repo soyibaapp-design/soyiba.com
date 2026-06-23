@@ -10,6 +10,8 @@ export type SoyibaMapMarker = {
   locationLabel?: string;
   position: [number, number];
   mapsUrl?: string;
+  markerType?: 'eco' | 'church';
+  badgeLabel?: string;
   onClick?: () => void;
 };
 
@@ -63,6 +65,13 @@ export function SoyibaMap({
       iconAnchor: [21, 38],
       popupAnchor: [0, -36],
     });
+    const churchIcon = L.divIcon({
+      className: '',
+      html: buildChurchIconHtml(),
+      iconSize: [46, 46],
+      iconAnchor: [23, 42],
+      popupAnchor: [0, -38],
+    });
     const userIcon = L.divIcon({
       className: '',
       html: '<span style="display:grid;place-items:center;width:34px;height:34px;border-radius:9999px;background:#145CFF;border:4px solid white;box-shadow:0 12px 28px rgba(20,92,255,.32)"><span style="display:block;width:10px;height:10px;border-radius:9999px;background:white"></span></span>',
@@ -72,7 +81,7 @@ export function SoyibaMap({
     });
 
     markers.forEach((marker) => {
-      const leafletMarker = L.marker(marker.position, { icon: ecoIcon }).addTo(map);
+      const leafletMarker = L.marker(marker.position, { icon: marker.markerType === 'church' ? churchIcon : ecoIcon }).addTo(map);
       leafletMarker.bindPopup(buildMarkerPopup(marker), { maxWidth: 240 });
 
       if (marker.onClick) {
@@ -112,7 +121,7 @@ export function SoyibaMap({
 function buildMarkerPopup(marker: SoyibaMapMarker) {
   return [
     '<div style="min-width:190px">',
-    '<span style="display:inline-block;margin-bottom:6px;border-radius:9999px;background:#EAF2FF;padding:4px 9px;color:#145CFF;font-size:11px;font-weight:900">Grupo ECO</span>',
+    `<span style="display:inline-block;margin-bottom:6px;border-radius:9999px;background:${marker.markerType === 'church' ? '#FFF4DE' : '#EAF2FF'};padding:4px 9px;color:${marker.markerType === 'church' ? '#9A5A00' : '#145CFF'};font-size:11px;font-weight:900">${escapeHtml(marker.badgeLabel || (marker.markerType === 'church' ? 'Iglesia IBA' : 'Grupo ECO'))}</span>`,
     `<strong style="display:block;color:#0B1F5B;font-size:14px;line-height:18px">${escapeHtml(marker.title)}</strong>`,
     marker.locationLabel ? `<span style="display:block;margin-top:4px;color:#52637C;font-size:12px;font-weight:700">${escapeHtml(marker.locationLabel)}</span>` : '',
     marker.distanceLabel ? `<span style="display:block;margin-top:8px;color:#145CFF;font-size:12px;font-weight:900">Distancia: ${escapeHtml(marker.distanceLabel)}</span>` : '',
@@ -121,6 +130,19 @@ function buildMarkerPopup(marker: SoyibaMapMarker) {
       ? `<a href="${escapeAttribute(marker.mapsUrl)}" target="_blank" rel="noreferrer" style="display:inline-block;margin-top:10px;font-weight:900;color:#145CFF">Abrir en Google Maps</a>`
       : '',
     '</div>',
+  ].join('');
+}
+
+function buildChurchIconHtml() {
+  return [
+    '<span style="display:grid;place-items:center;width:46px;height:46px;border-radius:9999px;background:#061C4A;border:4px solid #F0B35A;box-shadow:0 14px 30px rgba(2,6,23,.30)">',
+    '<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" style="color:white" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">',
+    '<path d="M12 2v20"></path>',
+    '<path d="M7 6h10"></path>',
+    '<path d="M5 22h14"></path>',
+    '<path d="M6 18h12"></path>',
+    '</svg>',
+    '</span>',
   ].join('');
 }
 

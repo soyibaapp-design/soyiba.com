@@ -4,6 +4,7 @@ const moduleEndpoints: Record<string, string | undefined> = {
   Auth: import.meta.env.VITE_APPS_SCRIPT_AUTH_URL,
   Inicio: import.meta.env.VITE_APPS_SCRIPT_INICIO_URL,
   Publicaciones: import.meta.env.VITE_APPS_SCRIPT_PUBLICACIONES_URL,
+  Donaciones: import.meta.env.VITE_APPS_SCRIPT_DONACIONES_URL,
 };
 
 export function getAppsScriptEndpoint(moduleName: string) {

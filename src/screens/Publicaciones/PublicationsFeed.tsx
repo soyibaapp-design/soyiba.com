@@ -687,6 +687,11 @@ export function PublicationsFeed({
                 handleDeletePublication(homeTransmission);
               }
             }}
+            onToggleSave={() => {
+              if (homeTransmission) {
+                handleToggleSave(homeTransmission);
+              }
+            }}
             onOpenDetails={() => {
               if (homeTransmission) {
                 setActivePublicationId(homeTransmission.id);
@@ -972,6 +977,7 @@ function HomeTransmissionCard({
   onShare,
   onEdit,
   onDelete,
+  onToggleSave,
   onOpenDetails,
   onOpenImage,
 }: {
@@ -984,6 +990,7 @@ function HomeTransmissionCard({
   onShare: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  onToggleSave: () => void;
   onOpenDetails: () => void;
   onOpenImage: (preview: ImagePreview) => void;
 }) {
@@ -994,7 +1001,7 @@ function HomeTransmissionCard({
       <section className="space-y-3">
         <div className="flex items-center gap-2">
           <h2 className="text-[18px] font-black leading-6 text-[#0B1F5B]">Última transmisión</h2>
-          <span className="rounded-full bg-[#EAF2FF] px-3 py-1 text-[10px] font-black uppercase text-[#145CFF]">Domingo</span>
+          <span className="rounded-full bg-[#EAF2FF] px-3 py-1 text-[10px] font-black uppercase text-[#145CFF]">Transmisión</span>
         </div>
         <article className="rounded-[18px] border border-dashed border-[#B8C9E7] bg-white p-5 text-center shadow-[0_16px_38px_rgba(15,23,42,0.06)]">
           <Radio className="mx-auto h-9 w-9 text-[#145CFF]" />
@@ -1008,128 +1015,118 @@ function HomeTransmissionCard({
   const imageItem = publication.mediaItems.find((item) => item.type === 'image');
   const spotifyItem = publication.mediaItems.find((item) => item.type === 'spotify');
   const displayItem = videoItem || imageItem;
-  const externalUrl = getPublicationCtaUrl(publication) || videoItem?.url || '';
   const descriptionIsLong = publication.description.length > 145 || publication.description.split(/\r?\n/).length > 2;
 
   return (
     <section className="space-y-3">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <h2 className="min-w-0 text-[18px] font-black leading-6 text-[#0B1F5B]">Última transmisión</h2>
-          <span className="shrink-0 rounded-full bg-[#2338B8] px-3 py-1 text-[10px] font-black uppercase text-white shadow-[0_10px_20px_rgba(35,56,184,0.20)]">
-            Domingo
-          </span>
-        </div>
-      </div>
-
       <article className="relative overflow-hidden rounded-[20px] border border-white/80 bg-white shadow-[0_18px_44px_rgba(15,23,42,0.10)]">
-        {showLiveBadge ? (
-          <span
-            className={cx(
-              'soyiba-live-badge pointer-events-none absolute top-3 z-20 inline-flex h-8 items-center gap-2 rounded-full border border-white/70 bg-[#E63737] px-3 text-[10px] font-black uppercase tracking-[0.14em] text-white shadow-[0_14px_28px_rgba(230,55,55,0.34)]',
-              publicMode ? 'right-3' : 'right-16',
-            )}
-          >
-            <span className="soyiba-live-dot h-2.5 w-2.5 rounded-full bg-white shadow-[0_0_0_4px_rgba(255,255,255,0.18)]" />
-            LIVE
+        <header className="flex items-start gap-1.5 px-3 pt-3.5 min-[430px]:gap-2 min-[430px]:px-4 min-[430px]:pt-4">
+          <h2 title={publication.title} className="min-w-0 flex-1 break-words text-[16px] font-black leading-5 text-[#0B1F5B] min-[430px]:text-[18px] min-[430px]:leading-6">
+            {publication.title}
+          </h2>
+          <span className="shrink-0 rounded-full bg-[#2338B8] px-2 py-1 text-[9px] font-black uppercase text-white shadow-[0_10px_20px_rgba(35,56,184,0.20)] min-[430px]:px-3 min-[430px]:text-[10px]">
+            Transmisión
           </span>
-        ) : null}
-
-        {!publicMode ? (
-          <div className="absolute right-3 top-3 z-30">
-            <button
-              type="button"
-              aria-label="Opciones de la transmisión"
-              onClick={onMenuToggle}
-              className="grid h-10 w-10 place-items-center rounded-full border border-white/70 bg-white/92 text-[#0B1F5B] shadow-[0_12px_26px_rgba(15,23,42,0.14)] backdrop-blur transition hover:bg-[#EAF2FF]"
-            >
-              <MoreVertical size={21} />
-            </button>
-
-            <AnimatePresence>
-              {menuOpen ? (
-                <motion.div
-                  initial={{ opacity: 0, y: -4, scale: 0.98 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: -4, scale: 0.98 }}
-                  className="absolute right-0 top-11 z-30 w-44 overflow-hidden rounded-[14px] border border-[#DCE5F2] bg-white py-1 shadow-[0_18px_42px_rgba(15,23,42,0.16)]"
-                >
-                  <MenuAction icon={Share2} label="Compartir" onClick={onShare} />
-                  {canManage ? <MenuAction icon={PencilLine} label="Editar" onClick={onEdit} /> : null}
-                  {canManage ? <MenuAction icon={Trash2} label="Eliminar" danger onClick={onDelete} /> : null}
-                </motion.div>
-              ) : null}
-            </AnimatePresence>
-          </div>
-        ) : null}
-
-        <div className="grid gap-0 min-[430px]:grid-cols-[minmax(0,1.12fr)_minmax(0,0.88fr)]">
-          <div className="relative bg-[#071426]">
-            <div className="aspect-[16/10] overflow-hidden min-[430px]:h-full min-[430px]:min-h-[210px] min-[430px]:aspect-auto">
-              {displayItem ? (
-                <PublicationMedia item={displayItem} publicationTitle={publication.title} allowExternalOpen={!publicMode} onOpenImage={onOpenImage} />
-              ) : (
-                <button type="button" onClick={onOpenDetails} className="grid h-full min-h-[210px] w-full place-items-center bg-[#EAF2FF] text-[#145CFF]">
-                  <Play size={42} className="fill-current" />
-                </button>
-              )}
-            </div>
-          </div>
-
-          <div className="flex min-w-0 flex-col p-4 min-[430px]:p-5">
-            <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-[#EAF2FF] px-3 py-1 text-[10px] font-black uppercase text-[#145CFF]">
-              <span className="h-2 w-2 rounded-full bg-[#145CFF]" />
-              Transmision
+          {showLiveBadge ? (
+            <span className="soyiba-live-badge inline-flex h-6 shrink-0 items-center gap-1 rounded-full border border-white/70 bg-[#E63737] px-2 text-[9px] font-black uppercase tracking-[0.08em] text-white shadow-[0_12px_24px_rgba(230,55,55,0.28)] min-[430px]:h-7 min-[430px]:gap-1.5 min-[430px]:px-2.5 min-[430px]:text-[10px] min-[430px]:tracking-[0.12em]">
+              <span className="soyiba-live-dot h-1.5 w-1.5 rounded-full bg-white shadow-[0_0_0_4px_rgba(255,255,255,0.18)] min-[430px]:h-2 min-[430px]:w-2" />
+              Live
             </span>
-            <h3 className="mt-4 line-clamp-3 break-words text-[22px] font-black leading-7 text-[#0B1F5B] min-[430px]:text-[24px]">
-              {publication.title}
-            </h3>
-            {publication.description ? (
-              <div className="mt-2">
-                <p className={cx('whitespace-pre-line break-words text-[13px] font-semibold leading-5 text-[#52637C]', !descriptionExpanded && 'line-clamp-2')}>
-                  {publication.description}
-                </p>
-                {descriptionIsLong ? (
-                  <button
-                    type="button"
-                    onClick={() => setDescriptionExpanded((current) => !current)}
-                    className="mt-1 block w-full text-right text-[12px] font-black text-[#145CFF]"
-                  >
-                    {descriptionExpanded ? 'Ver menos' : 'Ver más'}
-                  </button>
-                ) : null}
-              </div>
-            ) : null}
-            <p className="mt-1 truncate text-[13px] font-black text-[#2338B8]">{publication.author.name}</p>
-            <p className="mt-4 inline-flex min-w-0 items-center gap-2 text-[12px] font-bold text-[#52637C]">
-              <CalendarDays size={16} className="shrink-0 text-[#0B1F5B]" />
-              <span className="truncate">{formatBroadcastDate(publication.createdAt)}</span>
-            </p>
+          ) : null}
 
-            <div className="mt-auto pt-4">
-              {externalUrl ? (
-                <a
-                  href={externalUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex h-11 max-w-full items-center justify-center gap-2 rounded-[14px] bg-[#0B1F5B] px-4 text-[12px] font-black text-white shadow-[0_12px_24px_rgba(11,31,91,0.20)] transition hover:bg-[#145CFF]"
-                >
-                  <Video size={16} className="shrink-0" />
-                  <span className="truncate">Ver transmisión</span>
-                </a>
-              ) : (
-                <button
-                  type="button"
-                  onClick={onOpenDetails}
-                  className="inline-flex h-11 max-w-full items-center justify-center gap-2 rounded-[14px] bg-[#0B1F5B] px-4 text-[12px] font-black text-white shadow-[0_12px_24px_rgba(11,31,91,0.20)] transition hover:bg-[#145CFF]"
-                >
-                  <Play size={16} className="shrink-0 fill-current" />
-                  <span className="truncate">Ver detalles</span>
-                </button>
-              )}
+          {!publicMode ? (
+            <div className="relative shrink-0">
+              <button
+                type="button"
+                aria-label="Opciones de la transmisión"
+                onClick={onMenuToggle}
+                className="grid h-8 w-8 place-items-center rounded-full border border-[#DCE5F2] bg-white text-[#0B1F5B] shadow-[0_10px_22px_rgba(15,23,42,0.10)] transition hover:bg-[#EAF2FF] min-[430px]:h-9 min-[430px]:w-9"
+              >
+                <MoreVertical size={18} />
+              </button>
+
+              <AnimatePresence>
+                {menuOpen ? (
+                  <motion.div
+                    initial={{ opacity: 0, y: -4, scale: 0.98 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -4, scale: 0.98 }}
+                    className="absolute right-0 top-11 z-30 w-44 overflow-hidden rounded-[14px] border border-[#DCE5F2] bg-white py-1 shadow-[0_18px_42px_rgba(15,23,42,0.16)]"
+                  >
+                    <MenuAction icon={Share2} label="Compartir" onClick={onShare} />
+                    {canManage ? <MenuAction icon={PencilLine} label="Editar" onClick={onEdit} /> : null}
+                    {canManage ? <MenuAction icon={Trash2} label="Eliminar" danger onClick={onDelete} /> : null}
+                  </motion.div>
+                ) : null}
+              </AnimatePresence>
             </div>
+          ) : null}
+        </header>
+
+        <div className="flex min-w-0 items-center gap-2 px-4 pt-2 text-[12px] text-[#637295]">
+          {publication.author.photoUrl ? (
+            <img src={publication.author.photoUrl} alt="" className="h-8 w-8 shrink-0 rounded-full object-cover ring-2 ring-[#EEF2F7]" />
+          ) : (
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#EAF2FF] text-[11px] font-black text-[#145CFF] ring-2 ring-[#EEF2F7]">
+              {publication.author.name
+                .split(/\s+/)
+                .filter(Boolean)
+                .slice(0, 2)
+                .map((part) => part[0])
+                .join('')
+                .toUpperCase() || 'SI'}
+            </span>
+          )}
+          <span className="min-w-0 flex-1 truncate font-black text-[#0B1F5B]">{publication.author.name}</span>
+          <span className="h-1 w-1 shrink-0 rounded-full bg-[#B8C4D8]" />
+          <span className="shrink-0 truncate text-[11px] font-bold">{formatBroadcastDate(publication.createdAt)}</span>
+        </div>
+
+        <div className="mt-3 bg-[#071426]">
+          <div className="aspect-video w-full overflow-hidden bg-black">
+            {displayItem ? (
+              <PublicationMedia item={displayItem} publicationTitle={publication.title} allowExternalOpen={!publicMode} onOpenImage={onOpenImage} />
+            ) : (
+              <button type="button" onClick={onOpenDetails} className="grid h-full w-full place-items-center bg-[#EAF2FF] text-[#145CFF]">
+                <Play size={42} className="fill-current" />
+              </button>
+            )}
           </div>
         </div>
+
+        <div className="flex items-center gap-4 px-4 py-3 text-[#253047]">
+          {publicMode ? (
+            <Stat icon={Bookmark} value={publication.savedCount} label="Guardados" />
+          ) : (
+            <StatButton active={publication.savedByCurrentUser} icon={Bookmark} value={publication.savedCount} label="Guardados" onClick={onToggleSave} />
+          )}
+          <Stat icon={Eye} value={publication.viewsCount} label="Views" />
+          {publicMode ? (
+            <Stat icon={Share2} value={publication.sharedCount} label="Compartidos" />
+          ) : (
+            <button type="button" onClick={onShare} aria-label="Compartidos" className="inline-flex items-center gap-1.5 text-sm font-bold text-[#253047] transition hover:text-[#145CFF]">
+              <Share2 className={statsIconClass} />
+              <span>{formatCount(publication.sharedCount)}</span>
+            </button>
+          )}
+        </div>
+
+        {publication.description ? (
+          <div className="border-t border-[#E4EBF6] px-4 py-3">
+            <p className={cx('whitespace-pre-line break-words text-[13px] font-semibold leading-5 text-[#52637C]', !descriptionExpanded && 'line-clamp-2')}>
+              {publication.description}
+            </p>
+            {descriptionIsLong ? (
+              <button
+                type="button"
+                onClick={() => setDescriptionExpanded((current) => !current)}
+                className="mt-1 block w-full text-right text-[12px] font-black text-[#145CFF]"
+              >
+                {descriptionExpanded ? 'Ver menos' : 'Ver más'}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
 
         {spotifyItem ? (
           <div className="border-t border-[#E4EBF6] bg-[#F8FBFF] px-3 py-3">
@@ -1234,12 +1231,12 @@ function HomeEventStoryCard({ publication, isNew, onOpen }: { publication: Soyib
           <ImageIcon size={30} />
         </div>
       )}
+      {isNew ? <span className="soyiba-new-event-image-pulse pointer-events-none absolute inset-0" aria-hidden="true" /> : null}
       <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(5,14,34,0.18)_0%,rgba(5,14,34,0.08)_36%,rgba(5,14,34,0.86)_100%)]" />
       <span className="absolute left-2 top-2 grid h-[54px] w-[50px] place-items-center rounded-[11px] bg-[#0B1F5B]/95 px-1 text-center text-white shadow-[0_12px_26px_rgba(11,31,91,0.26)]">
         <span className="block text-[19px] font-black leading-5">{dateParts.day}</span>
         <span className="block text-[11px] font-black uppercase leading-3 text-white/82">{dateParts.month}</span>
       </span>
-      {isNew ? <span className="soyiba-new-event-dot absolute right-3 top-3 h-3 w-3 rounded-full bg-[#1D8CFF] shadow-[0_0_0_4px_rgba(29,140,255,0.18)]" /> : null}
       <div className="absolute inset-x-0 bottom-0 p-3">
         <h3 className="line-clamp-2 min-h-[40px] break-words text-[15px] font-black leading-5 text-white">{publication.title}</h3>
         <p className="mt-2 flex min-w-0 items-center gap-1 text-[10px] font-bold text-white/86">
@@ -1336,6 +1333,18 @@ function HomeEventStoryViewer({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
+      onPointerDown={(event) => {
+        const target = event.target;
+
+        if (target instanceof HTMLElement && target.closest('[data-story-control="true"]')) {
+          return;
+        }
+
+        setPaused(true);
+      }}
+      onPointerUp={() => setPaused(false)}
+      onPointerCancel={() => setPaused(false)}
+      onPointerLeave={() => setPaused(false)}
       className="fixed inset-0 z-[130] h-[100dvh] overflow-hidden bg-[#071426] text-white"
       role="dialog"
       aria-modal="true"
@@ -1349,7 +1358,7 @@ function HomeEventStoryViewer({
       )}
       <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(5,12,28,0.76)_0%,rgba(5,12,28,0.20)_38%,rgba(5,12,28,0.88)_100%)]" />
 
-      <div className="absolute inset-x-3 top-[calc(12px+env(safe-area-inset-top))] z-30 flex gap-1">
+      <div className="pointer-events-none absolute inset-x-3 top-[calc(12px+env(safe-area-inset-top))] z-30 flex gap-1">
         {events.map((publication, index) => (
           <span key={publication.id} className="h-1 flex-1 overflow-hidden rounded-full bg-white/28">
             <span
@@ -1362,6 +1371,7 @@ function HomeEventStoryViewer({
 
       <button
         type="button"
+        data-story-control="true"
         aria-label="Cerrar historias"
         onClick={onClose}
         className="absolute right-3 top-[calc(26px+env(safe-area-inset-top))] z-40 grid h-11 w-11 place-items-center rounded-full bg-black/38 text-white backdrop-blur"
@@ -1369,29 +1379,30 @@ function HomeEventStoryViewer({
         <X size={24} />
       </button>
 
-      <button type="button" aria-label="Evento anterior" onClick={goPrevious} className="absolute inset-y-0 left-0 z-30 flex w-[33%] items-center justify-start pl-3 text-white/82">
-        <span className="grid h-10 w-10 place-items-center rounded-full bg-black/24 backdrop-blur">
-          <ChevronLeft size={24} />
-        </span>
+      <button
+        type="button"
+        data-story-control="true"
+        aria-label="Evento anterior"
+        onClick={goPrevious}
+        className="absolute left-3 top-1/2 z-40 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-black/24 text-white/82 backdrop-blur"
+      >
+        <ChevronLeft size={24} />
       </button>
       <button
         type="button"
-        aria-label="Pausar historia"
-        onPointerDown={() => setPaused(true)}
-        onPointerUp={() => setPaused(false)}
-        onPointerCancel={() => setPaused(false)}
-        onPointerLeave={() => setPaused(false)}
-        className="absolute inset-y-0 left-[33%] z-30 flex w-[34%] items-center justify-center text-white/78"
+        data-story-control="true"
+        aria-label="Siguiente evento"
+        onClick={goNext}
+        className="absolute right-3 top-1/2 z-40 grid h-11 w-11 -translate-y-1/2 place-items-center rounded-full bg-black/24 text-white/82 backdrop-blur"
       >
-        <span className="grid h-10 w-10 place-items-center rounded-full bg-black/18 opacity-70 backdrop-blur">
-          <Pause size={20} />
-        </span>
+        <ChevronRight size={24} />
       </button>
-      <button type="button" aria-label="Siguiente evento" onClick={goNext} className="absolute inset-y-0 right-0 z-30 flex w-[33%] items-center justify-end pr-3 text-white/82">
-        <span className="grid h-10 w-10 place-items-center rounded-full bg-black/24 backdrop-blur">
-          <ChevronRight size={24} />
+
+      {paused ? (
+        <span className="pointer-events-none absolute left-1/2 top-1/2 z-40 grid h-12 w-12 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full bg-black/32 text-white/88 backdrop-blur">
+          <Pause size={22} />
         </span>
-      </button>
+      ) : null}
 
       <div className="pointer-events-none relative z-20 flex h-full flex-col items-start justify-end px-5 pb-[calc(28px+env(safe-area-inset-bottom))] pt-[calc(72px+env(safe-area-inset-top))]">
         <div className="w-full max-w-xl text-left">
@@ -1421,6 +1432,7 @@ function HomeEventStoryViewer({
 
           <button
             type="button"
+            data-story-control="true"
             onClick={() => onViewEvent(activeEvent)}
             className="pointer-events-auto relative z-40 mt-5 inline-flex h-12 w-full items-center justify-center gap-2 rounded-[15px] bg-white px-5 text-[13px] font-black text-[#0B1F5B] shadow-[0_18px_36px_rgba(0,0,0,0.22)]"
           >
