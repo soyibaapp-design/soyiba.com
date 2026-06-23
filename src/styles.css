@@ -366,13 +366,19 @@ input {
   padding: 8px 12px;
 }
 
-.iba-stack {
+.iba-stack-stage {
   position: sticky;
   top: calc(136px + env(safe-area-inset-top));
   z-index: 3;
   width: min(760px, calc(100% - 32px));
-  height: min(514px, calc((100vw - 32px) * 0.5625 + 58px));
   margin: 0 auto 46px;
+}
+
+.iba-stack {
+  position: relative;
+  width: 100%;
+  height: min(514px, calc((100vw - 32px) * 0.5625 + 58px));
+  margin: 0;
 }
 
 .iba-stack-card {
@@ -563,7 +569,8 @@ input {
   box-shadow: 0 12px 26px rgba(2, 6, 23, 0.28);
 }
 
-.iba-gospel-verse-card {
+.iba-gospel-verse-card,
+.iba-slide-info-card {
   width: min(560px, 100%);
   margin: 0 auto;
   border: 1px solid rgba(217, 154, 67, 0.72);
@@ -577,7 +584,17 @@ input {
   backdrop-filter: blur(14px);
 }
 
-.iba-gospel-verse-card span {
+.iba-slide-info-card {
+  width: min(680px, 100%);
+  max-height: min(320px, 38dvh);
+  margin-top: 48px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(240, 179, 90, 0.72) rgba(255, 255, 255, 0.08);
+}
+
+.iba-gospel-verse-card span,
+.iba-slide-info-card > span {
   display: inline-flex;
   min-height: 28px;
   align-items: center;
@@ -592,7 +609,8 @@ input {
   text-transform: uppercase;
 }
 
-.iba-gospel-verse-card h3 {
+.iba-gospel-verse-card h3,
+.iba-slide-info-card h3 {
   margin: 12px 0 8px;
   font-family: Georgia, "Times New Roman", serif;
   font-size: clamp(22px, 4.2vw, 32px);
@@ -600,12 +618,17 @@ input {
   line-height: 1.05;
 }
 
-.iba-gospel-verse-card p {
+.iba-gospel-verse-card p,
+.iba-slide-info-card p {
   margin: 0;
   color: rgba(255, 255, 255, 0.82);
   font-size: 14px;
   font-weight: 600;
   line-height: 1.55;
+}
+
+.iba-slide-info-card p + p {
+  margin-top: 10px;
 }
 
 .iba-gospel-verse-card small {
@@ -614,6 +637,39 @@ input {
   color: rgba(255, 210, 138, 0.82);
   font-size: 11px;
   font-weight: 900;
+}
+
+.iba-slide-schedule {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.iba-slide-schedule-item {
+  min-height: 88px;
+  border: 1px solid rgba(240, 179, 90, 0.22);
+  border-radius: 18px;
+  background: rgba(255, 244, 222, 0.07);
+  padding: 12px;
+}
+
+.iba-slide-schedule-item strong {
+  display: block;
+  margin-bottom: 7px;
+  color: #ffd28a;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.15;
+}
+
+.iba-slide-schedule-item small {
+  display: block;
+  margin-top: 4px;
+  color: rgba(255, 255, 255, 0.84);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.25;
 }
 
 .iba-location-section {
@@ -944,9 +1000,12 @@ input {
     display: none;
   }
 
-  .iba-stack {
+  .iba-stack-stage {
     top: calc(126px + env(safe-area-inset-top));
     width: min(760px, calc(100% - 32px));
+  }
+
+  .iba-stack {
     height: min(514px, calc((100vw - 32px) * 0.5625 + 58px));
   }
 
@@ -988,8 +1047,23 @@ input {
     border-width: 2px;
   }
 
-  .iba-gospel-verse-card {
+  .iba-gospel-verse-card,
+  .iba-slide-info-card {
     padding: 16px;
+  }
+
+  .iba-slide-info-card {
+    max-height: min(300px, 34dvh);
+    margin-top: 40px;
+  }
+
+  .iba-slide-schedule {
+    gap: 8px;
+  }
+
+  .iba-slide-schedule-item {
+    min-height: 76px;
+    padding: 10px;
   }
 
   .iba-location-map {

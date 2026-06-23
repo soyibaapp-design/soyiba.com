@@ -45,6 +45,16 @@ type StackCard = {
   imageAlt: string;
 };
 
+type SlideInfoCard = {
+  eyebrow: string;
+  title: string;
+  paragraphs: string[];
+  schedule?: Array<{
+    label: string;
+    lines: string[];
+  }>;
+};
+
 type GeoPoint = {
   latitude: number;
   longitude: number;
@@ -84,6 +94,43 @@ const stackCards: StackCard[] = [
     title: 'Pastor y comunidad',
     image: primaryAssets.pastor,
     imageAlt: 'Pastor de Iglesia Bíblica Antioquía',
+  },
+];
+
+const slideInfoCards: SlideInfoCard[] = [
+  {
+    eyebrow: 'Bienvenida',
+    title: 'Iglesia centrada en Cristo',
+    paragraphs: ['Somos una iglesia centrada en CRISTO y su palabra, que vivimos para reflejar la gloria de Dios.'],
+    schedule: [
+      { label: 'Domingo', lines: ['8:00 y 10:00 AM', 'Escuela dominical'] },
+      { label: 'Jueves', lines: ['8:00 AM Ayuno', '07:00 PM Estudio Bíblico'] },
+      { label: 'Sábados', lines: ['04:00 PM Pre Juveniles', '06:00 PM Jóvenes'] },
+      { label: 'Último martes del mes', lines: ['Oración', '07:00 PM'] },
+    ],
+  },
+  {
+    eyebrow: 'Nuestra visión',
+    title: 'Nuestra Visión',
+    paragraphs: [
+      'Ser una comunidad de creyentes que aman a Jesús, su palabra y su iglesia, apasionados por la gloria de Dios y viven el presente con la mirada puesta en la eternidad.',
+    ],
+  },
+  {
+    eyebrow: 'Nuestra misión',
+    title: 'Nuestra Misión',
+    paragraphs: [
+      'Ser una iglesia que refleje la gloria de Dios a través de Jesucristo, predicar su palabra fielmente como discípulos, haciendo discípulos con el poder del Espíritu Santo.',
+    ],
+  },
+  {
+    eyebrow: 'Pastor y comunidad',
+    title: 'Sobre el pastor Felipe Trujillo',
+    paragraphs: [
+      'Como Iglesia Bíblica Antioquía, creemos en la pluralidad de ancianos como el modelo bíblico de liderar y dirigir la Iglesia. En este momento solo el Pastor Felipe Trujillo es quien preside la congregación, con la esperanza de que en poco tiempo contemos con más ancianos que nos ayuden a hacer la labor pastoral.',
+      'El Pastor Felipe Trujillo lleva más de 25 años de caminar con el Señor y ser llamado a la salvación. Desde hace más de 20 años es pastor. Es egresado de la Fundación Universitaria Seminario Bíblico de Colombia, con un Pregrado en Teología.',
+      'Está casado con Eliana Giraldo y tiene dos hijas gemelas llamadas Salomé y Valeria.',
+    ],
   },
 ];
 
@@ -251,6 +298,7 @@ export function IbaSlidesModal({ open, onClose }: { open: boolean; onClose: () =
   const [locationStatus, setLocationStatus] = useState<LocationStatus>('idle');
   const [directionsOpen, setDirectionsOpen] = useState(false);
   const [mapNotice, setMapNotice] = useState('');
+  const [activeSlideIndex, setActiveSlideIndex] = useState(0);
   const [activeGospelIndex, setActiveGospelIndex] = useState(0);
 
   useEffect(() => {
@@ -271,6 +319,9 @@ export function IbaSlidesModal({ open, onClose }: { open: boolean; onClose: () =
       const scrollProgress = Math.min(Math.max(-rect.top / (stackSection.offsetHeight - scrollEl.clientHeight), 0), 1);
       const totalCards = stackCards.length;
       const step = 1 / totalCards;
+      const nextActiveSlide = Math.min(totalCards - 1, Math.max(0, Math.floor(scrollProgress * totalCards)));
+
+      setActiveSlideIndex((current) => (current === nextActiveSlide ? current : nextActiveSlide));
 
       stackCards.forEach((card, index) => {
         const start = index * step;
@@ -473,25 +524,55 @@ export function IbaSlidesModal({ open, onClose }: { open: boolean; onClose: () =
                 <span>Conoce nuestra iglesia</span>
                 <small>Identidad, misión y comunidad</small>
               </div>
-              <div className="iba-stack" id="ibaStack">
-                {stackCards.map((card, index) => (
-                  <article
-                    key={card.id}
-                    ref={(node) => {
-                      if (node) {
-                        cardRefs.current[index] = node;
-                      }
-                    }}
-                    className="iba-stack-card"
-                  >
-                    <img src={card.image} alt={card.imageAlt} />
-                    <div className="iba-card-overlay">
-                      <div className="iba-card-content">
-                        <div className="iba-card-title">{card.title}</div>
+              <div className="iba-stack-stage">
+                <div className="iba-stack" id="ibaStack">
+                  {stackCards.map((card, index) => (
+                    <article
+                      key={card.id}
+                      ref={(node) => {
+                        if (node) {
+                          cardRefs.current[index] = node;
+                        }
+                      }}
+                      className="iba-stack-card"
+                    >
+                      <img src={card.image} alt={card.imageAlt} />
+                      <div className="iba-card-overlay">
+                        <div className="iba-card-content">
+                          <div className="iba-card-title">{card.title}</div>
+                        </div>
                       </div>
-                    </div>
-                  </article>
-                ))}
+                    </article>
+                  ))}
+                </div>
+                <AnimatePresence mode="wait">
+                  <motion.article
+                    key={slideInfoCards[activeSlideIndex].eyebrow}
+                    className="iba-slide-info-card"
+                    initial={{ opacity: 0, y: 12, scale: 0.98 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -8, scale: 0.98 }}
+                    transition={{ duration: 0.22, ease: 'easeOut' }}
+                  >
+                    <span>{slideInfoCards[activeSlideIndex].eyebrow}</span>
+                    <h3>{slideInfoCards[activeSlideIndex].title}</h3>
+                    {slideInfoCards[activeSlideIndex].paragraphs.map((paragraph) => (
+                      <p key={paragraph}>{paragraph}</p>
+                    ))}
+                    {slideInfoCards[activeSlideIndex].schedule ? (
+                      <div className="iba-slide-schedule" aria-label="Horarios">
+                        {slideInfoCards[activeSlideIndex].schedule.map((item) => (
+                          <div key={item.label} className="iba-slide-schedule-item">
+                            <strong>{item.label}</strong>
+                            {item.lines.map((line) => (
+                              <small key={line}>{line}</small>
+                            ))}
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </motion.article>
+                </AnimatePresence>
               </div>
             </section>
 
