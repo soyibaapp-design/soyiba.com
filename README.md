@@ -42,6 +42,7 @@ Para Apps Script se recomienda desplegar cada carpeta `GS/NOMBRE/Code.gs` como u
 | Auth | `VITE_APPS_SCRIPT_AUTH_URL` | configurado en `GS/Auth/Code.gs` |
 | Inicio | `VITE_APPS_SCRIPT_INICIO_URL` | configurado en `GS/Inicio/Code.gs` |
 | Publicaciones | `VITE_APPS_SCRIPT_PUBLICACIONES_URL` | pestanas `Publicaciones` y `Guardados` en el Sheet de Inicio |
+| Donaciones | `VITE_APPS_SCRIPT_DONACIONES_URL` | hoja `DonacionesConfig`; si falta, usa el endpoint de Inicio |
 
 Los endpoints reales deben vivir en `.env`. Usa `.env.example` como plantilla local.
 
