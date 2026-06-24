@@ -1,6 +1,6 @@
 var SOYIBA_AUTH_SPREADSHEET_ID = '1Sk6f6mScrMTcXfa-psxoY4boa_1gqJmFt7anP-lpErM';
 var SOYIBA_AUTH_SHEET = 'Auth';
-var SOYIBA_AUTH_CODE_VERSION = 'users-management-2026-06-23';
+var SOYIBA_AUTH_CODE_VERSION = 'users-verification-2026-06-24';
 var SOYIBA_AUTH_HEADERS = [
   'user_id',
   'email',
@@ -26,7 +26,8 @@ var SOYIBA_AUTH_HEADERS = [
   'acepto_politica_datos',
   'fecha_aceptacion_politica',
   'active',
-  'tiempo_iba'
+  'tiempo_iba',
+  'usuario_verificado'
 ];
 
 function doGet() {
@@ -139,7 +140,8 @@ function soyibaAuthRegister_(data) {
     true,
     now,
     true,
-    ''
+    '',
+    false
   ]);
 
   return {
@@ -170,7 +172,8 @@ function soyibaAuthRegister_(data) {
       true,
       now,
       true,
-      ''
+      '',
+      false
     ]))
   };
 }
@@ -226,6 +229,7 @@ function soyibaAuthBuildUser_(user) {
     publicador: soyibaAuthIsTrue_(user.publicador),
     publicadorEco: soyibaAuthIsTrue_(user.publicador_eco),
     publicadorEvento: soyibaAuthIsTrue_(user.publicador_evento),
+    verificado: soyibaAuthIsTrue_(user.usuario_verificado),
     active: user.active === '' || user.active === undefined ? user.status === 'active' : soyibaAuthIsTrue_(user.active)
   };
 }
@@ -368,6 +372,7 @@ function soyibaAuthUpdateUserAccess_(data) {
   var publicador = soyibaAuthIsTrue_(data.publicador);
   var publicadorEco = soyibaAuthIsTrue_(data.publicadorEco !== undefined ? data.publicadorEco : data.publicador_eco);
   var publicadorEvento = soyibaAuthIsTrue_(data.publicadorEvento !== undefined ? data.publicadorEvento : data.publicador_evento);
+  var verificado = soyibaAuthIsTrue_(data.verificado !== undefined ? data.verificado : (data.usuarioVerificado !== undefined ? data.usuarioVerificado : data.usuario_verificado));
   var now = new Date().toISOString();
 
   if (soyibaAuthIsAssistantAccess_(tipoUsuario)) {
@@ -391,6 +396,7 @@ function soyibaAuthUpdateUserAccess_(data) {
   soyibaAuthSetCell_(sheet, headers, found.row, 'publicador', publicador);
   soyibaAuthSetCell_(sheet, headers, found.row, 'publicador_eco', publicadorEco);
   soyibaAuthSetCell_(sheet, headers, found.row, 'publicador_evento', publicadorEvento);
+  soyibaAuthSetCell_(sheet, headers, found.row, 'usuario_verificado', verificado);
   soyibaAuthSetCell_(sheet, headers, found.row, 'active', active);
   soyibaAuthSetCell_(sheet, headers, found.row, 'status', active && soyibaAuthStateIsActive_(estadoUsuario) ? 'active' : 'inactive');
   soyibaAuthSetCell_(sheet, headers, found.row, 'updated_at', now);

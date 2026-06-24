@@ -3,7 +3,7 @@ var SOYIBA_INICIO_SHEET = 'Inicio';
 var SOYIBA_INICIO_HEADERS = ['metric_id', 'label', 'value', 'sort_order', 'visible', 'updated_at'];
 var SOYIBA_AUTH_SPREADSHEET_ID = '1Sk6f6mScrMTcXfa-psxoY4boa_1gqJmFt7anP-lpErM';
 var SOYIBA_AUTH_SHEET = 'Auth';
-var SOYIBA_INICIO_CODE_VERSION = 'users-management-2026-06-23';
+var SOYIBA_INICIO_CODE_VERSION = 'users-verification-2026-06-24';
 var SOYIBA_AUTH_HEADERS = [
   'user_id',
   'email',
@@ -29,7 +29,8 @@ var SOYIBA_AUTH_HEADERS = [
   'acepto_politica_datos',
   'fecha_aceptacion_politica',
   'active',
-  'tiempo_iba'
+  'tiempo_iba',
+  'usuario_verificado'
 ];
 var SOYIBA_PUBLICACIONES_SPREADSHEET_ID = SOYIBA_INICIO_SPREADSHEET_ID;
 var SOYIBA_PUBLICACIONES_SHEET = 'Publicaciones';
@@ -358,7 +359,8 @@ function soyibaAuthRegister_(data) {
     true,
     now,
     true,
-    ''
+    '',
+    false
   ];
 
   sheet.appendRow(row);
@@ -533,6 +535,7 @@ function soyibaAuthUpdateUserAccess_(data) {
   var publicador = soyibaAuthIsTrue_(data.publicador);
   var publicadorEco = soyibaAuthIsTrue_(data.publicadorEco !== undefined ? data.publicadorEco : data.publicador_eco);
   var publicadorEvento = soyibaAuthIsTrue_(data.publicadorEvento !== undefined ? data.publicadorEvento : data.publicador_evento);
+  var verificado = soyibaAuthIsTrue_(data.verificado !== undefined ? data.verificado : (data.usuarioVerificado !== undefined ? data.usuarioVerificado : data.usuario_verificado));
   var now = new Date().toISOString();
 
   if (soyibaAuthIsAssistantAccess_(tipoUsuario)) {
@@ -556,6 +559,7 @@ function soyibaAuthUpdateUserAccess_(data) {
   soyibaAuthSetCell_(sheet, headers, found.row, 'publicador', publicador);
   soyibaAuthSetCell_(sheet, headers, found.row, 'publicador_eco', publicadorEco);
   soyibaAuthSetCell_(sheet, headers, found.row, 'publicador_evento', publicadorEvento);
+  soyibaAuthSetCell_(sheet, headers, found.row, 'usuario_verificado', verificado);
   soyibaAuthSetCell_(sheet, headers, found.row, 'active', active);
   soyibaAuthSetCell_(sheet, headers, found.row, 'status', active && soyibaAuthStateIsActive_(estadoUsuario) ? 'active' : 'inactive');
   soyibaAuthSetCell_(sheet, headers, found.row, 'updated_at', now);
@@ -593,6 +597,7 @@ function soyibaAuthBuildUser_(user) {
     publicador: soyibaAuthIsTrue_(user.publicador),
     publicadorEco: soyibaAuthIsTrue_(user.publicador_eco),
     publicadorEvento: soyibaAuthIsTrue_(user.publicador_evento),
+    verificado: soyibaAuthIsTrue_(user.usuario_verificado),
     active: user.active === '' || user.active === undefined ? user.status === 'active' : soyibaAuthIsTrue_(user.active)
   };
 }
@@ -1438,6 +1443,10 @@ function soyibaPublicacionesGetCurrentUser_(data) {
     user = null;
   }
 
+  var verificado = user
+    ? user.usuario_verificado
+    : (source.verificado !== undefined ? source.verificado : (source.usuarioVerificado !== undefined ? source.usuarioVerificado : source.usuario_verificado));
+
   return {
     id: String((user && user.user_id) || source.id || data.userId || '').trim(),
     email: soyibaAuthNormalizeEmail_((user && user.email) || source.email || data.email || ''),
@@ -1447,7 +1456,8 @@ function soyibaPublicacionesGetCurrentUser_(data) {
     rolSistema: String((user && user.rol_sistema) || source.rolSistema || source.rol_sistema || source.role || ''),
     publicador: soyibaPublicacionesIsTrue_((user && user.publicador) || source.publicador),
     publicadorEco: soyibaPublicacionesIsTrue_((user && user.publicador_eco) || source.publicadorEco || source.publicador_eco),
-    publicadorEvento: soyibaPublicacionesIsTrue_((user && user.publicador_evento) || source.publicadorEvento || source.publicador_evento)
+    publicadorEvento: soyibaPublicacionesIsTrue_((user && user.publicador_evento) || source.publicadorEvento || source.publicador_evento),
+    verificado: soyibaPublicacionesIsTrue_(verificado)
   };
 }
 
@@ -1478,6 +1488,16 @@ function soyibaPublicacionesIsManager_(user) {
   return role === 'admin' || role === 'moderador';
 }
 
+function soyibaPublicacionesFindPublisherUser_(record) {
+  try {
+    var authSheet = soyibaAuthGetSheet_();
+    var found = soyibaAuthFindUserByIdOrEmail_(authSheet, record.publisher_user_id, record.publisher_email);
+    return found.row > 0 ? found.user : null;
+  } catch (error) {
+    return null;
+  }
+}
+
 function soyibaPublicacionesBuildResponse_(record, savedByCurrentUser, yovoyByCurrentUser, ecoAttendanceByCurrentUser) {
   var capacityAvailable = Number(record.cupos || 0);
   var attendeesCount = Number(record.yovoy || 0);
@@ -1485,6 +1505,7 @@ function soyibaPublicacionesBuildResponse_(record, savedByCurrentUser, yovoyByCu
   var ecoAttendeesCount = Number(record.asistentes || 0);
   var ecoLatitude = soyibaPublicacionesNumberOrNull_(record.latitud);
   var ecoLongitude = soyibaPublicacionesLongitudeOrNull_(record.longitud);
+  var publisherUser = soyibaPublicacionesFindPublisherUser_(record);
 
   return {
     id: String(record.publication_id || ''),
@@ -1498,7 +1519,8 @@ function soyibaPublicacionesBuildResponse_(record, savedByCurrentUser, yovoyByCu
       id: String(record.publisher_user_id || ''),
       name: String(record.publisher_name || 'SOY IBA'),
       email: String(record.publisher_email || ''),
-      photoUrl: String(record.publisher_photo_url || '')
+      photoUrl: String(record.publisher_photo_url || ''),
+      verified: soyibaPublicacionesIsTrue_(publisherUser ? publisherUser.usuario_verificado : (record.publisher_verified || record.publisher_verificado))
     },
     mediaItems: soyibaPublicacionesParseArray_(record.media_items_json),
     cta: {

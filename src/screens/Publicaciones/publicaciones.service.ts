@@ -62,6 +62,7 @@ export type SoyibaPublication = {
     name: string;
     email?: string;
     photoUrl?: string;
+    verified?: boolean;
   };
   mediaItems: PublicationMediaItem[];
   cta: {
@@ -492,6 +493,7 @@ export async function createPublication(session: SoyibaSession, payload: Publica
           name: getUserDisplayName(session.user),
           email: session.user.email,
           photoUrl: session.user.photoUrl,
+          verified: Boolean(session.user.verificado),
         },
         savedCount: 0,
         viewsCount: 0,
@@ -528,6 +530,7 @@ export async function updatePublication(session: SoyibaSession, publicationId: s
           name: getUserDisplayName(session.user),
           email: session.user.email,
           photoUrl: session.user.photoUrl,
+          verified: Boolean(session.user.verificado),
         },
         savedCount: 0,
         viewsCount: 0,
@@ -935,6 +938,7 @@ function getUserRequest(user: SoyibaUser) {
     publicador: user.publicador,
     publicadorEco: user.publicadorEco,
     publicadorEvento: user.publicadorEvento,
+    verificado: Boolean(user.verificado),
   };
 }
 
@@ -964,6 +968,7 @@ function normalizePublication(value: unknown): SoyibaPublication {
       name: stringFrom(author.name || record.publisher_name || 'SOY IBA'),
       email: stringFrom(author.email || record.publisher_email),
       photoUrl: stringFrom(author.photoUrl || record.publisher_photo_url),
+      verified: isTrue(valueFrom(author.verified, author.verificado, record.publisher_verified, record.publisher_verificado, record.usuario_verificado)),
     },
     mediaItems: normalizeMediaItems(record.mediaItems || record.media_items_json),
     cta: {

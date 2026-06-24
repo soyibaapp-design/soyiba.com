@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type TouchEvent } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
+  BadgeCheck,
   BookOpen,
   Bookmark,
   CalendarDays,
@@ -1077,7 +1078,7 @@ function HomeTransmissionCard({
                 .toUpperCase() || 'SI'}
             </span>
           )}
-          <span className="min-w-0 flex-1 truncate font-black text-[#0B1F5B]">{publication.author.name}</span>
+          <AuthorName publication={publication} className="flex-1 font-black text-[#0B1F5B]" />
           <span className="h-1 w-1 shrink-0 rounded-full bg-[#B8C4D8]" />
           <span className="shrink-0 truncate text-[11px] font-bold">{formatBroadcastDate(publication.createdAt)}</span>
         </div>
@@ -1832,7 +1833,9 @@ function PublicationDetailsModal({
           <AuthorAvatar publication={publication} />
 
           <div className="min-w-0 flex-1">
-            <h3 className="truncate text-[15px] font-black leading-5 text-[#101827]">{publication.author.name}</h3>
+            <h3 className="min-w-0 text-[15px] font-black leading-5 text-[#101827]">
+              <AuthorName publication={publication} />
+            </h3>
             <p className="text-[12px] font-semibold leading-4 text-[#667085]">{formatRelativeTime(publication.createdAt)}</p>
           </div>
 
@@ -2365,7 +2368,9 @@ function PublicationCard({
         <AuthorAvatar publication={publication} />
 
         <div className="min-w-0 flex-1">
-          <h3 className="truncate text-[15px] font-black leading-5 text-[#101827]">{publication.author.name}</h3>
+          <h3 className="min-w-0 text-[15px] font-black leading-5 text-[#101827]">
+            <AuthorName publication={publication} />
+          </h3>
           <p className="text-[12px] font-semibold leading-4 text-[#667085]">{formatRelativeTime(publication.createdAt)}</p>
         </div>
 
@@ -3288,6 +3293,15 @@ function AuthorAvatar({ publication }: { publication: SoyibaPublication }) {
         .join('')
         .toUpperCase() || 'SI'}
     </div>
+  );
+}
+
+function AuthorName({ publication, className = '' }: { publication: SoyibaPublication; className?: string }) {
+  return (
+    <span className={`flex min-w-0 items-center gap-1.5 ${className}`}>
+      <span className="min-w-0 truncate">{publication.author.name}</span>
+      {publication.author.verified ? <BadgeCheck size={15} aria-label="Autor verificado" className="shrink-0 fill-[#EAF2FF] text-[#145CFF]" /> : null}
+    </span>
   );
 }
 

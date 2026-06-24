@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type InputHTMLAttributes } from 'react';
 import { motion } from 'framer-motion';
 import {
+  BadgeCheck,
   CalendarDays,
   Camera,
   CheckCircle2,
@@ -343,7 +344,10 @@ export function ProfileScreen({
           </div>
 
           <div className="min-w-0 flex-1">
-            <h1 className="truncate text-2xl font-black leading-tight text-[#0B1F5B]">{displayName}</h1>
+            <h1 className="flex min-w-0 items-center gap-1.5 text-2xl font-black leading-tight text-[#0B1F5B]">
+              <span className="min-w-0 truncate">{displayName}</span>
+              <VerifiedBadge active={Boolean(user.verificado)} />
+            </h1>
             <p className="mt-1 truncate text-sm font-semibold text-[#51617A]">{user.email}</p>
             <div className="mt-3 flex flex-wrap gap-2">
               <Badge icon={UserRound} label={user.tipoUsuario || 'Asistente'} className="bg-[#EAF2FF] text-[#145CFF] ring-[#B9D3FF]" />
@@ -574,6 +578,14 @@ function Badge({ icon: Icon, label, className }: { icon: LucideIcon; label: stri
       {label}
     </span>
   );
+}
+
+function VerifiedBadge({ active }: { active: boolean }) {
+  if (!active) {
+    return null;
+  }
+
+  return <BadgeCheck size={18} aria-label="Usuario verificado" className="shrink-0 fill-[#EAF2FF] text-[#145CFF]" />;
 }
 
 function AdminCard({

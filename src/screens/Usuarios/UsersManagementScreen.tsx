@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   ArrowLeft,
+  BadgeCheck,
   CheckCircle2,
   Edit3,
   LoaderCircle,
@@ -294,7 +295,10 @@ function UserAccessCard({ user, onEdit }: { user: ManagedUser; onEdit: () => voi
           {getInitials(user)}
         </div>
         <div className="min-w-0">
-          <h3 className="truncate text-sm font-black text-[#0B1F5B]">{getDisplayName(user)}</h3>
+          <h3 className="flex min-w-0 items-center gap-1.5 text-sm font-black text-[#0B1F5B]">
+            <span className="min-w-0 truncate">{getDisplayName(user)}</span>
+            <VerifiedBadge active={Boolean(user.verificado)} />
+          </h3>
           <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] font-bold text-[#64748B]">
             <Mail size={13} className="shrink-0" />
             <span className="truncate">{user.email || 'Sin correo'}</span>
@@ -320,6 +324,7 @@ function UserAccessCard({ user, onEdit }: { user: ManagedUser; onEdit: () => voi
         <Pill icon={ShieldCheck} label={user.rolSistema || user.role || 'Usuario'} className="bg-[#FFE9E8] text-[#E63737] ring-[#FFB6B2]/50" />
         <Pill icon={UserRound} label={user.tipoUsuario || 'Asistente'} className="bg-[#EAF2FF] text-[#145CFF] ring-[#B9D3FF]" />
         <Pill icon={UsersRound} label={user.tituloUsuario || user.tipoUsuario || 'Asistente'} className="bg-[#FFF1DC] text-[#D46D00] ring-[#FFD39A]" />
+        {user.verificado ? <Pill icon={BadgeCheck} label="Verificado" className="bg-[#EAF2FF] text-[#145CFF] ring-[#B9D3FF]" /> : null}
         <Pill
           icon={CheckCircle2}
           label={user.estadoUsuario || (isActiveUser(user) ? 'Activo' : 'Inactivo')}
@@ -400,7 +405,10 @@ function EditUserAccessModal({
         <header className="flex min-h-16 items-start justify-between gap-3 border-b border-[#E3EAF5] px-4 py-3">
           <div className="min-w-0">
             <h2 className="truncate text-sm font-black text-[#0B1F5B]">Editar usuario</h2>
-            <p className="mt-0.5 truncate text-[11px] font-bold text-[#637295]">{getDisplayName(user)}</p>
+            <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] font-bold text-[#637295]">
+              <span className="min-w-0 truncate">{getDisplayName(user)}</span>
+              <VerifiedBadge active={Boolean(form.verificado)} />
+            </p>
           </div>
           <button type="button" aria-label="Cerrar" onClick={onClose} className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[#0B1F5B]">
             <X size={20} />
@@ -417,6 +425,7 @@ function EditUserAccessModal({
               </>
             ) : null}
             <AccessSelect label="Estado de usuario" value={form.estadoUsuario} options={userStateOptions} onChange={updateState} icon={CheckCircle2} className="min-[520px]:col-span-2" />
+            <VerificationToggle checked={Boolean(form.verificado)} onChange={(checked) => updateField('verificado', checked)} className="min-[520px]:col-span-2" />
           </section>
 
           <section className="rounded-[14px] border border-[#DCE6F5] bg-white p-3.5">
@@ -525,6 +534,32 @@ function AccessSelect({
   );
 }
 
+function VerificationToggle({ checked, onChange, className = '' }: { checked: boolean; onChange: (checked: boolean) => void; className?: string }) {
+  return (
+    <div className={`min-w-0 ${className}`}>
+      <span className="mb-1.5 block text-[10px] font-black text-[#52637C]">Insignia de verificacion</span>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        onClick={() => onChange(!checked)}
+        className="flex h-14 w-full items-center gap-3 rounded-[13px] border border-[#DCE6F5] bg-white px-3 text-left shadow-[0_10px_24px_rgba(15,23,42,0.04)] transition focus:outline-none focus:ring-4 focus:ring-blue-100"
+      >
+        <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-[12px] ${checked ? 'bg-[#EAF2FF] text-[#145CFF]' : 'bg-[#EEF2F7] text-[#64748B]'}`}>
+          <BadgeCheck size={20} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-xs font-black text-[#0B1F5B]">Usuario verificado</span>
+          <span className="mt-0.5 block text-[10px] font-bold text-[#637295]">{checked ? 'Activo' : 'Inactivo'}</span>
+        </span>
+        <span className={`relative h-8 w-14 shrink-0 rounded-full p-1 transition ${checked ? 'bg-[#145CFF]' : 'bg-[#CBD8EA]'}`}>
+          <span className={`block h-6 w-6 rounded-full bg-white shadow-[0_6px_14px_rgba(15,23,42,0.18)] transition ${checked ? 'translate-x-6' : 'translate-x-0'}`} />
+        </span>
+      </button>
+    </div>
+  );
+}
+
 function PermissionToggle({
   icon: Icon,
   label,
@@ -575,6 +610,14 @@ function Pill({ icon: Icon, label, className }: { icon: LucideIcon; label: strin
   );
 }
 
+function VerifiedBadge({ active }: { active: boolean }) {
+  if (!active) {
+    return null;
+  }
+
+  return <BadgeCheck size={15} aria-label="Usuario verificado" className="shrink-0 fill-[#EAF2FF] text-[#145CFF]" />;
+}
+
 function getInitialAccessForm(user: ManagedUser): ManagedUserAccessPayload {
   const estadoUsuario = user.estadoUsuario || (isActiveUser(user) ? 'Activo' : 'Inactivo');
   const rawTipoUsuario = user.tipoUsuario || ASSISTANT_VALUE;
@@ -588,6 +631,7 @@ function getInitialAccessForm(user: ManagedUser): ManagedUserAccessPayload {
     publicador: Boolean(user.publicador),
     publicadorEco: Boolean(user.publicadorEco),
     publicadorEvento: Boolean(user.publicadorEvento),
+    verificado: Boolean(user.verificado),
     active: estadoUsuario === 'Activo',
   });
 }

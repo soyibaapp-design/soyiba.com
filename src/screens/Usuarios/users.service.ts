@@ -19,6 +19,7 @@ export type ManagedUserAccessPayload = {
   publicador: boolean;
   publicadorEco: boolean;
   publicadorEvento: boolean;
+  verificado: boolean;
   active: boolean;
 };
 
@@ -80,6 +81,7 @@ export async function updateManagedUser(
       publicador: normalizedPayload.publicador,
       publicadorEco: normalizedPayload.publicadorEco,
       publicadorEvento: normalizedPayload.publicadorEvento,
+      verificado: normalizedPayload.verificado,
     },
     () => updateLocalManagedUser(session, targetUser, normalizedPayload),
   );
@@ -101,6 +103,7 @@ function normalizeAccessPayload(payload: ManagedUserAccessPayload): ManagedUserA
     publicador: Boolean(payload.publicador),
     publicadorEco: Boolean(payload.publicadorEco),
     publicadorEvento: Boolean(payload.publicadorEvento),
+    verificado: Boolean(payload.verificado),
     active: estadoUsuario === 'Activo' && Boolean(payload.active),
   };
 
@@ -108,6 +111,11 @@ function normalizeAccessPayload(payload: ManagedUserAccessPayload): ManagedUserA
 }
 
 function normalizeManagedUser(user: Partial<ManagedUser>): ManagedUser {
+  const userRecord = user as Partial<ManagedUser> & {
+    usuarioVerificado?: unknown;
+    usuario_verificado?: unknown;
+    verified?: unknown;
+  };
   const rolSistema = stringValue(user.rolSistema || user.role) || 'Usuario';
   const rawTipoUsuario = stringValue(user.tipoUsuario) || 'Asistente';
   const tipoUsuario = normalizeUserType(rawTipoUsuario);
@@ -136,6 +144,7 @@ function normalizeManagedUser(user: Partial<ManagedUser>): ManagedUser {
     publicador: toBoolean(user.publicador),
     publicadorEco: toBoolean(user.publicadorEco),
     publicadorEvento: toBoolean(user.publicadorEvento),
+    verificado: toBoolean(userRecord.verificado ?? userRecord.usuarioVerificado ?? userRecord.usuario_verificado ?? userRecord.verified),
     active,
     status: stringValue(user.status) || (active ? 'active' : 'inactive'),
     createdAt: stringValue(user.createdAt),

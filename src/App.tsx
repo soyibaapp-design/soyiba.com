@@ -38,6 +38,7 @@ const publicSession: SoyibaSession = {
     publicador: false,
     publicadorEco: false,
     publicadorEvento: false,
+    verificado: false,
     active: false,
   },
 };

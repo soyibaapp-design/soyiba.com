@@ -17,6 +17,7 @@ export type SoyibaUser = {
   publicador?: boolean;
   publicadorEco?: boolean;
   publicadorEvento?: boolean;
+  verificado?: boolean;
   active?: boolean;
 };
 
@@ -78,6 +79,7 @@ export async function signInWithEmailPassword(email: string, password: string): 
         publicador: false,
         publicadorEco: false,
         publicadorEvento: false,
+        verificado: false,
         active: true,
       },
     }),
@@ -113,6 +115,7 @@ export async function registerWithEmailPassword(payload: RegisterPayload): Promi
       rolSistema: 'Usuario',
       estadoUsuario: 'Activo',
       aceptoPoliticaDatos: true,
+      verificado: false,
     },
     () => ({
       ok: true,
@@ -132,6 +135,7 @@ export async function registerWithEmailPassword(payload: RegisterPayload): Promi
         publicador: false,
         publicadorEco: false,
         publicadorEvento: false,
+        verificado: false,
         active: true,
       },
     }),
@@ -232,18 +236,25 @@ function normalizeEmail(value: unknown) {
 }
 
 function preserveLocalOnlyUserFields(result: AuthResult, currentSession: SoyibaSession): AuthResult {
-  if (!result.ok || !currentSession.user.photoUrl) {
+  if (!result.ok) {
     return result;
+  }
+
+  const user = { ...result.session.user };
+
+  if (currentSession.user.photoUrl) {
+    user.photoUrl = currentSession.user.photoUrl;
+  }
+
+  if (user.verificado === undefined) {
+    user.verificado = currentSession.user.verificado;
   }
 
   return {
     ok: true,
     session: {
       ...result.session,
-      user: {
-        ...result.session.user,
-        photoUrl: currentSession.user.photoUrl,
-      },
+      user,
     },
   };
 }
