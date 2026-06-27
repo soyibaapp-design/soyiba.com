@@ -10,6 +10,7 @@ export type SoyibaMapMarker = {
   locationLabel?: string;
   position: [number, number];
   mapsUrl?: string;
+  wazeUrl?: string;
   markerType?: 'eco' | 'church';
   badgeLabel?: string;
   onClick?: () => void;
@@ -126,8 +127,17 @@ function buildMarkerPopup(marker: SoyibaMapMarker) {
     marker.locationLabel ? `<span style="display:block;margin-top:4px;color:#52637C;font-size:12px;font-weight:700">${escapeHtml(marker.locationLabel)}</span>` : '',
     marker.distanceLabel ? `<span style="display:block;margin-top:8px;color:#145CFF;font-size:12px;font-weight:900">Distancia: ${escapeHtml(marker.distanceLabel)}</span>` : '',
     marker.subtitle && !marker.locationLabel && !marker.distanceLabel ? `<span style="display:block;margin-top:6px;color:#52637C;font-size:12px;font-weight:700">${escapeHtml(marker.subtitle)}</span>` : '',
-    marker.mapsUrl
-      ? `<a href="${escapeAttribute(marker.mapsUrl)}" target="_blank" rel="noreferrer" style="display:inline-block;margin-top:10px;font-weight:900;color:#145CFF">Abrir en Google Maps</a>`
+    marker.mapsUrl || marker.wazeUrl
+      ? [
+          '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">',
+          marker.mapsUrl
+            ? `<a href="${escapeAttribute(marker.mapsUrl)}" target="_blank" rel="noreferrer" style="display:inline-block;border-radius:10px;background:#145CFF;padding:8px 10px;font-weight:900;color:white;text-decoration:none">Google Maps</a>`
+            : '',
+          marker.wazeUrl
+            ? `<a href="${escapeAttribute(marker.wazeUrl)}" target="_blank" rel="noreferrer" style="display:inline-block;border-radius:10px;border:1px solid #BFD0EA;background:white;padding:8px 10px;font-weight:900;color:#145CFF;text-decoration:none">Waze</a>`
+            : '',
+          '</div>',
+        ].join('')
       : '',
     '</div>',
   ].join('');

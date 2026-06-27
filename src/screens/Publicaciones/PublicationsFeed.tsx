@@ -1488,6 +1488,7 @@ function EcoMapPanel({
       locationLabel,
       position: [position.latitude, position.longitude],
       mapsUrl: buildGoogleMapsUrl(publication),
+      wazeUrl: buildWazeUrl(publication),
     };
   });
 
@@ -1637,16 +1638,77 @@ function EcoGroupCard({
             {distanceKm !== null ? <EcoCardMeta icon={Navigation} label={formatDistance(distanceKm)} /> : null}
           </div>
 
-          <button
-            type="button"
-            onClick={onOpen}
-            className="mt-4 inline-flex h-10 w-full items-center justify-center rounded-[13px] bg-[#0B1F5B] px-3 text-[12px] font-black text-white shadow-[0_12px_24px_rgba(11,31,91,0.18)] transition hover:bg-[#145CFF]"
-          >
-            Ver Grupo ECO
-          </button>
+          <div className="mt-4 space-y-2">
+            <EcoDirectionsMenu publication={publication} />
+            <button
+              type="button"
+              onClick={onOpen}
+              className="inline-flex h-10 w-full items-center justify-center rounded-[13px] bg-[#0B1F5B] px-3 text-[12px] font-black text-white shadow-[0_12px_24px_rgba(11,31,91,0.18)] transition hover:bg-[#145CFF]"
+            >
+              Ver Grupo ECO
+            </button>
+          </div>
         </div>
       </div>
     </article>
+  );
+}
+
+function EcoDirectionsMenu({ publication }: { publication: SoyibaPublication }) {
+  const [open, setOpen] = useState(false);
+  const mapsUrl = buildGoogleMapsUrl(publication);
+  const wazeUrl = buildWazeUrl(publication);
+
+  if (!wazeUrl) {
+    return null;
+  }
+
+  return (
+    <div className="min-w-0">
+      <button
+        type="button"
+        aria-expanded={open}
+        onClick={() => setOpen((current) => !current)}
+        className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-[13px] border border-[#BFD0EA] bg-[#EAF2FF] px-3 text-[12px] font-black text-[#145CFF] transition hover:bg-[#DDEBFF]"
+      >
+        <Navigation size={15} />
+        Cómo llegar
+        <ChevronDown size={15} className={cx('transition', open && 'rotate-180')} />
+      </button>
+
+      <AnimatePresence initial={false}>
+        {open ? (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+            className="overflow-hidden"
+          >
+            <div className="mt-2 grid gap-2 min-[420px]:grid-cols-2">
+              <a
+                href={mapsUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-[12px] bg-[#145CFF] px-3 text-[12px] font-black text-white shadow-[0_10px_20px_rgba(20,92,255,0.18)]"
+              >
+                Google Maps
+                <ExternalLink size={14} />
+              </a>
+              <a
+                href={wazeUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-[12px] border border-[#BFD0EA] bg-white px-3 text-[12px] font-black text-[#145CFF]"
+              >
+                Waze
+                <ExternalLink size={14} />
+              </a>
+            </div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+    </div>
   );
 }
 
@@ -2048,6 +2110,8 @@ function EcoGroupModal({
               <EventInfoTile icon={Phone} label="Contacto" value={publication.eco.phone || 'Por confirmar'} />
               <EventInfoTile icon={UsersRound} label="Asistentes" value={`${formatCount(publication.eco.attendeesCount)} asistentes`} />
             </div>
+
+            <EcoDirectionsMenu publication={publication} />
 
             {!publicMode && publication.relatedLinks.length ? (
               <div className="space-y-2">
@@ -3682,6 +3746,16 @@ function buildGoogleMapsUrl(publication: SoyibaPublication) {
 
   const query = [publication.eco.address, publication.eco.neighborhood, publication.eco.city].filter(Boolean).join(', ');
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query || publication.title)}`;
+}
+
+function buildWazeUrl(publication: SoyibaPublication) {
+  const coordinates = getEcoCoordinates(publication);
+
+  if (!coordinates) {
+    return '';
+  }
+
+  return `https://waze.com/ul?ll=${coordinates.latitude},${coordinates.longitude}&navigate=yes`;
 }
 
 function haversineDistanceKm(from: GeoPoint, to: GeoPoint) {
