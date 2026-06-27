@@ -7,6 +7,7 @@ interface ImportMetaEnv {
   readonly VITE_APPS_SCRIPT_INICIO_URL?: string;
   readonly VITE_APPS_SCRIPT_PUBLICACIONES_URL?: string;
   readonly VITE_APPS_SCRIPT_DONACIONES_URL?: string;
+  readonly VITE_APPS_SCRIPT_MIEMBROS_URL?: string;
   readonly VITE_FIREBASE_API_KEY?: string;
   readonly VITE_FIREBASE_AUTH_DOMAIN?: string;
   readonly VITE_FIREBASE_PROJECT_ID?: string;

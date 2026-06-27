@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ChangeEvent, type InputHTMLAttributes } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent, type InputHTMLAttributes } from 'react';
 import { motion } from 'framer-motion';
 import {
   BadgeCheck,
@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import {
   updateUserPassword,
+  updateUserPhoto,
   updateUserProfile,
   type SoyibaSession,
   type SoyibaUser,
@@ -37,6 +38,7 @@ import {
 import {
   getCachedPublicationFeed,
   getPublicationFeed,
+  invalidatePublicationFeedCache,
   type SoyibaPublication,
 } from '../Publicaciones/publicaciones.service';
 
@@ -51,6 +53,7 @@ type ProfileScreenProps = {
   onLiveBadgeTestChange?: (enabled: boolean) => void;
   onCreatePublication?: () => void;
   onOpenPublication?: (publication: SoyibaPublication) => void;
+  onModalOpenChange?: (open: boolean) => void;
 };
 
 type AdminAction = {
@@ -160,6 +163,7 @@ export function ProfileScreen({
   onLiveBadgeTestChange,
   onCreatePublication,
   onOpenPublication,
+  onModalOpenChange,
 }: ProfileScreenProps) {
   const user = session.user;
   const photoInputRef = useRef<HTMLInputElement>(null);
@@ -173,6 +177,12 @@ export function ProfileScreen({
   const [activityLoading, setActivityLoading] = useState(() => !cachedPublications);
   const [activityError, setActivityError] = useState('');
   const displayName = getDisplayName(user);
+
+  useLayoutEffect(() => {
+    onModalOpenChange?.(editOpen || logoutOpen);
+
+    return () => onModalOpenChange?.(false);
+  }, [editOpen, logoutOpen, onModalOpenChange]);
 
   useEffect(() => {
     let isMounted = true;
@@ -253,13 +263,29 @@ export function ProfileScreen({
 
     try {
       const photoUrl = await resizeImageFile(file);
-      onSessionUpdated({
-        ...session,
-        user: {
-          ...session.user,
-          photoUrl,
-        },
-      });
+      const result = await updateUserPhoto(session, photoUrl);
+
+      if (!result.ok) {
+        setPhotoError(result.error);
+        return;
+      }
+
+      invalidatePublicationFeedCache(result.session);
+      setPublications((items) =>
+        items.map((publication) =>
+          isPublicationAuthor(publication, result.session.user)
+            ? {
+                ...publication,
+                author: {
+                  ...publication.author,
+                  photoUrl: result.session.user.photoUrl,
+                  verified: result.session.user.verificado,
+                },
+              }
+            : publication,
+        ),
+      );
+      onSessionUpdated(result.session);
     } catch (error) {
       setPhotoError(error instanceof Error ? error.message : 'No fue posible actualizar la foto.');
     } finally {
@@ -714,7 +740,7 @@ function EditProfileModal({ session, onClose, onSaved }: EditProfileModalProps) 
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-[#0B1F5B]/30 px-3 pb-3 pt-12 backdrop-blur-sm min-[560px]:items-center">
+    <div className="fixed inset-0 z-[120] flex items-end justify-center bg-[#0B1F5B]/30 px-3 pb-3 pt-12 backdrop-blur-sm min-[560px]:items-center">
       <motion.section
         initial={{ opacity: 0, y: 24, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -997,7 +1023,7 @@ function renderImageToJpeg(image: HTMLImageElement, maxSize: number, quality: nu
 
 function ConfirmLogout({ onCancel, onConfirm }: { onCancel: () => void; onConfirm: () => void }) {
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-[#0B1F5B]/30 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[120] grid place-items-center bg-[#0B1F5B]/30 p-4 backdrop-blur-sm">
       <section className="w-full max-w-sm rounded-[20px] bg-white p-5 text-center shadow-[0_26px_70px_rgba(11,31,91,0.22)]">
         <div className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#FFE9E8] text-[#E63737]">
           <LogOut size={28} />

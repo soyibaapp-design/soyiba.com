@@ -12,8 +12,8 @@ export function getGoogleDriveImageCandidates(fileIdOrUrl: string) {
 
   return Array.from(
     new Set([
-      `https://drive.google.com/thumbnail?id=${id}&sz=w1600`,
       `https://lh3.googleusercontent.com/d/${id}=w1600`,
+      `https://drive.google.com/thumbnail?id=${id}&sz=w1600`,
       `https://drive.google.com/uc?export=view&id=${id}`,
       trimmed,
     ].filter(Boolean)),

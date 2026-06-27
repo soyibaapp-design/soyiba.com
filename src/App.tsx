@@ -8,12 +8,13 @@ import { AuthScreen } from './screens/Auth/AuthScreen';
 import type { SoyibaSession } from './screens/Auth/auth.service';
 import { DonacionesScreen } from './screens/Donaciones/DonacionesScreen';
 import { InicioScreen } from './screens/Inicio/InicioScreen';
+import { MembersPage } from './screens/Miembros/MembersPage';
 import { ProfileScreen } from './screens/Perfil/ProfileScreen';
 import { PublicationsFeed } from './screens/Publicaciones/PublicationsFeed';
 import type { SoyibaPublication } from './screens/Publicaciones/publicaciones.service';
 import { UsersManagementScreen } from './screens/Usuarios/UsersManagementScreen';
 
-type ScreenId = 'inicio' | 'eventos' | 'eco' | 'donaciones' | 'perfil' | 'usuarios';
+type ScreenId = 'inicio' | 'eventos' | 'eco' | 'donaciones' | 'miembros' | 'perfil' | 'usuarios';
 type AuthMode = 'login' | 'register';
 
 const SESSION_STORAGE_KEY = 'soyiba.session';
@@ -228,6 +229,8 @@ function SoyibaShell({
   const [sideMenuOpen, setSideMenuOpen] = useState(false);
   const [churchInfoOpen, setChurchInfoOpen] = useState(false);
   const [usersManagementModalOpen, setUsersManagementModalOpen] = useState(false);
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [membersModalOpen, setMembersModalOpen] = useState(false);
 
   return (
     <>
@@ -283,6 +286,14 @@ function SoyibaShell({
                 />
               ) : null}
               {activeScreen === 'donaciones' ? <DonacionesScreen key="donaciones" session={session} /> : null}
+              {activeScreen === 'miembros' ? (
+                <MembersPage
+                  key="miembros"
+                  session={session}
+                  onRequestValidation={() => onNavigate?.('perfil')}
+                  onModalOpenChange={setMembersModalOpen}
+                />
+              ) : null}
               {activeScreen === 'perfil' ? (
                 <ProfileScreen
                   key="perfil"
@@ -294,6 +305,7 @@ function SoyibaShell({
                   onLiveBadgeTestChange={onLiveBadgeTestChange}
                   onCreatePublication={onCreatePublication || (() => undefined)}
                   onOpenPublication={onOpenPublicationFromProfile || (() => undefined)}
+                  onModalOpenChange={setProfileModalOpen}
                 />
               ) : null}
               {activeScreen === 'usuarios' ? (
@@ -308,7 +320,7 @@ function SoyibaShell({
             </AnimatePresence>
           </main>
 
-          {publicMode || publicationComposerOpen || usersManagementModalOpen ? null : (
+          {publicMode || publicationComposerOpen || usersManagementModalOpen || profileModalOpen || membersModalOpen ? null : (
             <BottomNav activeTab={activeScreen} items={navigation} showLiveBadge={showLiveBadge} onChange={onNavigate || (() => undefined)} />
           )}
         </div>

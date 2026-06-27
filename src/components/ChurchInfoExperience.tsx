@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   BookOpenText,
+  BookUser,
   CalendarDays,
   Camera,
   ChevronRight,
@@ -28,7 +29,7 @@ import {
 import { primaryAssets } from '../lib/assets';
 import { SoyibaMap, type SoyibaMapMarker } from './SoyibaMap';
 
-export type SideMenuScreenId = 'inicio' | 'eventos' | 'eco' | 'donaciones' | 'perfil' | 'usuarios';
+export type SideMenuScreenId = 'inicio' | 'eventos' | 'eco' | 'donaciones' | 'miembros' | 'perfil' | 'usuarios';
 
 type SideMenuProps = {
   open: boolean;
@@ -67,6 +68,7 @@ const menuItems: Array<{ id: SideMenuScreenId; label: string; icon: LucideIcon }
   { id: 'eventos', label: 'Eventos', icon: CalendarDays },
   { id: 'eco', label: 'Grupos ECO', icon: UsersRound },
   { id: 'donaciones', label: 'Donaciones', icon: Heart },
+  { id: 'miembros', label: 'Miembros IBA', icon: BookUser },
   { id: 'perfil', label: 'Perfil', icon: UserRound },
 ];
 

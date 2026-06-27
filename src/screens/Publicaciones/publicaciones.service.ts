@@ -443,14 +443,14 @@ const localPublications: SoyibaPublication[] = [
 
 export function getCachedPublicationFeed(session: SoyibaSession, options: PublicationFeedOptions = {}) {
   const cached = getCachedPublicationFeedInternal(session, options);
-  return cached ? clonePublications(cached) : null;
+  return cached ? hydrateCurrentUserAuthor(clonePublications(cached), session.user) : null;
 }
 
 export async function getPublicationFeed(session: SoyibaSession, options: PublicationFeedOptions = {}) {
   const cached = getCachedPublicationFeedInternal(session, options);
 
   if (cached) {
-    return clonePublications(cached);
+    return hydrateCurrentUserAuthor(clonePublications(cached), session.user);
   }
 
   const response = await callAppsScript<PublicationsResponse>(
@@ -471,7 +471,7 @@ export async function getPublicationFeed(session: SoyibaSession, options: Public
     throw new Error(response.error || 'No fue posible cargar las publicaciones.');
   }
 
-  const publications = normalizePublications(response.publications || [], options.type);
+  const publications = hydrateCurrentUserAuthor(normalizePublications(response.publications || [], options.type), session.user);
   setPublicationFeedCache(session, options, publications);
   return publications;
 }
@@ -796,7 +796,14 @@ export function getPermittedPublicationTypes(user: SoyibaUser): PublicationType[
 }
 
 export function canManagePublication(user: SoyibaUser, publication: SoyibaPublication) {
-  return isAdminLike(user) || publication.author.id === user.id || normalizeEmail(publication.author.email) === normalizeEmail(user.email);
+  return isAdminLike(user) || isSameAuthor(publication.author, user);
+}
+
+function isSameAuthor(author: SoyibaPublication['author'], user: SoyibaUser) {
+  return Boolean(
+    (author.id && user.id && author.id === user.id) ||
+      (author.email && user.email && normalizeEmail(author.email) === normalizeEmail(user.email)),
+  );
 }
 
 export function parsePublicationMediaInput(value: string): PublicationMediaItem[] {
@@ -949,6 +956,29 @@ function filterPublicationsByType(publications: SoyibaPublication[], type?: Publ
 function normalizePublications(value: unknown[], type?: PublicationType) {
   const publications = value.map(normalizePublication);
   return filterPublicationsByType(publications, type).sort((first, second) => Date.parse(second.createdAt) - Date.parse(first.createdAt));
+}
+
+function hydrateCurrentUserAuthor(publications: SoyibaPublication[], user: SoyibaUser) {
+  const photoUrl = stringFrom(user.photoUrl);
+
+  if (!photoUrl && user.verificado === undefined) {
+    return publications;
+  }
+
+  return publications.map((publication) => {
+    if (!isSameAuthor(publication.author, user)) {
+      return publication;
+    }
+
+    return {
+      ...publication,
+      author: {
+        ...publication.author,
+        photoUrl: photoUrl || publication.author.photoUrl,
+        verified: user.verificado === undefined ? publication.author.verified : Boolean(user.verificado),
+      },
+    };
+  });
 }
 
 function normalizePublication(value: unknown): SoyibaPublication {
@@ -1306,7 +1336,7 @@ function clearOtherCachedEcoAttendance(session: SoyibaSession, activePublication
   });
 }
 
-function invalidatePublicationFeedCache(session: SoyibaSession) {
+export function invalidatePublicationFeedCache(session: SoyibaSession) {
   const userKey = `${session.user.id || session.user.email || 'anon'}::`;
 
   for (const key of publicationFeedCache.keys()) {

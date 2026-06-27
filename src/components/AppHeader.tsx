@@ -15,6 +15,7 @@ const tabTitles: Record<string, string> = {
   eventos: 'Eventos',
   eco: 'Grupos ECO',
   donaciones: 'Donaciones',
+  miembros: 'Miembros IBA',
   perfil: 'Perfil',
   usuarios: 'Usuarios',
 };

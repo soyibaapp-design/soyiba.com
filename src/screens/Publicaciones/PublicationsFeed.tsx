@@ -1767,13 +1767,13 @@ function EventListCard({
 
 function EventCardMedia({ publication }: { publication: SoyibaPublication }) {
   const imageItem = publication.mediaItems.find((item) => item.type === 'image');
-  const sources = imageItem ? getGoogleDriveImageCandidates(imageItem.url) : [];
+  const sources = imageItem ? getGoogleDriveImageCandidates(imageItem.url) : getPublicationVideoThumbnailSources(publication);
   const dateParts = formatEventDateParts(publication.event.dateTime || publication.createdAt);
 
   return (
     <div className="relative min-h-full bg-[#DCE7F7]">
-      {imageItem ? (
-        <PublicationDriveImage sources={sources} alt={imageItem.title || publication.title} className="h-full min-h-[176px] w-full object-cover" />
+      {sources.length ? (
+        <PublicationDriveImage sources={sources} alt={imageItem?.title || publication.title} className="h-full min-h-[176px] w-full object-cover" />
       ) : (
         <div className="grid h-full min-h-[176px] place-items-center text-[#52637C]">
           <ImageIcon size={30} />
@@ -3493,7 +3493,16 @@ function getEventSortTimestamp(publication: SoyibaPublication) {
 
 function getHomeEventImageSources(publication: SoyibaPublication) {
   const imageItem = publication.mediaItems.find((item) => item.type === 'image');
-  return imageItem ? getGoogleDriveImageCandidates(imageItem.url) : [];
+  if (imageItem) {
+    return getGoogleDriveImageCandidates(imageItem.url);
+  }
+
+  return getPublicationVideoThumbnailSources(publication);
+}
+
+function getPublicationVideoThumbnailSources(publication: SoyibaPublication) {
+  const youtubeItem = publication.mediaItems.find((item) => item.type === 'youtube');
+  return youtubeItem ? getYouTubeThumbnailCandidates(youtubeItem.url) : [];
 }
 
 function clampIndex(index: number, length: number) {
@@ -3765,6 +3774,19 @@ function safeDate(value: string) {
 function getYouTubeEmbedUrl(url: string) {
   const id = extractYouTubeId(url);
   return id ? `https://www.youtube.com/embed/${id}` : url;
+}
+
+function getYouTubeThumbnailCandidates(url: string) {
+  const id = extractYouTubeId(url);
+
+  if (!id) {
+    return [];
+  }
+
+  return [
+    `https://i.ytimg.com/vi/${id}/maxresdefault.jpg`,
+    `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
+  ];
 }
 
 function extractYouTubeId(url: string) {

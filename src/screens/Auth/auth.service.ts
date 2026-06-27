@@ -188,6 +188,35 @@ export async function updateUserProfile(session: SoyibaSession, payload: UpdateP
   return preserveLocalOnlyUserFields(normalizeAuthResponse(response, 'No fue posible actualizar el perfil.'), session);
 }
 
+export async function updateUserPhoto(session: SoyibaSession, photoUrl: string): Promise<AuthResult> {
+  const normalizedPhotoUrl = normalizeText(photoUrl);
+
+  if (!normalizedPhotoUrl) {
+    return { ok: false, error: 'Foto invalida.' };
+  }
+
+  const response = await callAppsScript<AuthResponse>(
+    'Auth',
+    'updateProfilePhoto',
+    {
+      token: session.token,
+      userId: session.user.id,
+      email: session.user.email,
+      photoUrl: normalizedPhotoUrl,
+    },
+    () => ({
+      ok: true,
+      token: session.token,
+      user: {
+        ...session.user,
+        photoUrl: normalizedPhotoUrl,
+      },
+    }),
+  );
+
+  return preserveLocalOnlyUserFields(normalizeAuthResponse(response, 'No fue posible actualizar la foto.'), session);
+}
+
 export async function updateUserPassword(session: SoyibaSession, currentPassword: string, newPassword: string): Promise<AuthResult> {
   if (!currentPassword || !newPassword) {
     return { ok: false, error: 'Ingresa la contraseña actual y la nueva contraseña.' };
@@ -242,7 +271,7 @@ function preserveLocalOnlyUserFields(result: AuthResult, currentSession: SoyibaS
 
   const user = { ...result.session.user };
 
-  if (currentSession.user.photoUrl) {
+  if (!user.photoUrl && currentSession.user.photoUrl) {
     user.photoUrl = currentSession.user.photoUrl;
   }
 
