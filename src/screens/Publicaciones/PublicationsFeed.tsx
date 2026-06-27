@@ -105,6 +105,7 @@ type PublicationFormState = {
   type: PublicationType;
   title: string;
   description: string;
+  membersOnly: boolean;
   imageUrl: string;
   imageFile: File | null;
   videoUrl: string;
@@ -2863,6 +2864,7 @@ function PublicationComposerModal({
         type: form.type,
         title: form.title.trim(),
         description: form.description.trim(),
+        membersOnly: form.membersOnly,
         mediaItems: buildPublicationMediaItems({
           imageUrl,
           videoUrl,
@@ -2936,6 +2938,13 @@ function PublicationComposerModal({
             <SelectField label="Tipo" value={form.type} onChange={(value) => updateField('type', value as PublicationType)} options={typeOptions} />
             <TextField label="Título" value={form.title} onChange={(value) => updateField('title', value)} icon={FileText} />
           </div>
+
+          <ToggleField
+            label="Público"
+            checked={form.membersOnly}
+            description={form.membersOnly ? 'Esta publicacion la veran solo los miembros' : 'Esta publicacion la veran todos los usuarios'}
+            onChange={(value) => updateField('membersOnly', value)}
+          />
 
           <TextAreaField label="Descripción" value={form.description} onChange={(value) => updateField('description', value)} rows={4} />
 
@@ -3091,6 +3100,46 @@ function PublicationComposerModal({
         </footer>
       </motion.section>
     </motion.div>
+  );
+}
+
+function ToggleField({
+  label,
+  checked,
+  description,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  description: string;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <div className="rounded-[14px] border border-[#DCE6F5] bg-white px-3 py-3 shadow-[0_10px_24px_rgba(15,23,42,0.04)]">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[10px] font-black uppercase text-[#52637C]">{label}</p>
+          <p className="mt-1 text-[11px] font-bold leading-4 text-[#62718A]">{description}</p>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={checked}
+          onClick={() => onChange(!checked)}
+          className={cx(
+            'relative h-7 w-12 shrink-0 rounded-full border transition focus:outline-none focus:ring-4 focus:ring-blue-100',
+            checked ? 'border-[#145CFF] bg-[#145CFF]' : 'border-[#C9D6EA] bg-[#EAF0F8]',
+          )}
+        >
+          <span
+            className={cx(
+              'absolute top-1/2 h-5 w-5 -translate-y-1/2 rounded-full bg-white shadow-[0_4px_12px_rgba(15,23,42,0.22)] transition',
+              checked ? 'left-[22px]' : 'left-1',
+            )}
+          />
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -3362,6 +3411,7 @@ function buildFormState(publication: SoyibaPublication | null, permittedTypes: P
       type: fallbackType,
       title: '',
       description: '',
+      membersOnly: false,
       imageUrl: '',
       imageFile: null,
       videoUrl: '',
@@ -3397,6 +3447,7 @@ function buildFormState(publication: SoyibaPublication | null, permittedTypes: P
     type: publication.type,
     title: publication.title,
     description: publication.description,
+    membersOnly: publication.membersOnly,
     imageUrl: mediaValues.imageUrl,
     imageFile: null,
     videoUrl: mediaValues.videoUrl,

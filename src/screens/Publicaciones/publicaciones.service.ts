@@ -71,6 +71,7 @@ export type SoyibaPublication = {
     phone?: string;
   };
   relatedLinks: PublicationRelatedLink[];
+  membersOnly: boolean;
   savedCount: number;
   viewsCount: number;
   sharedCount: number;
@@ -86,6 +87,7 @@ export type PublicationPayload = {
   mediaItems: PublicationMediaItem[];
   cta: SoyibaPublication['cta'];
   relatedLinks: PublicationRelatedLink[];
+  membersOnly: boolean;
   event?: {
     dateTime: string;
     place: string;
@@ -168,6 +170,7 @@ const localPublications: SoyibaPublication[] = [
         url: 'https://soyiba.org',
       },
     ],
+    membersOnly: false,
     savedCount: 24,
     viewsCount: 356,
     sharedCount: 12,
@@ -205,6 +208,7 @@ const localPublications: SoyibaPublication[] = [
         url: 'https://drive.google.com',
       },
     ],
+    membersOnly: false,
     savedCount: 1,
     viewsCount: 11,
     sharedCount: 16,
@@ -264,6 +268,7 @@ const localPublications: SoyibaPublication[] = [
         url: 'https://soyiba.org',
       },
     ],
+    membersOnly: false,
     savedCount: 18,
     viewsCount: 240,
     sharedCount: 9,
@@ -295,6 +300,7 @@ const localPublications: SoyibaPublication[] = [
       url: 'https://soyiba.org',
     },
     relatedLinks: [],
+    membersOnly: false,
     savedCount: 4,
     viewsCount: 62,
     sharedCount: 5,
@@ -336,6 +342,7 @@ const localPublications: SoyibaPublication[] = [
       phone: '573001112233',
     },
     relatedLinks: [],
+    membersOnly: false,
     savedCount: 6,
     viewsCount: 95,
     sharedCount: 8,
@@ -377,6 +384,7 @@ const localPublications: SoyibaPublication[] = [
       url: 'https://soyiba.org',
     },
     relatedLinks: [],
+    membersOnly: false,
     savedCount: 2,
     viewsCount: 44,
     sharedCount: 3,
@@ -417,6 +425,7 @@ const localPublications: SoyibaPublication[] = [
       url: 'https://soyiba.org',
     },
     relatedLinks: [],
+    membersOnly: false,
     savedCount: 7,
     viewsCount: 88,
     sharedCount: 4,
@@ -945,6 +954,8 @@ function getUserRequest(user: SoyibaUser) {
     publicador: user.publicador,
     publicadorEco: user.publicadorEco,
     publicadorEvento: user.publicadorEvento,
+    tipoUsuario: user.tipoUsuario,
+    tipo_usuario: user.tipoUsuario,
     verificado: Boolean(user.verificado),
   };
 }
@@ -1007,6 +1018,7 @@ function normalizePublication(value: unknown): SoyibaPublication {
       phone: stringFrom(cta.phone || record.cta_phone),
     },
     relatedLinks: normalizeRelatedLinks(record.relatedLinks || record.related_links_json),
+    membersOnly: isTrue(valueFrom(record.membersOnly, record.members_only, record.soloMiembros, record.solo_miembros)),
     savedCount: numberFrom(record.savedCount || record.guardados),
     viewsCount: numberFrom(record.viewsCount || record.views),
     sharedCount: numberFrom(record.sharedCount || record.compartidos),
