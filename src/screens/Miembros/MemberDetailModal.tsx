@@ -28,25 +28,29 @@ export function MemberDetailModal({ member, currentUser, onClose }: MemberDetail
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-end justify-center bg-[#0B1F5B]/32 px-3 pb-3 pt-12 backdrop-blur-sm min-[560px]:items-center" role="dialog" aria-modal="true">
+    <div
+      className="fixed inset-0 z-[120] flex h-[100dvh] items-end justify-center overflow-hidden bg-[#0B1F5B]/32 px-3 pb-[calc(22px+env(safe-area-inset-bottom))] pt-[calc(12px+env(safe-area-inset-top))] backdrop-blur-sm min-[560px]:items-center"
+      role="dialog"
+      aria-modal="true"
+    >
       <motion.section
         initial={{ opacity: 0, y: 24, scale: 0.98 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: 14, scale: 0.98 }}
         transition={{ duration: 0.22, ease: 'easeOut' }}
-        className="max-h-[calc(100vh-40px)] w-full max-w-md overflow-hidden rounded-[22px] border border-white/80 bg-white shadow-[0_26px_70px_rgba(11,31,91,0.24)]"
+        className="flex max-h-[calc(100dvh-78px-env(safe-area-inset-top)-env(safe-area-inset-bottom))] w-full max-w-md flex-col overflow-hidden rounded-[22px] border border-white/80 bg-white shadow-[0_26px_70px_rgba(11,31,91,0.24)] min-[560px]:max-h-[calc(100dvh-36px)]"
       >
-        <header className="flex min-h-14 items-center justify-between border-b border-[#E3EAF5] px-4">
+        <header className="flex h-14 shrink-0 items-center justify-between border-b border-[#E3EAF5] px-4">
           <h2 className="text-sm font-black text-[#0B1F5B]">Perfil de miembro</h2>
           <button type="button" aria-label="Cerrar perfil" onClick={onClose} className="grid h-10 w-10 place-items-center rounded-full text-[#0B1F5B]">
             <X size={20} />
           </button>
         </header>
 
-        <div className="max-h-[calc(100vh-170px)] overflow-y-auto bg-[#F8FBFF] px-4 pb-4 pt-5">
+        <div className="min-h-0 flex-1 overflow-y-auto bg-[#F8FBFF] px-4 pb-4 pt-4">
           <div className="flex flex-col items-center text-center">
             <MemberAvatar member={member} size="lg" />
-            <h3 className="mt-3 flex max-w-full items-center justify-center gap-1.5 break-words text-xl font-black leading-6 text-[#0B1F5B]">
+            <h3 className="mt-3 flex max-w-full items-center justify-center gap-1.5 break-words text-[19px] font-black leading-6 text-[#0B1F5B]">
               <span className="min-w-0 break-words">{getMemberFullName(member)}</span>
               {member.verificado ? <BadgeCheck size={20} aria-label="Usuario verificado" className="shrink-0 fill-[#EAF2FF] text-[#145CFF]" /> : null}
             </h3>
@@ -67,7 +71,7 @@ export function MemberDetailModal({ member, currentUser, onClose }: MemberDetail
             </div>
           </div>
 
-          <section className="mt-5 space-y-2">
+          <section className="mt-4 space-y-2">
             {member.ministerio ? <DetailRow icon={Church} label="Ministerio" value={member.ministerio} /> : null}
             {member.grupoEco ? <DetailRow icon={Home} label="Grupo ECO" value={member.grupoEco} /> : null}
             {member.tiempoEnIBA ? <DetailRow icon={CalendarClock} label="Tiempo en la IBA" value={member.tiempoEnIBA} /> : null}
@@ -75,7 +79,7 @@ export function MemberDetailModal({ member, currentUser, onClose }: MemberDetail
           </section>
         </div>
 
-        <footer className={`grid gap-3 border-t border-[#E3EAF5] bg-white p-3.5 ${canUseWhatsapp(member) ? 'grid-cols-2' : 'grid-cols-1'}`}>
+        <footer className={`grid shrink-0 gap-3 border-t border-[#E3EAF5] bg-white px-3.5 pb-4 pt-3.5 ${canUseWhatsapp(member) ? 'grid-cols-2' : 'grid-cols-1'}`}>
           {canUseWhatsapp(member) ? (
             <a
               href={whatsappUrl}
