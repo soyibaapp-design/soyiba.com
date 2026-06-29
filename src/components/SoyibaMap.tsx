@@ -93,7 +93,7 @@ export function SoyibaMap({
     if (userLocation) {
       L.marker(userLocation, { icon: userIcon })
         .addTo(map)
-        .bindPopup('<strong>Tu ubicacion actual</strong>', { maxWidth: 220 });
+        .bindPopup('<strong>Tu ubicación actual</strong>', { maxWidth: 220 });
     }
 
     const boundsPoints = [

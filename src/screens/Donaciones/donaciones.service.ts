@@ -21,7 +21,7 @@ type DonationConfigResponse = {
 };
 
 const DONATION_CONFIG_ERROR =
-  'No fue posible cargar la informacion de donacion. Por favor intenta mas tarde o comunicate con contabilidad.';
+  'No fue posible cargar la información de donación. Por favor intenta más tarde o comunícate con contabilidad.';
 
 export async function getDonationConfig(): Promise<DonationConfig> {
   let response: DonationConfigResponse;

@@ -204,7 +204,7 @@ const localPublications: SoyibaPublication[] = [
     relatedLinks: [
       {
         id: 'link-local-evento-1',
-        title: 'Mas informacion del evento',
+        title: 'Más información del evento',
         url: 'https://drive.google.com',
       },
     ],
@@ -215,7 +215,7 @@ const localPublications: SoyibaPublication[] = [
     savedByCurrentUser: false,
     event: {
       dateTime: new Date(Date.now() + 12 * 24 * 60 * 60 * 1000).toISOString(),
-      place: 'Auditorio IBA, Ibague',
+      place: 'Auditorio IBA, Ibagué',
       validFrom: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
       validUntil: new Date(Date.now() + 11 * 24 * 60 * 60 * 1000).toISOString(),
       capacityAvailable: 15,
@@ -439,7 +439,7 @@ const localPublications: SoyibaPublication[] = [
       phone: '573243339375',
       address: 'Punto de encuentro confirmado por WhatsApp',
       neighborhood: 'Centro',
-      city: 'Ibague',
+      city: 'Ibagué',
       latitude: 4.4389,
       longitude: -75.2322,
       attendeesCount: 12,

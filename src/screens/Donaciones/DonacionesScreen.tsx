@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   ChevronDown,
   Copy,
+  FileText,
   Headphones,
   HeartHandshake,
   LoaderCircle,
@@ -34,10 +35,13 @@ type DonacionesScreenProps = {
 type DonationStatus = 'loading' | 'success' | 'error';
 type CopyState = 'idle' | 'success' | 'error';
 
-const WHATSAPP_ACCOUNTING_PHONE = '3243339375';
+const WHATSAPP_ACCOUNTING_PHONE = '573243339375';
+const DONATION_TRANSFER_KEY = '0091775996';
 const ACCOUNTING_MAIL_SUBJECT = 'Consulta sobre donaciones - SOY IBA';
 const DONATION_ERROR =
-  'No fue posible cargar la informacion de donacion. Por favor intenta mas tarde o comunicate con contabilidad.';
+  'No fue posible cargar la información de donación. Por favor intenta más tarde o comunícate con contabilidad.';
+const TAX_CERTIFICATE_MESSAGE =
+  'Hola, Dios les bendiga. Quisiera solicitar información sobre el certificado o soporte de donaciones realizadas a la Iglesia Bíblica Antioquía para efectos de declaración de renta. Mi nombre es: Cédula/NIT: Año a consultar:';
 
 const receiptRequirements = [
   'Captura o comprobante de la transferencia.',
@@ -47,23 +51,23 @@ const receiptRequirements = [
 
 const faqItems = [
   {
-    question: 'Como se administran las donaciones?',
+    question: '¿Cómo se administran las donaciones?',
     answer:
-      'Las donaciones son gestionadas por la administracion de la iglesia siguiendo procedimientos internos orientados al manejo responsable y transparente de los recursos.',
+      'Las donaciones son gestionadas por la administración de la iglesia siguiendo procedimientos internos orientados al manejo responsable y transparente de los recursos.',
   },
   {
-    question: 'Puedo solicitar informacion sobre mi donacion?',
+    question: '¿Puedo solicitar información sobre mi donación?',
     answer:
-      'Si. Puedes comunicarte con el area de contabilidad para resolver inquietudes relacionadas con transferencias, comprobantes o registros.',
+      'Sí. Puedes comunicarte con el área de contabilidad para resolver inquietudes relacionadas con transferencias, comprobantes o registros.',
   },
   {
-    question: 'Debo enviar comprobante?',
-    answer: 'Si. Esto nos ayuda a identificar correctamente tu aporte y mantener nuestros registros actualizados.',
+    question: '¿Debo enviar comprobante?',
+    answer: 'Sí. Esto nos ayuda a identificar correctamente tu aporte y mantener nuestros registros actualizados.',
   },
   {
-    question: 'Las donaciones son obligatorias?',
+    question: '¿Las donaciones son obligatorias?',
     answer:
-      'No. Los diezmos y ofrendas son actos voluntarios realizados como expresion de gratitud, adoracion y obediencia a Dios.',
+      'No. Los diezmos y ofrendas son actos voluntarios realizados como expresión de gratitud, adoración y obediencia a Dios.',
   },
 ];
 
@@ -85,7 +89,8 @@ export function DonacionesScreen({ session }: DonacionesScreenProps) {
   const [config, setConfig] = useState<DonationConfig | null>(null);
   const [error, setError] = useState('');
   const [reloadKey, setReloadKey] = useState(0);
-  const [copyState, setCopyState] = useState<CopyState>('idle');
+  const [accountCopyState, setAccountCopyState] = useState<CopyState>('idle');
+  const [keyCopyState, setKeyCopyState] = useState<CopyState>('idle');
   const [qrOpen, setQrOpen] = useState(false);
   const [qrZoom, setQrZoom] = useState(1);
   const [qrFailed, setQrFailed] = useState(false);
@@ -99,18 +104,20 @@ export function DonacionesScreen({ session }: DonacionesScreenProps) {
   const mailtoUrl = buildMailtoUrl(contactEmail, ACCOUNTING_MAIL_SUBJECT);
   const contactWhatsappUrl = buildWhatsappUrl(
     WHATSAPP_ACCOUNTING_PHONE,
-    'Hola, tengo una pregunta sobre mis donaciones a la Iglesia Biblica Antioquia.',
+    'Hola, tengo una pregunta sobre mis donaciones a la Iglesia Bíblica Antioquía.',
   );
   const receiptWhatsappUrl = buildWhatsappUrl(
     WHATSAPP_ACCOUNTING_PHONE,
     `Bendiciones Soy ${displayName}. adjunto el comprobante`,
   );
+  const taxCertificateWhatsappUrl = buildWhatsappUrl(WHATSAPP_ACCOUNTING_PHONE, TAX_CERTIFICATE_MESSAGE);
 
   useEffect(() => {
     let isMounted = true;
     setStatus('loading');
     setError('');
-    setCopyState('idle');
+    setAccountCopyState('idle');
+    setKeyCopyState('idle');
     setQrFailed(false);
 
     getDonationConfig()
@@ -142,13 +149,22 @@ export function DonacionesScreen({ session }: DonacionesScreenProps) {
   }, [reloadKey]);
 
   useEffect(() => {
-    if (copyState === 'idle') {
+    if (accountCopyState === 'idle') {
       return undefined;
     }
 
-    const timeoutId = window.setTimeout(() => setCopyState('idle'), 2400);
+    const timeoutId = window.setTimeout(() => setAccountCopyState('idle'), 2400);
     return () => window.clearTimeout(timeoutId);
-  }, [copyState]);
+  }, [accountCopyState]);
+
+  useEffect(() => {
+    if (keyCopyState === 'idle') {
+      return undefined;
+    }
+
+    const timeoutId = window.setTimeout(() => setKeyCopyState('idle'), 2400);
+    return () => window.clearTimeout(timeoutId);
+  }, [keyCopyState]);
 
   useEffect(() => {
     if (!qrOpen) {
@@ -174,15 +190,24 @@ export function DonacionesScreen({ session }: DonacionesScreenProps) {
 
   async function handleCopyAccount() {
     if (!isDonationConfigValid(config) || config.numeroCuenta !== visibleAccountNumber) {
-      setCopyState('error');
+      setAccountCopyState('error');
       return;
     }
 
     try {
       await copyText(visibleAccountNumber);
-      setCopyState('success');
+      setAccountCopyState('success');
     } catch {
-      setCopyState('error');
+      setAccountCopyState('error');
+    }
+  }
+
+  async function handleCopyKey() {
+    try {
+      await copyText(DONATION_TRANSFER_KEY);
+      setKeyCopyState('success');
+    } catch {
+      setKeyCopyState('error');
     }
   }
 
@@ -233,7 +258,7 @@ export function DonacionesScreen({ session }: DonacionesScreenProps) {
           <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-rose-50 text-rose-600">
             <AlertCircle size={28} />
           </div>
-          <h2 className="mt-4 text-lg font-black text-[#07184A]">Informacion no disponible</h2>
+          <h2 className="mt-4 text-lg font-black text-[#07184A]">Información no disponible</h2>
           <p className="mt-2 text-sm font-semibold leading-6 text-[#637094]">{error || DONATION_ERROR}</p>
           <button
             type="button"
@@ -276,37 +301,57 @@ export function DonacionesScreen({ session }: DonacionesScreenProps) {
           <DonationDefinition label="Banco" value={config.banco} />
         </dl>
 
-        <div className="mt-5 rounded-[20px] bg-[#07184A] px-4 py-4 text-white shadow-[0_18px_45px_rgba(7,24,74,0.18)]">
-          <p className="text-xs font-black uppercase text-white/65">Numero de cuenta</p>
-          <p className="mt-1 break-words font-mono text-3xl font-black leading-tight sm:text-4xl">{visibleAccountNumber}</p>
+        <div className="mt-5 grid gap-3 min-[560px]:grid-cols-2">
+          <div className="rounded-[20px] bg-[#07184A] px-4 py-4 text-white shadow-[0_18px_45px_rgba(7,24,74,0.18)]">
+            <p className="text-xs font-black uppercase text-white/65">Número de cuenta</p>
+            <p className="mt-1 break-words font-mono text-3xl font-black leading-tight sm:text-4xl">{visibleAccountNumber}</p>
+          </div>
+
+          <div className="rounded-[20px] bg-[#0F2A7A] px-4 py-4 text-white shadow-[0_18px_45px_rgba(15,42,122,0.18)]">
+            <p className="text-xs font-black uppercase text-white/65">Llave</p>
+            <p className="mt-1 break-words font-mono text-3xl font-black leading-tight sm:text-4xl">{DONATION_TRANSFER_KEY}</p>
+          </div>
         </div>
 
         <p className="mt-3 rounded-2xl bg-[#E9EFFF]/70 px-3 py-3 text-xs font-black leading-snug text-[#637094]">
-          Verifica siempre que el numero de cuenta coincida con la informacion oficial de la Iglesia Biblica Antioquia.
+          Verifica siempre que el número de cuenta coincida con la información oficial de la Iglesia Bíblica Antioquía.
         </p>
 
-        <button
-          className="mt-3 flex min-h-[48px] w-full items-center justify-center gap-2 rounded-2xl bg-[#1438DC] px-4 text-sm font-black text-white transition hover:bg-[#07184A] focus:outline-none focus:ring-4 focus:ring-[#1438DC]/25"
-          type="button"
-          onClick={handleCopyAccount}
-        >
-          <Copy size={17} />
-          Copiar numero de cuenta
-        </button>
+        <div className="mt-3 grid gap-2 min-[560px]:grid-cols-2">
+          <button
+            className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-2xl bg-[#1438DC] px-4 text-sm font-black text-white transition hover:bg-[#07184A] focus:outline-none focus:ring-4 focus:ring-[#1438DC]/25"
+            type="button"
+            onClick={handleCopyAccount}
+          >
+            <Copy size={17} />
+            Copiar número de cuenta
+          </button>
+          <button
+            className="flex min-h-[48px] w-full items-center justify-center gap-2 rounded-2xl bg-[#07184A] px-4 text-sm font-black text-white transition hover:bg-[#0F2A7A] focus:outline-none focus:ring-4 focus:ring-[#07184A]/20"
+            type="button"
+            onClick={handleCopyKey}
+          >
+            <Copy size={17} />
+            Copiar llave
+          </button>
+        </div>
 
         <AnimatePresence>
-          {copyState !== 'idle' ? (
-            <motion.p
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 8 }}
-              className={`mt-4 flex items-center gap-2 rounded-2xl px-3 py-2 text-sm font-black ${
-                copyState === 'success' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
-              }`}
-            >
-              {copyState === 'success' ? <CheckCircle2 size={17} /> : <AlertCircle size={17} />}
-              {copyState === 'success' ? 'Numero de cuenta copiado correctamente.' : 'No fue posible copiar el numero de cuenta.'}
-            </motion.p>
+          {accountCopyState !== 'idle' ? (
+            <CopyFeedback
+              key="account-copy-feedback"
+              state={accountCopyState}
+              successMessage="Número de cuenta copiado correctamente."
+              errorMessage="No fue posible copiar el número de cuenta."
+            />
+          ) : null}
+          {keyCopyState !== 'idle' ? (
+            <CopyFeedback
+              key="key-copy-feedback"
+              state={keyCopyState}
+              successMessage="Llave copiada correctamente."
+              errorMessage="No fue posible copiar la llave."
+            />
           ) : null}
         </AnimatePresence>
 
@@ -316,8 +361,8 @@ export function DonacionesScreen({ session }: DonacionesScreenProps) {
       <section className="space-y-4">
         <SectionHeading icon={QrCode} title="Dona desde cualquier banco o billetera digital" />
         <p className="text-sm font-semibold leading-relaxed text-[#637094]">
-          Escanea este codigo QR desde la aplicacion de tu banco o billetera digital para realizar tu donacion de forma
-          rapida y segura.
+          Escanea este código QR desde la aplicación de tu banco o billetera digital para realizar tu donación de forma
+          rápida y segura.
         </p>
 
         <button
@@ -328,7 +373,7 @@ export function DonacionesScreen({ session }: DonacionesScreenProps) {
               setQrOpen(true);
             }
           }}
-          aria-label="Ampliar codigo QR de donaciones"
+          aria-label="Ampliar código QR de donaciones"
         >
           {qrImageUrl && !qrFailed ? (
             <img
@@ -353,9 +398,9 @@ export function DonacionesScreen({ session }: DonacionesScreenProps) {
         </p>
       </section>
 
-      <InfoCard icon={ReceiptText} title="Confirma tu donacion">
+      <InfoCard icon={ReceiptText} title="Confirma tu donación">
         <p className="text-sm font-semibold leading-relaxed text-[#637094]">
-          Despues de realizar tu transferencia puedes enviarnos:
+          Después de realizar tu transferencia puedes enviarnos:
         </p>
         <ul className="mt-4 space-y-2">
           {receiptRequirements.map((requirement) => (
@@ -376,21 +421,37 @@ export function DonacionesScreen({ session }: DonacionesScreenProps) {
         </a>
       </InfoCard>
 
-      <InfoCard icon={ShieldCheck} title="Transparencia y Administracion de Recursos">
+      <InfoCard icon={FileText} title="Declaración de renta">
         <p className="text-sm font-semibold leading-relaxed text-[#637094]">
-          En la Iglesia Biblica Antioquia entendemos que cada donacion representa un acto de confianza, generosidad y
+          Si realizaste donaciones a la iglesia y necesitas solicitar el certificado o soporte correspondiente para tu
+          declaración de renta, puedes comunicarte con el equipo encargado.
+        </p>
+        <a
+          className="mt-5 flex min-h-[48px] items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 text-sm font-black text-white transition hover:bg-emerald-700"
+          href={taxCertificateWhatsappUrl}
+          target="_blank"
+          rel="noreferrer"
+        >
+          <MessageCircle size={17} />
+          Solicitar certificado
+        </a>
+      </InfoCard>
+
+      <InfoCard icon={ShieldCheck} title="Transparencia y Administración de Recursos">
+        <p className="text-sm font-semibold leading-relaxed text-[#637094]">
+          En la Iglesia Bíblica Antioquía entendemos que cada donación representa un acto de confianza, generosidad y
           compromiso con la obra de Dios. Los recursos recibidos son administrados de manera responsable para apoyar la
-          mision de la iglesia, el discipulado, la evangelizacion, los eventos ministeriales y las necesidades operativas
-          que permiten servir a nuestra comunidad. Asi mismo, son destinados a garantizar el funcionamiento continuo de
-          la iglesia y la proclamacion del Evangelio, contribuyendo a que mas personas conozcan a Jesucristo, crezcan en
+          misión de la iglesia, el discipulado, la evangelización, los eventos ministeriales y las necesidades operativas
+          que permiten servir a nuestra comunidad. Así mismo, son destinados a garantizar el funcionamiento continuo de
+          la iglesia y la proclamación del Evangelio, contribuyendo a que más personas conozcan a Jesucristo, crezcan en
           su fe y sean transformadas por Su Palabra.
         </p>
       </InfoCard>
 
-      <InfoCard icon={Headphones} title="Tienes preguntas sobre tus donaciones?">
+      <InfoCard icon={Headphones} title="¿Tienes preguntas sobre tus donaciones?">
         <p className="text-sm font-semibold leading-relaxed text-[#637094]">
-          Nuestro equipo esta disponible para ayudarte con inquietudes relacionadas con diezmos, ofrendas, comprobantes
-          o informacion administrativa.
+          Nuestro equipo está disponible para ayudarte con inquietudes relacionadas con diezmos, ofrendas, comprobantes
+          o información administrativa.
         </p>
 
         <div className="mt-4 grid gap-2 text-sm font-black text-[#07184A] min-[560px]:grid-cols-2">
@@ -444,8 +505,10 @@ export function DonacionesScreen({ session }: DonacionesScreenProps) {
         <div className="min-w-0">
           <h2 className="text-lg font-black leading-tight">Compromiso con la Transparencia</h2>
           <p className="mt-2 text-sm font-semibold leading-relaxed text-white/75">
-            La Iglesia Biblica Antioquia promueve el manejo responsable y transparente de los recursos recibidos para el
-            cumplimiento de su mision espiritual, comunitaria y evangelistica.
+            La Iglesia Bíblica Antioquía promueve el manejo responsable, transparente y diligente de los recursos
+            recibidos, orientándolos al cumplimiento de su misión espiritual, comunitaria y evangelística. En virtud de
+            este compromiso, se realiza anualmente una rendición de cuentas ante la asamblea de miembros, como ejercicio
+            de transparencia, responsabilidad y buen gobierno institucional.
           </p>
         </div>
       </article>
@@ -501,8 +564,8 @@ function DonacionesLoading() {
             <LoaderCircle size={24} className="animate-spin" />
           </div>
           <div>
-            <h2 className="text-lg font-black text-[#07184A]">Cargando informacion</h2>
-            <p className="mt-1 text-sm font-semibold text-[#637094]">Validando la configuracion oficial.</p>
+            <h2 className="text-lg font-black text-[#07184A]">Cargando información</h2>
+            <p className="mt-1 text-sm font-semibold text-[#637094]">Validando la configuración oficial.</p>
           </div>
         </div>
         <div className="mt-5 grid gap-3">
@@ -535,6 +598,22 @@ function SectionHeading({ icon: Icon, title }: { icon: LucideIcon; title: string
   );
 }
 
+function CopyFeedback({ state, successMessage, errorMessage }: { state: CopyState; successMessage: string; errorMessage: string }) {
+  return (
+    <motion.p
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: 8 }}
+      className={`mt-4 flex items-center gap-2 rounded-2xl px-3 py-2 text-sm font-black ${
+        state === 'success' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
+      }`}
+    >
+      {state === 'success' ? <CheckCircle2 size={17} /> : <AlertCircle size={17} />}
+      {state === 'success' ? successMessage : errorMessage}
+    </motion.p>
+  );
+}
+
 function InfoCard({ icon, title, children }: { icon: LucideIcon; title: string; children: ReactNode }) {
   return (
     <article className="rounded-[24px] border border-[#07184A]/10 bg-white/95 p-5 shadow-[0_18px_45px_rgba(7,24,74,0.09)]">
@@ -563,7 +642,7 @@ function QrDialog({
         className="absolute right-4 top-4 z-10 grid h-12 w-12 place-items-center rounded-full bg-white/10 text-white backdrop-blur transition hover:bg-white/20"
         type="button"
         onClick={onClose}
-        aria-label="Cerrar codigo QR"
+        aria-label="Cerrar código QR"
       >
         <X size={24} />
       </button>

@@ -194,8 +194,8 @@ export function UsersManagementScreen({ session, onBack, onSessionUpdated, onMod
             <ArrowLeft size={18} />
           </button>
           <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-black uppercase text-[#145CFF]">Administracion</p>
-            <h1 className="mt-1 break-words text-2xl font-black leading-7 text-[#0B1F5B]">Gestion de usuarios</h1>
+            <p className="text-[11px] font-black uppercase text-[#145CFF]">Administración</p>
+            <h1 className="mt-1 break-words text-2xl font-black leading-7 text-[#0B1F5B]">Gestión de usuarios</h1>
             <p className="mt-1 text-sm font-semibold leading-5 text-[#637295]">Roles, estados, tipos y permisos.</p>
           </div>
         </div>
@@ -340,7 +340,7 @@ function UserAccessCard({ user, onEdit }: { user: ManagedUser; onEdit: () => voi
             </span>
           ))
         ) : (
-          <span className="rounded-full bg-[#F8FBFF] px-2.5 py-1 text-[10px] font-black text-[#728098] ring-1 ring-[#DCE6F5]">Sin permisos de publicacion</span>
+          <span className="rounded-full bg-[#F8FBFF] px-2.5 py-1 text-[10px] font-black text-[#728098] ring-1 ring-[#DCE6F5]">Sin permisos de publicación</span>
         )}
       </div>
     </article>

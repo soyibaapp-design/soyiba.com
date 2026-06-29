@@ -947,7 +947,7 @@ function EcoHeader({
     locationStatus === 'ready' && userLocation
       ? 'Ubicación actual detectada'
       : locationStatus === 'requesting'
-        ? 'Buscando tu ubicacion'
+        ? 'Buscando tu ubicación'
         : locationStatus === 'unsupported'
           ? 'Ubicación no disponible'
           : locationStatus === 'blocked'
@@ -1632,7 +1632,7 @@ function EcoGroupCard({
           <div className="mt-3 grid gap-2 text-[11px] font-bold text-[#273653] min-[520px]:grid-cols-2">
             <EcoCardMeta icon={CalendarDays} label={publication.eco.day || 'Día por confirmar'} />
             <EcoCardMeta icon={Clock3} label={publication.eco.time || 'Hora por confirmar'} />
-            <EcoCardMeta icon={House} label={publication.eco.host || 'Anfitrion por confirmar'} />
+            <EcoCardMeta icon={House} label={publication.eco.host || 'Anfitrión por confirmar'} />
             <EcoCardMeta icon={UserCheck} label={publication.eco.moderator || 'Moderador por confirmar'} />
             <EcoCardMeta icon={UsersRound} label={`${formatCount(publication.eco.attendeesCount)} asistentes`} />
             {distanceKm !== null ? <EcoCardMeta icon={Navigation} label={formatDistance(distanceKm)} /> : null}
@@ -1968,7 +1968,7 @@ function PublicationDetailsModal({
               </div>
             ) : publication.type === 'Grupo ECO' ? (
               <div className="mt-4 rounded-[14px] border border-[#DCE6F5] bg-[#F8FBFF] px-3 py-3 text-[13px] font-bold leading-5 text-[#145CFF]">
-                Publicacion de Grupo ECO
+                Publicación de Grupo ECO
               </div>
             ) : null}
 
@@ -2105,7 +2105,7 @@ function EcoGroupModal({
               <EventInfoTile icon={Clock3} label="Hora" value={publication.eco.time || 'Por confirmar'} />
               <EventInfoTile icon={MapPin} label="Barrio" value={publication.eco.neighborhood || 'Por confirmar'} subvalue={publication.eco.city} />
               <EventInfoTile icon={House} label="Punto de encuentro" value={publication.eco.address || 'Por confirmar'} />
-              <EventInfoTile icon={UserCheck} label="Anfitrion" value={publication.eco.host || 'Por confirmar'} />
+              <EventInfoTile icon={UserCheck} label="Anfitrión" value={publication.eco.host || 'Por confirmar'} />
               <EventInfoTile icon={HeartHandshake} label="Moderador" value={publication.eco.moderator || 'Por confirmar'} />
               <EventInfoTile icon={Phone} label="Contacto" value={publication.eco.phone || 'Por confirmar'} />
               <EventInfoTile icon={UsersRound} label="Asistentes" value={`${formatCount(publication.eco.attendeesCount)} asistentes`} />
@@ -2184,7 +2184,7 @@ function EcoAboutAccordion() {
           >
             <div className="space-y-3 p-3 text-[13px] font-semibold leading-6 text-[#344154]">
               <p>
-                ECO significa Evangelio, Comunidad y Oracion. Son espacios de encuentro de la Iglesia Biblica Antioquia donde los miembros se reunen en hogares para crecer juntos en su relacion con Dios y fortalecer la vida en comunidad.
+                ECO significa Evangelio, Comunidad y Oración. Son espacios de encuentro de la Iglesia Bíblica Antioquía donde los miembros se reúnen en hogares para crecer juntos en su relación con Dios y fortalecer la vida en comunidad.
               </p>
               <p>
                 A diferencia de una célula enfocada principalmente en el alcance evangelístico, los Grupos ECO están orientados a profundizar en los temas compartidos durante la prédica, promover la comunión entre hermanos, acompañarse mutuamente en oración y fomentar el discipulado práctico.
@@ -2193,10 +2193,10 @@ function EcoAboutAccordion() {
               <div className="grid gap-2 min-[440px]:grid-cols-3">
                 <EcoPrincipleCard title="Evangelio" body="Reflexionamos y profundizamos en las enseñanzas bíblicas para aplicarlas a la vida diaria." icon={BookOpen} />
                 <EcoPrincipleCard title="Comunidad" body="Construimos relaciones sanas y significativas como familia en Cristo." icon={UsersRound} />
-                <EcoPrincipleCard title="Oracion" body="Compartimos necesidades, damos gracias y oramos unos por otros." icon={MessageCircle} />
+                <EcoPrincipleCard title="Oración" body="Compartimos necesidades, damos gracias y oramos unos por otros." icon={MessageCircle} />
               </div>
 
-              <p>Los Grupos ECO se reunen normalmente los viernes a las 7:00 p.m. en diferentes hogares de la ciudad.</p>
+              <p>Los Grupos ECO se reúnen normalmente los viernes a las 7:00 p.m. en diferentes hogares de la ciudad.</p>
             </div>
           </motion.div>
         ) : null}
@@ -2903,7 +2903,7 @@ function PublicationComposerModal({
 
     if (form.type === 'Grupo ECO') {
       if (!form.ecoDay.trim() || !form.ecoTime.trim() || !form.ecoNeighborhood.trim() || !form.ecoHost.trim() || !form.ecoModerator.trim()) {
-        setError('Completa dia, hora, barrio, anfitrion y moderador del Grupo ECO.');
+        setError('Completa día, hora, barrio, anfitrión y moderador del Grupo ECO.');
         return;
       }
     }
@@ -3006,7 +3006,7 @@ function PublicationComposerModal({
           <ToggleField
             label="Público"
             checked={form.membersOnly}
-            description={form.membersOnly ? 'Esta publicacion la veran solo los miembros' : 'Esta publicacion la veran todos los usuarios'}
+            description={form.membersOnly ? 'Esta publicación la verán solo los miembros' : 'Esta publicación la verán todos los usuarios'}
             onChange={(value) => updateField('membersOnly', value)}
           />
 
@@ -3056,12 +3056,12 @@ function PublicationComposerModal({
           {form.type === 'Grupo ECO' ? (
             <div className="grid gap-3 rounded-[14px] border border-[#DCE6F5] bg-white p-3 shadow-[0_10px_24px_rgba(15,23,42,0.04)] min-[520px]:grid-cols-2">
               <TextField label="Día de reunión" value={form.ecoDay} onChange={(value) => updateField('ecoDay', value)} icon={CalendarDays} placeholder="Viernes" />
-              <TextField label="Hora de reunion" value={form.ecoTime} onChange={(value) => updateField('ecoTime', value)} icon={Clock3} placeholder="7:00 p.m." />
-              <TextField label="Anfitrion" value={form.ecoHost} onChange={(value) => updateField('ecoHost', value)} icon={House} placeholder="Nombre del anfitrion" />
+              <TextField label="Hora de reunión" value={form.ecoTime} onChange={(value) => updateField('ecoTime', value)} icon={Clock3} placeholder="7:00 p.m." />
+              <TextField label="Anfitrión" value={form.ecoHost} onChange={(value) => updateField('ecoHost', value)} icon={House} placeholder="Nombre del anfitrión" />
               <TextField label="Moderador" value={form.ecoModerator} onChange={(value) => updateField('ecoModerator', value)} icon={UserCheck} placeholder="Nombre del moderador" />
-              <TextField label="Telefono de contacto" value={form.ecoPhone} onChange={(value) => updateField('ecoPhone', value)} icon={Phone} type="tel" placeholder="+57..." />
+              <TextField label="Teléfono de contacto" value={form.ecoPhone} onChange={(value) => updateField('ecoPhone', value)} icon={Phone} type="tel" placeholder="+57..." />
               <TextField label="Barrio o sector" value={form.ecoNeighborhood} onChange={(value) => updateField('ecoNeighborhood', value)} icon={MapPin} placeholder="Barrio" />
-              <TextField label="Ciudad" value={form.ecoCity} onChange={(value) => updateField('ecoCity', value)} icon={MapPinned} placeholder="Ibague" />
+              <TextField label="Ciudad" value={form.ecoCity} onChange={(value) => updateField('ecoCity', value)} icon={MapPinned} placeholder="Ibagué" />
               <TextField label="Dirección o punto de encuentro" value={form.ecoAddress} onChange={(value) => updateField('ecoAddress', value)} icon={Navigation} placeholder="Dirección o referencia" />
               <TextField label="Latitud" value={form.ecoLatitude} onChange={(value) => updateField('ecoLatitude', value)} icon={Compass} type="number" placeholder="4.4389" />
               <TextField label="Longitud" value={form.ecoLongitude} onChange={(value) => updateField('ecoLongitude', value)} icon={Compass} type="number" placeholder="-75.2322" />
@@ -3103,7 +3103,7 @@ function PublicationComposerModal({
 
           <div className="grid gap-3 min-[520px]:grid-cols-2">
             <SelectField
-              label="Boton"
+              label="Botón"
               value={form.ctaType}
               onChange={(value) => updateField('ctaType', value as PublicationCtaType)}
               options={[...PUBLICATION_CTA_TYPES]}
@@ -3111,7 +3111,7 @@ function PublicationComposerModal({
 
             {form.ctaType === 'Whatsapp' ? (
               <TextField
-                label="Numero Whatsapp"
+                label="Número Whatsapp"
                 value={form.ctaPhone}
                 onChange={(value) => updateField('ctaPhone', value)}
                 icon={MessageCircle}
@@ -3335,7 +3335,7 @@ function SelectField<T extends string>({
 }
 
 function formatSelectOption(option: string) {
-  return option === 'Ninguno' ? 'Sin boton' : option;
+  return option === 'Ninguno' ? 'Sin botón' : option;
 }
 
 function TextAreaField({

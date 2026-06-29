@@ -16,6 +16,7 @@ import {
   LogOut,
   Mail,
   Megaphone,
+  MessageCircle,
   Music2,
   PencilLine,
   Phone,
@@ -70,6 +71,10 @@ type AdminAction = {
 
 type ActivityType = 'saved' | 'events' | 'eco' | 'posts';
 
+const WHATSAPP_MEMBERS_PHONE = '573243339375';
+const MEMBERS_RESOURCES_MESSAGE =
+  'Hola, Dios les bendiga. Soy miembro de la Iglesia Bíblica Antioquía y deseo solicitar información sobre los recursos disponibles para miembros. Mi nombre es:';
+
 const adminTone = {
   blue: {
     icon: 'bg-[#EAF2FF] text-[#145CFF]',
@@ -98,6 +103,13 @@ function isManager(user: SoyibaUser) {
   return ['admin', 'moderador'].includes(String(user.rolSistema || user.role || '').trim().toLowerCase());
 }
 
+function isMemberUser(user: SoyibaUser) {
+  const userType = String((user as SoyibaUser & { tipo?: string }).tipo || user.tipoUsuario || '')
+    .trim()
+    .toLowerCase();
+  return userType === 'miembro';
+}
+
 function getDisplayName(user: SoyibaUser) {
   return user.name || [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email || 'Usuario SOY IBA';
 }
@@ -123,6 +135,18 @@ function normalizeEmail(value: unknown) {
   return String(value || '').trim().toLowerCase();
 }
 
+function buildWhatsappUrl(phone: string, message: string) {
+  const digits = String(phone || '').replace(/\D/g, '');
+
+  if (!digits) {
+    return '#';
+  }
+
+  const number = digits.startsWith('57') ? digits : `57${digits}`;
+  const text = message ? `?text=${encodeURIComponent(message)}` : '';
+  return `https://wa.me/${number}${text}`;
+}
+
 function formatEcoSummary(publication: SoyibaPublication) {
   return [
     [publication.eco.neighborhood, publication.eco.city].filter(Boolean).join(', '),
@@ -141,7 +165,7 @@ function getPublicationActivityMeta(publication: SoyibaPublication) {
     return formatEcoSummary(publication);
   }
 
-  return formatDateLabel(publication.createdAt) || 'Publicacion';
+  return formatDateLabel(publication.createdAt) || 'Publicación';
 }
 
 function formatDateLabel(value: string) {
@@ -244,6 +268,7 @@ export function ProfileScreen({
   const activeActivity = activityCards.find((item) => item.id === openActivity) || activityCards[0];
   const activeItems = activityGroups[openActivity];
   const currentEco = activityGroups.eco[0] || null;
+  const memberResourcesWhatsappUrl = buildWhatsappUrl(WHATSAPP_MEMBERS_PHONE, MEMBERS_RESOURCES_MESSAGE);
 
   async function handlePhotoSelected(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -409,6 +434,31 @@ export function ProfileScreen({
         <LiveBadgeTestPanel enabled={liveBadgeTestEnabled} onChange={onLiveBadgeTestChange || (() => undefined)} />
       ) : null}
 
+      {isMemberUser(user) ? (
+        <section className="rounded-[20px] border border-[#DCE6F5] bg-white/90 p-4 shadow-[0_18px_42px_rgba(15,23,42,0.06)]">
+          <div className="flex min-w-0 items-start gap-3">
+            <span className="grid h-12 w-12 shrink-0 place-items-center rounded-[14px] bg-[#E2F8EC] text-[#059669]">
+              <MessageCircle size={24} />
+            </span>
+            <div className="min-w-0 flex-1">
+              <h2 className="text-base font-black leading-5 text-[#0B1F5B]">Recursos para miembros</h2>
+              <p className="mt-1 text-[12px] font-semibold leading-5 text-[#637295]">
+                Accede a orientación, materiales o información reservada para miembros de la iglesia.
+              </p>
+            </div>
+          </div>
+          <a
+            href={memberResourcesWhatsappUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-4 flex min-h-[46px] items-center justify-center gap-2 rounded-[14px] bg-emerald-600 px-4 text-xs font-black text-white shadow-[0_12px_26px_rgba(5,150,105,0.22)] transition hover:bg-emerald-700"
+          >
+            <MessageCircle size={17} />
+            Solicitar recursos
+          </a>
+        </section>
+      ) : null}
+
       <section className="space-y-2">
         <h2 className="text-base font-black text-[#0B1F5B]">Mi ECO</h2>
         {currentEco ? (
@@ -418,7 +468,7 @@ export function ProfileScreen({
                 <Home size={28} />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-[11px] font-black uppercase tracking-normal text-[#145CFF]">Asistire a</p>
+                <p className="text-[11px] font-black uppercase tracking-normal text-[#145CFF]">Asistiré a</p>
                 <h3 className="mt-1 line-clamp-2 break-words text-[16px] font-black leading-5 text-[#0B1F5B]">{currentEco.title}</h3>
                 <p className="mt-1 line-clamp-2 break-words text-[12px] font-semibold leading-4 text-[#637295]">
                   {formatEcoSummary(currentEco)}
@@ -828,7 +878,7 @@ function EditProfileModal({ session, onClose, onSaved }: EditProfileModalProps) 
             {openPanel === 'security' ? (
               <div className="grid gap-3 p-3.5">
                 <EditableField
-                  label="Contrasena actual"
+                  label="Contraseña actual"
                   type="password"
                   value={passwordForm.currentPassword}
                   onChange={(value) => updatePasswordField('currentPassword', value)}
