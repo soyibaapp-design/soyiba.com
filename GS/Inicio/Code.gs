@@ -847,7 +847,11 @@ function soyibaAuthNormalizeTipoUsuario_(value) {
 
 function soyibaAuthNormalizeTituloUsuario_(value, tipoUsuario) {
   var normalized = soyibaAuthNormalizeAccessText_(value);
-  var options = ['Asistente', 'Miembro', 'Servidor', 'Líder', 'Pastor', 'Administrativo', 'Músico', 'Audiovisuales', 'Creador de contenido'];
+  var options = ['Asistente', 'Miembro', 'Servidor', 'Líder', 'Pastor', 'Administrativo', 'Maestro ED', 'Maestro', 'Líder de pastorales', 'Equipo alabanza', 'Moderador de grupo ECO', 'Audiovisuales', 'Creador de contenido'];
+
+  if (normalized === 'musico') {
+    return 'Equipo alabanza';
+  }
 
   for (var index = 0; index < options.length; index += 1) {
     if (soyibaAuthNormalizeAccessText_(options[index]) === normalized) {
@@ -1173,7 +1177,7 @@ function soyibaPublicacionesCreate_(data) {
     soyibaPublicacionesNormalizeCtaType_(data.cta && data.cta.type ? data.cta.type : data.cta_type),
     String((data.cta && data.cta.url) || data.cta_url || ''),
     String((data.cta && data.cta.phone) || data.cta_phone || ''),
-    soyibaPublicacionesStringifyArray_(data.relatedLinks || data.related_links || []),
+    soyibaPublicacionesStringifyArray_(soyibaPublicacionesNormalizeRelatedLinks_(data.relatedLinks || data.related_links || [])),
     0,
     0,
     0,
@@ -1242,7 +1246,7 @@ function soyibaPublicacionesUpdate_(data) {
   soyibaPublicacionesSetCell_(sheet, headers, found.row, 'cta_type', soyibaPublicacionesNormalizeCtaType_(data.cta && data.cta.type ? data.cta.type : data.cta_type));
   soyibaPublicacionesSetCell_(sheet, headers, found.row, 'cta_url', String((data.cta && data.cta.url) || data.cta_url || ''));
   soyibaPublicacionesSetCell_(sheet, headers, found.row, 'cta_phone', String((data.cta && data.cta.phone) || data.cta_phone || ''));
-  soyibaPublicacionesSetCell_(sheet, headers, found.row, 'related_links_json', soyibaPublicacionesStringifyArray_(data.relatedLinks || data.related_links || []));
+  soyibaPublicacionesSetCell_(sheet, headers, found.row, 'related_links_json', soyibaPublicacionesStringifyArray_(soyibaPublicacionesNormalizeRelatedLinks_(data.relatedLinks || data.related_links || [])));
   soyibaPublicacionesSetCell_(sheet, headers, found.row, 'solo_miembros', soyibaPublicacionesNormalizeMembersOnly_(data));
 
   if (type === 'Evento') {
@@ -1652,7 +1656,7 @@ function soyibaPublicacionesBuildResponse_(record, savedByCurrentUser, yovoyByCu
       url: String(record.cta_url || ''),
       phone: String(record.cta_phone || '')
     },
-    relatedLinks: soyibaPublicacionesParseArray_(record.related_links_json),
+    relatedLinks: soyibaPublicacionesNormalizeRelatedLinks_(record.related_links_json),
     membersOnly: soyibaPublicacionesIsMembersOnly_(record),
     savedCount: Number(record.guardados || 0),
     viewsCount: Number(record.views || 0),
@@ -2126,6 +2130,65 @@ function soyibaPublicacionesParseArray_(value) {
   } catch (error) {
     return [];
   }
+}
+
+function soyibaPublicacionesNormalizeRelatedLinks_(value) {
+  var rawItems = [];
+
+  if (Array.isArray(value)) {
+    rawItems = value;
+  } else if (value) {
+    var text = String(value || '').trim();
+
+    if (text) {
+      try {
+        var parsed = JSON.parse(text);
+        rawItems = Array.isArray(parsed) ? parsed : [];
+      } catch (error) {
+        rawItems = text.split(/\r?\n/).filter(function (line) {
+          return String(line || '').trim();
+        });
+      }
+    }
+  }
+
+  return rawItems.slice(0, 3).map(function (item, index) {
+    var record = item && typeof item === 'object' ? item : {};
+    var textItem = typeof item === 'string' ? item : '';
+    var parts = textItem.split('|').map(function (part) {
+      return String(part || '').trim();
+    });
+    var firstPartIsUrl = /^https?:\/\//i.test(parts[0] || '');
+    var title = String(record.title || (firstPartIsUrl ? parts[1] : parts[0]) || '').trim();
+    var url = soyibaPublicacionesNormalizeRelatedLinkUrl_(record.url || (firstPartIsUrl ? parts[0] : parts[1]) || '');
+
+    if (!title || !soyibaPublicacionesIsValidRelatedLinkUrl_(url)) {
+      return null;
+    }
+
+    return {
+      id: String(record.id || ('link-' + index)),
+      title: title,
+      url: url
+    };
+  }).filter(function (item) {
+    return item !== null;
+  });
+}
+
+function soyibaPublicacionesNormalizeRelatedLinkUrl_(value) {
+  var url = String(value || '').trim();
+
+  if (!url) {
+    return '';
+  }
+
+  return /^https?:\/\//i.test(url) ? url : 'https://' + url;
+}
+
+function soyibaPublicacionesIsValidRelatedLinkUrl_(value) {
+  var url = String(value || '').trim();
+  return /^https?:\/\/[^/\s]+\S*$/i.test(url);
 }
 
 function soyibaPublicacionesNormalizeEventPayload_(data, currentYoVoy) {

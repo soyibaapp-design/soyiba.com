@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { LoaderCircle, LockKeyhole, RefreshCcw, Search, ShieldCheck, UsersRound, type LucideIcon } from 'lucide-react';
+import { LoaderCircle, LockKeyhole, MessageCircle, RefreshCcw, Search, UsersRound, type LucideIcon } from 'lucide-react';
 import type { SoyibaSession } from '../Auth/auth.service';
 import { MemberCard } from './MemberCard';
 import { MemberDetailModal } from './MemberDetailModal';
@@ -14,11 +14,10 @@ import {
 
 type MembersPageProps = {
   session: SoyibaSession;
-  onRequestValidation: () => void;
   onModalOpenChange?: (open: boolean) => void;
 };
 
-export function MembersPage({ session, onRequestValidation, onModalOpenChange }: MembersPageProps) {
+export function MembersPage({ session, onModalOpenChange }: MembersPageProps) {
   const [members, setMembers] = useState<IbaMember[]>([]);
   const [query, setQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState<MembersFilterId>('todos');
@@ -26,6 +25,21 @@ export function MembersPage({ session, onRequestValidation, onModalOpenChange }:
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [accessDenied, setAccessDenied] = useState(false);
+
+  function handleSolicitarValidacionMiembro() {
+    const nombreUsuario = getSessionUserName(session);
+    const mensaje = [
+      'Hola, Dios les bendiga.',
+      `Mi nombre es ${nombreUsuario}.`,
+      'Soy miembro de la Iglesia Bíblica Antioquía, pero en la app SOY IBA todavía no aparezco marcado como miembro.',
+      'Por favor, ¿me podrían ayudar con la validación de mi perfil para poder acceder al directorio de miembros?',
+      '',
+      'Muchas gracias.',
+    ].join('\n');
+    const whatsappUrl = `https://wa.me/573243339375?text=${encodeURIComponent(mensaje)}`;
+
+    window.open(whatsappUrl, '_blank');
+  }
 
   useEffect(() => {
     onModalOpenChange?.(Boolean(selectedMember));
@@ -108,11 +122,11 @@ export function MembersPage({ session, onRequestValidation, onModalOpenChange }:
           <h1 className="mt-4 text-xl font-black leading-6 text-[#0B1F5B]">Directorio disponible solo para miembros.</h1>
           <button
             type="button"
-            onClick={onRequestValidation}
+            onClick={handleSolicitarValidacionMiembro}
             className="mt-5 inline-flex h-12 items-center justify-center gap-2 rounded-[15px] bg-[#145CFF] px-5 text-xs font-black text-white shadow-[0_14px_30px_rgba(20,92,255,0.28)]"
           >
-            <ShieldCheck size={17} />
-            Solicitar validación como miembro
+            <MessageCircle size={17} />
+            Solicitar validación por WhatsApp
           </button>
         </section>
       </motion.section>
@@ -205,6 +219,18 @@ export function MembersPage({ session, onRequestValidation, onModalOpenChange }:
       </AnimatePresence>
     </motion.section>
   );
+}
+
+function getSessionUserName(session: SoyibaSession) {
+  const user = session.user as SoyibaSession['user'] & {
+    nombre?: string;
+    apellido?: string;
+    displayName?: string;
+  };
+  const fullNameFromParts = [user.firstName, user.lastName].filter(Boolean).join(' ').trim();
+  const legacyNameFromParts = [user.nombre, user.apellido].filter(Boolean).join(' ').trim();
+
+  return user.name || user.displayName || fullNameFromParts || legacyNameFromParts || 'un usuario de la app SOY IBA';
 }
 
 function EmptyState({ icon: Icon, message }: { icon: LucideIcon; message: string }) {

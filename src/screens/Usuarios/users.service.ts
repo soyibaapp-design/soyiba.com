@@ -346,7 +346,11 @@ const userTitleOptions = [
   'Líder',
   'Pastor',
   'Administrativo',
-  'Músico',
+  'Maestro ED',
+  'Maestro',
+  'Líder de pastorales',
+  'Equipo alabanza',
+  'Moderador de grupo ECO',
   'Audiovisuales',
   'Creador de contenido',
 ];
@@ -378,6 +382,10 @@ function normalizeUserType(value: unknown) {
 
 function normalizeUserTitle(value: unknown, tipoUsuario: unknown) {
   const normalized = normalizeAccessText(value);
+  if (normalized === 'musico') {
+    return 'Equipo alabanza';
+  }
+
   const match = userTitleOptions.find((option) => normalizeAccessText(option) === normalized);
 
   if (match) {

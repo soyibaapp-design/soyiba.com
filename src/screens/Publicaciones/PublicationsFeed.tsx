@@ -50,8 +50,11 @@ import {
 import type { SoyibaSession } from '../Auth/auth.service';
 import {
   PUBLICATION_CTA_TYPES,
+  MAX_RELATED_LINKS,
+  cleanRelatedLinks,
   createPublication,
   deletePublication,
+  extractYouTubeVideoId,
   buildPublicationMediaItems,
   canManagePublication,
   getCachedPublicationFeed,
@@ -60,11 +63,13 @@ import {
   getPublicationCtaLabel,
   getPublicationCtaUrl,
   getPublicationFeed,
-  parseRelatedLinksInput,
+  getYouTubeEmbedUrl,
+  getYouTubeThumbnailCandidates,
+  isValidRelatedLinkUrl,
+  isYouTubeUrl,
   recordPublicationShare,
   recordPublicationView,
   toggleEcoAttendance,
-  serializeRelatedLinksInput,
   toggleEventGoing,
   togglePublicationSave,
   updatePublication,
@@ -72,6 +77,7 @@ import {
   type PublicationCtaType,
   type PublicationMediaItem,
   type PublicationPayload,
+  type PublicationRelatedLink,
   type PublicationType,
   type SoyibaPublication,
 } from './publicaciones.service';
@@ -114,7 +120,8 @@ type PublicationFormState = {
   ctaType: PublicationCtaType;
   ctaUrl: string;
   ctaPhone: string;
-  relatedLinksInput: string;
+  relatedLinksEnabled: boolean;
+  relatedLinks: PublicationRelatedLink[];
   eventDateTime: string;
   eventPlace: string;
   eventValidFrom: string;
@@ -1976,31 +1983,7 @@ function PublicationDetailsModal({
               <PublicAuthGate className="mt-4" onAuthRequired={onAuthRequired} />
             ) : null}
 
-            {!publicMode && publication.relatedLinks.length ? (
-              <div className="mt-4 space-y-2">
-                {publication.relatedLinks.map((link) => (
-                  <a
-                    key={link.id}
-                    href={link.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex min-h-[64px] items-center gap-3 rounded-[14px] border border-[#E0E7F0] bg-[#FAFCFF] px-3 py-2 shadow-[0_8px_18px_rgba(15,23,42,0.04)]"
-                  >
-                    <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[12px] bg-[#FFF1F1] text-[#E03131]">
-                      <FileText size={22} />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[13px] font-black text-[#101827]">{link.title}</span>
-                      <span className="mt-0.5 block truncate text-[11px] font-bold text-[#667085]">{hostFromUrl(link.url)}</span>
-                    </span>
-                    <span className="inline-flex shrink-0 items-center gap-1 text-[13px] font-black text-[#1F2544]">
-                      Abrir
-                      <ExternalLink size={16} />
-                    </span>
-                  </a>
-                ))}
-              </div>
-            ) : null}
+            {!publicMode && publication.relatedLinks.length ? <RelatedLinksSection className="mt-4" links={publication.relatedLinks} /> : null}
           </div>
         </div>
 
@@ -2113,31 +2096,7 @@ function EcoGroupModal({
 
             <EcoDirectionsMenu publication={publication} />
 
-            {!publicMode && publication.relatedLinks.length ? (
-              <div className="space-y-2">
-                {publication.relatedLinks.map((link) => (
-                  <a
-                    key={link.id}
-                    href={link.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="flex min-h-[64px] items-center gap-3 rounded-[14px] border border-[#E0E7F0] bg-[#FAFCFF] px-3 py-2 shadow-[0_8px_18px_rgba(15,23,42,0.04)]"
-                  >
-                    <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[12px] bg-[#FFF1F1] text-[#E03131]">
-                      <FileText size={22} />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[13px] font-black text-[#101827]">{link.title}</span>
-                      <span className="mt-0.5 block truncate text-[11px] font-bold text-[#667085]">{hostFromUrl(link.url)}</span>
-                    </span>
-                    <span className="inline-flex shrink-0 items-center gap-1 text-[13px] font-black text-[#1F2544]">
-                      Abrir
-                      <ExternalLink size={16} />
-                    </span>
-                  </a>
-                ))}
-              </div>
-            ) : null}
+            {!publicMode && publication.relatedLinks.length ? <RelatedLinksSection links={publication.relatedLinks} /> : null}
           </div>
         </div>
 
@@ -2321,6 +2280,36 @@ function PublicAuthGate({
         </button>
       </div>
     </div>
+  );
+}
+
+function RelatedLinksSection({ links, className = '' }: { links: PublicationRelatedLink[]; className?: string }) {
+  const visibleLinks = links.slice(0, MAX_RELATED_LINKS);
+
+  if (!visibleLinks.length) {
+    return null;
+  }
+
+  return (
+    <section className={cx('rounded-[14px] border border-[#DCE6F5] bg-[#F8FBFF] p-3 shadow-[0_8px_18px_rgba(15,23,42,0.04)]', className)}>
+      <h4 className="text-[12px] font-black text-[#0B1F5B]">Enlaces relacionados</h4>
+      <div className="mt-2 grid gap-2">
+        {visibleLinks.map((link) => (
+          <button
+            key={link.id || `${link.title}-${link.url}`}
+            type="button"
+            onClick={() => window.open(link.url, '_blank', 'noopener,noreferrer')}
+            className="flex min-h-[48px] w-full items-center gap-3 rounded-[12px] border border-[#DCE6F5] bg-white px-3 py-2 text-left shadow-[0_6px_16px_rgba(15,23,42,0.04)] transition hover:border-[#BFD0EA] hover:bg-[#FDFEFF]"
+          >
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#EAF2FF] text-[#145CFF]">
+              <LinkIcon size={17} />
+            </span>
+            <span className="min-w-0 flex-1 truncate text-[13px] font-black text-[#101827]">{link.title}</span>
+            <ExternalLink size={15} className="shrink-0 text-[#145CFF]" />
+          </button>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -2556,31 +2545,7 @@ function PublicationCard({
           <PublicAuthGate className="mt-4" onAuthRequired={onAuthRequired} />
         ) : null}
 
-        {!publicMode && publication.relatedLinks.length ? (
-          <div className="mt-4 space-y-2">
-            {publication.relatedLinks.map((link) => (
-              <a
-                key={link.id}
-                href={link.url}
-                target="_blank"
-                rel="noreferrer"
-                className="flex min-h-[64px] items-center gap-3 rounded-[14px] border border-[#E0E7F0] bg-[#FAFCFF] px-3 py-2 shadow-[0_8px_18px_rgba(15,23,42,0.04)]"
-              >
-                <span className="grid h-11 w-11 shrink-0 place-items-center rounded-[12px] bg-[#FFF1F1] text-[#E03131]">
-                  <FileText size={22} />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[13px] font-black text-[#101827]">{link.title}</span>
-                  <span className="mt-0.5 block truncate text-[11px] font-bold text-[#667085]">{hostFromUrl(link.url)}</span>
-                </span>
-                <span className="inline-flex shrink-0 items-center gap-1 text-[13px] font-black text-[#1F2544]">
-                  Abrir
-                  <ExternalLink size={16} />
-                </span>
-              </a>
-            ))}
-          </div>
-        ) : null}
+        {!publicMode && publication.relatedLinks.length ? <RelatedLinksSection className="mt-4" links={publication.relatedLinks} /> : null}
       </div>
     </article>
   );
@@ -2693,10 +2658,23 @@ function PublicationMedia({
   onOpenImage: (preview: ImagePreview) => void;
 }) {
   if (item.type === 'youtube') {
+    const embedUrl = getYouTubeEmbedUrl(item.url);
+
+    if (!embedUrl) {
+      return (
+        <div className="grid h-full w-full place-items-center bg-[#EAF0F8] px-6 text-center text-[#53647D]">
+          <div>
+            <Video className="mx-auto h-10 w-10" />
+            <p className="mt-3 text-[13px] font-black">No pudimos reconocer esta URL de YouTube.</p>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <iframe
         className="h-full w-full"
-        src={getYouTubeEmbedUrl(item.url)}
+        src={embedUrl}
         title={item.title || publicationTitle}
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
         allowFullScreen
@@ -2876,9 +2854,55 @@ function PublicationComposerModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const typeOptions = permittedTypes.includes(form.type) ? permittedTypes : [form.type, ...permittedTypes];
   const busy = saving || isSubmitting;
+  const videoUrlFeedback = getVideoUrlFeedback(form.videoUrl, form.videoFile);
 
   function updateField<K extends keyof PublicationFormState>(field: K, value: PublicationFormState[K]) {
     setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  function setRelatedLinksEnabled(enabled: boolean) {
+    setForm((current) => ({
+      ...current,
+      relatedLinksEnabled: enabled,
+      relatedLinks: enabled ? (current.relatedLinks.length ? current.relatedLinks : [createEmptyRelatedLink()]) : [createEmptyRelatedLink()],
+    }));
+  }
+
+  function addRelatedLink() {
+    setForm((current) => ({
+      ...current,
+      relatedLinksEnabled: true,
+      relatedLinks:
+        current.relatedLinks.length >= MAX_RELATED_LINKS
+          ? current.relatedLinks
+          : [...current.relatedLinks, createEmptyRelatedLink()],
+    }));
+  }
+
+  function removeRelatedLink(index: number) {
+    setForm((current) => {
+      const nextLinks = current.relatedLinks.filter((_, currentIndex) => currentIndex !== index);
+
+      if (!nextLinks.length) {
+        return {
+          ...current,
+          relatedLinksEnabled: false,
+          relatedLinks: [createEmptyRelatedLink()],
+        };
+      }
+
+      return {
+        ...current,
+        relatedLinks: nextLinks,
+      };
+    });
+  }
+
+  function updateRelatedLink(index: number, field: 'title' | 'url', value: string) {
+    setForm((current) => ({
+      ...current,
+      relatedLinks: current.relatedLinks.map((link, currentIndex) => (currentIndex === index ? { ...link, [field]: value } : link)),
+    }));
   }
 
   async function handleSubmit() {
@@ -2908,6 +2932,20 @@ function PublicationComposerModal({
       }
     }
 
+    const currentVideoFeedback = getVideoUrlFeedback(form.videoUrl, form.videoFile);
+
+    if (currentVideoFeedback?.tone === 'error') {
+      setError(currentVideoFeedback.message);
+      return;
+    }
+
+    const relatedLinksValidation = validateRelatedLinks(form.relatedLinksEnabled, form.relatedLinks);
+
+    if (relatedLinksValidation) {
+      setError(relatedLinksValidation);
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -2935,7 +2973,7 @@ function PublicationComposerModal({
           songUrl: form.songUrl,
         }),
         cta: buildCtaPayload(form),
-        relatedLinks: parseRelatedLinksInput(form.relatedLinksInput),
+        relatedLinks: form.relatedLinksEnabled ? cleanRelatedLinks(form.relatedLinks) : [],
         event:
           form.type === 'Evento'
             ? {
@@ -3090,6 +3128,7 @@ function PublicationComposerModal({
             placeholder="URL de YouTube, Drive o archivo desde tu dispositivo"
             onChange={(value) => updateField('videoUrl', value)}
             onFileChange={(file) => updateField('videoFile', file)}
+            feedback={videoUrlFeedback}
           />
 
           <TextField
@@ -3132,12 +3171,13 @@ function PublicationComposerModal({
             )}
           </div>
 
-          <TextAreaField
-            label="Enlaces relacionados"
-            value={form.relatedLinksInput}
-            onChange={(value) => updateField('relatedLinksInput', value)}
-            rows={3}
-            placeholder="Guia de estudio|https://..."
+          <RelatedLinksEditor
+            enabled={form.relatedLinksEnabled}
+            links={form.relatedLinks}
+            onEnabledChange={setRelatedLinksEnabled}
+            onAdd={addRelatedLink}
+            onRemove={removeRelatedLink}
+            onUpdate={updateRelatedLink}
           />
 
           {error ? <p className="rounded-[10px] bg-red-50 px-3 py-2 text-[11px] font-bold text-red-700">{error}</p> : null}
@@ -3248,6 +3288,7 @@ function MediaUrlField({
   placeholder,
   onChange,
   onFileChange,
+  feedback,
 }: {
   label: string;
   value: string;
@@ -3257,6 +3298,7 @@ function MediaUrlField({
   placeholder: string;
   onChange: (value: string) => void;
   onFileChange: (file: File | null) => void;
+  feedback?: { tone: 'success' | 'error'; message: string } | null;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -3301,8 +3343,181 @@ function MediaUrlField({
           </button>
         </div>
       ) : null}
+
+      {feedback ? (
+        <p className={cx('mt-2 rounded-[10px] px-3 py-2 text-[11px] font-black', feedback.tone === 'success' ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700')}>
+          {feedback.message}
+        </p>
+      ) : null}
     </div>
   );
+}
+
+function getVideoUrlFeedback(value: string, selectedFile: File | null) {
+  const trimmed = value.trim();
+
+  if (!trimmed || selectedFile || !isYouTubeUrl(trimmed)) {
+    return null;
+  }
+
+  if (extractYouTubeVideoId(trimmed)) {
+    return {
+      tone: 'success' as const,
+      message: 'Video de YouTube válido',
+    };
+  }
+
+  return {
+    tone: 'error' as const,
+    message: 'No pudimos reconocer esta URL de YouTube. Verifica el enlace.',
+  };
+}
+
+function RelatedLinksEditor({
+  enabled,
+  links,
+  onEnabledChange,
+  onAdd,
+  onRemove,
+  onUpdate,
+}: {
+  enabled: boolean;
+  links: PublicationRelatedLink[];
+  onEnabledChange: (enabled: boolean) => void;
+  onAdd: () => void;
+  onRemove: (index: number) => void;
+  onUpdate: (index: number, field: 'title' | 'url', value: string) => void;
+}) {
+  return (
+    <section className="rounded-[14px] border border-[#DCE6F5] bg-white p-3 shadow-[0_10px_24px_rgba(15,23,42,0.04)]">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[10px] font-black uppercase text-[#52637C]">Habilitar enlaces relacionados</p>
+          <p className="mt-1 text-[11px] font-bold leading-4 text-[#62718A]">Agrega hasta 3 enlaces opcionales para esta publicacion.</p>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={enabled}
+          onClick={() => onEnabledChange(!enabled)}
+          className={cx(
+            'relative h-7 w-12 shrink-0 rounded-full border transition focus:outline-none focus:ring-4 focus:ring-blue-100',
+            enabled ? 'border-[#145CFF] bg-[#145CFF]' : 'border-[#C9D6EA] bg-[#EAF0F8]',
+          )}
+        >
+          <span
+            className={cx(
+              'absolute top-1/2 h-5 w-5 -translate-y-1/2 rounded-full bg-white shadow-[0_4px_12px_rgba(15,23,42,0.22)] transition',
+              enabled ? 'left-[22px]' : 'left-1',
+            )}
+          />
+        </button>
+      </div>
+
+      {enabled ? (
+        <div className="mt-3 space-y-2">
+          {links.slice(0, MAX_RELATED_LINKS).map((link, index) => {
+            const canAdd = index === links.length - 1 && links.length < MAX_RELATED_LINKS;
+
+            return (
+              <div key={link.id || index} className="grid gap-2 rounded-[12px] border border-[#E7EDF6] bg-[#F8FBFF] p-2 min-[560px]:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+                <label className="min-w-0">
+                  <span className="mb-1 block text-[10px] font-black text-[#52637C]">Titulo del enlace</span>
+                  <span className="flex h-10 items-center gap-2 rounded-[10px] border border-[#DCE6F5] bg-white px-3 text-xs font-bold text-[#0B1F5B]">
+                    <FileText size={15} className="shrink-0 text-[#8A99AE]" />
+                    <input
+                      type="text"
+                      value={link.title}
+                      onChange={(event) => onUpdate(index, 'title', event.target.value)}
+                      placeholder="Guia de estudio"
+                      className="h-full min-w-0 flex-1 bg-transparent outline-none placeholder:text-[#98A1BD]"
+                    />
+                  </span>
+                </label>
+
+                <label className="min-w-0">
+                  <span className="mb-1 block text-[10px] font-black text-[#52637C]">URL / Enlace</span>
+                  <span className="flex h-10 items-center gap-2 rounded-[10px] border border-[#DCE6F5] bg-white px-3 text-xs font-bold text-[#0B1F5B]">
+                    <LinkIcon size={15} className="shrink-0 text-[#8A99AE]" />
+                    <input
+                      type="url"
+                      value={link.url}
+                      onChange={(event) => onUpdate(index, 'url', event.target.value)}
+                      placeholder="https://..."
+                      className="h-full min-w-0 flex-1 bg-transparent outline-none placeholder:text-[#98A1BD]"
+                    />
+                  </span>
+                </label>
+
+                <div className="flex items-end justify-end gap-2">
+                  {canAdd ? (
+                    <button
+                      type="button"
+                      onClick={onAdd}
+                      aria-label="Agregar enlace"
+                      className="grid h-10 w-10 place-items-center rounded-full bg-[#145CFF] text-white shadow-[0_10px_22px_rgba(20,92,255,0.22)] transition hover:bg-[#0B4BE0]"
+                    >
+                      <Plus size={18} />
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => onRemove(index)}
+                    aria-label="Eliminar enlace"
+                    className="grid h-10 w-10 place-items-center rounded-full border border-[#F5C2C2] bg-white text-[#D92D2D] transition hover:bg-red-50"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+
+          <p className="text-[10px] font-bold text-[#667085]">{Math.min(links.length, MAX_RELATED_LINKS)}/{MAX_RELATED_LINKS} enlaces</p>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function validateRelatedLinks(enabled: boolean, links: PublicationRelatedLink[]) {
+  if (!enabled) {
+    return '';
+  }
+
+  if (links.length > MAX_RELATED_LINKS) {
+    return `Puedes agregar maximo ${MAX_RELATED_LINKS} enlaces relacionados.`;
+  }
+
+  const filledLinks = links.filter((link) => link.title.trim() || link.url.trim());
+
+  if (!filledLinks.length) {
+    return 'Agrega al menos un enlace relacionado o desactiva la opcion.';
+  }
+
+  for (const link of filledLinks) {
+    if (!link.title.trim()) {
+      return 'Cada enlace relacionado debe tener titulo.';
+    }
+
+    if (!link.url.trim()) {
+      return 'Cada enlace relacionado debe tener URL.';
+    }
+
+    if (!isValidRelatedLinkUrl(link.url)) {
+      return 'La URL de cada enlace debe iniciar con http:// o https://, o poder normalizarse con https://.';
+    }
+  }
+
+  return '';
+}
+
+function createEmptyRelatedLink(): PublicationRelatedLink {
+  return {
+    id: `link-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    title: '',
+    url: '',
+  };
 }
 
 function SelectField<T extends string>({
@@ -3484,7 +3699,8 @@ function buildFormState(publication: SoyibaPublication | null, permittedTypes: P
       ctaType: 'Ninguno',
       ctaUrl: '',
       ctaPhone: '',
-      relatedLinksInput: '',
+      relatedLinksEnabled: false,
+      relatedLinks: [createEmptyRelatedLink()],
       eventDateTime: '',
       eventPlace: '',
       eventValidFrom: '',
@@ -3520,7 +3736,8 @@ function buildFormState(publication: SoyibaPublication | null, permittedTypes: P
     ctaType: publication.cta.type,
     ctaUrl: publication.cta.url || '',
     ctaPhone: publication.cta.phone || '',
-    relatedLinksInput: serializeRelatedLinksInput(publication.relatedLinks),
+    relatedLinksEnabled: publication.relatedLinks.length > 0,
+    relatedLinks: publication.relatedLinks.length ? publication.relatedLinks.map((link) => ({ ...link })) : [createEmptyRelatedLink()],
     eventDateTime: toDateTimeInputValue(publication.event.dateTime),
     eventPlace: publication.event.place,
     eventValidFrom: toDateTimeInputValue(publication.event.validFrom),
@@ -3896,32 +4113,6 @@ function safeDate(value: string) {
   return Number.isFinite(timestamp) ? new Date(timestamp) : new Date();
 }
 
-function getYouTubeEmbedUrl(url: string) {
-  const id = extractYouTubeId(url);
-  return id ? `https://www.youtube.com/embed/${id}` : url;
-}
-
-function getYouTubeThumbnailCandidates(url: string) {
-  const id = extractYouTubeId(url);
-
-  if (!id) {
-    return [];
-  }
-
-  return [
-    `https://i.ytimg.com/vi/${id}/maxresdefault.jpg`,
-    `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
-  ];
-}
-
-function extractYouTubeId(url: string) {
-  const trimmed = url.trim();
-  const shortMatch = trimmed.match(/youtu\.be\/([a-zA-Z0-9_-]+)/);
-  const embedMatch = trimmed.match(/youtube\.com\/embed\/([a-zA-Z0-9_-]+)/);
-  const watchMatch = trimmed.match(/[?&]v=([a-zA-Z0-9_-]+)/);
-  return shortMatch?.[1] || embedMatch?.[1] || watchMatch?.[1] || '';
-}
-
 function getSpotifyEmbedUrl(url: string) {
   try {
     const parsed = new URL(url);
@@ -3936,13 +4127,6 @@ function getSpotifyEmbedUrl(url: string) {
   }
 }
 
-function hostFromUrl(url: string) {
-  try {
-    return new URL(url).hostname.replace(/^www\./, '');
-  } catch {
-    return url;
-  }
-}
 
 async function copyTextToClipboard(text: string) {
   if (navigator.clipboard && window.isSecureContext) {

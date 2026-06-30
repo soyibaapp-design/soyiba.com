@@ -15,7 +15,6 @@ import {
   QrCode,
   ReceiptText,
   RefreshCw,
-  ShieldCheck,
   X,
   type LucideIcon,
 } from 'lucide-react';
@@ -437,16 +436,28 @@ export function DonacionesScreen({ session }: DonacionesScreenProps) {
         </a>
       </InfoCard>
 
-      <InfoCard icon={ShieldCheck} title="Transparencia y Administración de Recursos">
-        <p className="text-sm font-semibold leading-relaxed text-[#637094]">
-          En la Iglesia Bíblica Antioquía entendemos que cada donación representa un acto de confianza, generosidad y
-          compromiso con la obra de Dios. Los recursos recibidos son administrados de manera responsable para apoyar la
-          misión de la iglesia, el discipulado, la evangelización, los eventos ministeriales y las necesidades operativas
-          que permiten servir a nuestra comunidad. Así mismo, son destinados a garantizar el funcionamiento continuo de
-          la iglesia y la proclamación del Evangelio, contribuyendo a que más personas conozcan a Jesucristo, crezcan en
-          su fe y sean transformadas por Su Palabra.
-        </p>
-      </InfoCard>
+      <article className="flex items-start gap-3 rounded-[24px] bg-[#07184A] p-5 text-white shadow-[0_18px_45px_rgba(7,24,74,0.18)]">
+        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-white/10 text-white">
+          <HeartHandshake size={22} />
+        </span>
+        <div className="min-w-0">
+          <h2 className="text-lg font-black leading-tight">Transparencia y Administración de Recursos</h2>
+          <p className="mt-3 text-sm font-semibold leading-relaxed text-white/75">
+            En la Iglesia Bíblica Antioquía entendemos que cada donación representa un acto de confianza, generosidad y
+            compromiso con la obra de Dios. Por esta razón, promovemos el manejo responsable, transparente y diligente de
+            los recursos recibidos, orientándolos al cumplimiento de nuestra misión espiritual, comunitaria y
+            evangelística.
+          </p>
+          <p className="mt-3 text-sm font-semibold leading-relaxed text-white/75">
+            Estos recursos son destinados a apoyar la misión de la iglesia, el discipulado, la evangelización, los
+            eventos ministeriales y las necesidades operativas que permiten servir a nuestra comunidad, garantizando el
+            funcionamiento continuo de la iglesia y la proclamación del Evangelio.
+          </p>
+          <p className="mt-3 text-sm font-semibold leading-relaxed text-white/75">
+            Por lo anterior, se hace una rendición de cuentas anual a la asamblea de miembros.
+          </p>
+        </div>
+      </article>
 
       <InfoCard icon={Headphones} title="¿Tienes preguntas sobre tus donaciones?">
         <p className="text-sm font-semibold leading-relaxed text-[#637094]">
@@ -497,21 +508,6 @@ export function DonacionesScreen({ session }: DonacionesScreenProps) {
           </details>
         ))}
       </section>
-
-      <article className="flex items-start gap-3 rounded-[24px] bg-[#07184A] p-5 text-white shadow-[0_18px_45px_rgba(7,24,74,0.18)]">
-        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-white/10 text-white">
-          <HeartHandshake size={22} />
-        </span>
-        <div className="min-w-0">
-          <h2 className="text-lg font-black leading-tight">Compromiso con la Transparencia</h2>
-          <p className="mt-2 text-sm font-semibold leading-relaxed text-white/75">
-            La Iglesia Bíblica Antioquía promueve el manejo responsable, transparente y diligente de los recursos
-            recibidos, orientándolos al cumplimiento de su misión espiritual, comunitaria y evangelística. En virtud de
-            este compromiso, se realiza anualmente una rendición de cuentas ante la asamblea de miembros, como ejercicio
-            de transparencia, responsabilidad y buen gobierno institucional.
-          </p>
-        </div>
-      </article>
 
       {qrOpen ? (
         <QrDialog

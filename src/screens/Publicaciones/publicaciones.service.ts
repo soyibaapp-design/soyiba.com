@@ -7,6 +7,7 @@ export const PUBLICATION_CTA_TYPES = ['Ninguno', 'Enlace', 'Inscripcion', 'Whats
 export type PublicationType = (typeof PUBLICATION_TYPES)[number];
 export type PublicationCtaType = (typeof PUBLICATION_CTA_TYPES)[number];
 export type PublicationMediaType = 'image' | 'youtube' | 'driveVideo' | 'spotify';
+export const MAX_RELATED_LINKS = 3;
 
 export type PublicationMediaItem = {
   id: string;
@@ -837,6 +838,91 @@ export function parsePublicationMediaInput(value: string): PublicationMediaItem[
     .filter((item) => item.url);
 }
 
+export function extractYouTubeVideoId(url: unknown) {
+  const value = stringFrom(url);
+
+  if (!value) {
+    return '';
+  }
+
+  const parsed = parseUrlWithProtocol(value);
+
+  if (parsed) {
+    const host = normalizeHost(parsed.hostname);
+
+    if (!isYouTubeHost(host)) {
+      return '';
+    }
+
+    if (host === 'youtu.be') {
+      return cleanYouTubeVideoId(parsed.pathname.split('/').filter(Boolean)[0]);
+    }
+
+    const watchId = cleanYouTubeVideoId(parsed.searchParams.get('v'));
+
+    if (watchId) {
+      return watchId;
+    }
+
+    const pathParts = parsed.pathname.split('/').filter(Boolean);
+    const markerIndex = pathParts.findIndex((part) => ['embed', 'live', 'shorts', 'v'].includes(part.toLowerCase()));
+
+    if (markerIndex >= 0) {
+      return cleanYouTubeVideoId(pathParts[markerIndex + 1]);
+    }
+
+    return '';
+  }
+
+  const regexMatches = [
+    value.match(/(?:youtube\.com\/watch\?[^#\s]*[?&]?v=)([a-zA-Z0-9_-]{6,128})/i),
+    value.match(/(?:youtube\.com\/(?:embed|live|shorts|v)\/)([a-zA-Z0-9_-]{6,128})/i),
+    value.match(/(?:youtu\.be\/)([a-zA-Z0-9_-]{6,128})/i),
+  ];
+
+  return regexMatches.map((match) => cleanYouTubeVideoId(match?.[1])).find(Boolean) || '';
+}
+
+export function isYouTubeUrl(url: unknown) {
+  const value = stringFrom(url);
+
+  if (!value) {
+    return false;
+  }
+
+  const parsed = parseUrlWithProtocol(value);
+
+  if (parsed) {
+    return isYouTubeHost(normalizeHost(parsed.hostname));
+  }
+
+  return /(?:youtube\.com|youtu\.be)/i.test(value);
+}
+
+export function getYouTubeEmbedUrl(url: unknown) {
+  const videoId = extractYouTubeVideoId(url);
+  return videoId ? `https://www.youtube.com/embed/${videoId}` : '';
+}
+
+export function getYouTubeThumbnailCandidates(url: unknown) {
+  const videoId = extractYouTubeVideoId(url);
+
+  if (!videoId) {
+    return [];
+  }
+
+  return [
+    `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
+    `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`,
+    `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+  ];
+}
+
+function getYouTubeWatchUrl(url: unknown) {
+  const videoId = extractYouTubeVideoId(url);
+  return videoId ? `https://www.youtube.com/watch?v=${videoId}` : '';
+}
+
 export function buildPublicationMediaItems({
   imageUrl,
   videoUrl,
@@ -860,10 +946,12 @@ export function buildPublicationMediaItems({
   }
 
   if (trimmedVideoUrl) {
+    const normalizedYouTubeUrl = getYouTubeWatchUrl(trimmedVideoUrl);
+
     items.push({
       id: `media-video-${Date.now()}`,
       type: inferVideoMediaType(trimmedVideoUrl),
-      url: trimmedVideoUrl,
+      url: normalizedYouTubeUrl || trimmedVideoUrl,
     });
   }
 
@@ -887,23 +975,43 @@ export function getMediaFormValues(items: PublicationMediaItem[]) {
 }
 
 export function parseRelatedLinksInput(value: string): PublicationRelatedLink[] {
-  return value
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line, index) => {
-      const parts = line.split('|').map((part) => part.trim()).filter(Boolean);
-      const firstPartIsUrl = /^https?:\/\//i.test(parts[0] || '');
-      const title = firstPartIsUrl ? parts[1] || `Enlace ${index + 1}` : parts[0] || `Enlace ${index + 1}`;
-      const url = firstPartIsUrl ? parts[0] : parts[1] || '';
+  return parseRelatedLinksValue(value);
+}
 
-      return {
-        id: `link-${Date.now()}-${index}`,
-        title,
-        url,
-      };
-    })
-    .filter((item) => item.url);
+export function normalizeRelatedLinkUrl(value: unknown) {
+  const trimmed = stringFrom(value);
+
+  if (!trimmed) {
+    return '';
+  }
+
+  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+}
+
+export function isValidRelatedLinkUrl(value: unknown) {
+  const normalizedUrl = normalizeRelatedLinkUrl(value);
+
+  if (!/^https?:\/\//i.test(normalizedUrl)) {
+    return false;
+  }
+
+  try {
+    const parsed = new URL(normalizedUrl);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+export function cleanRelatedLinks(items: Array<Partial<PublicationRelatedLink>>) {
+  return items
+    .slice(0, MAX_RELATED_LINKS)
+    .map((item, index) => ({
+      id: stringFrom(item.id) || `link-${Date.now()}-${index}`,
+      title: stringFrom(item.title),
+      url: normalizeRelatedLinkUrl(item.url),
+    }))
+    .filter((item) => item.title || item.url);
 }
 
 export function serializeMediaInput(items: PublicationMediaItem[]) {
@@ -1116,20 +1224,53 @@ function normalizeMediaItems(value: unknown): PublicationMediaItem[] {
 }
 
 function normalizeRelatedLinks(value: unknown): PublicationRelatedLink[] {
-  const items = parseJsonArray(value);
+  return parseRelatedLinksValue(value);
+}
 
-  return items
+function parseRelatedLinksValue(value: unknown): PublicationRelatedLink[] {
+  const items = parseRelatedLinksArray(value);
+
+  return cleanRelatedLinks(
+    items
     .map((item, index) => {
       const record = item && typeof item === 'object' ? (item as Record<string, unknown>) : {};
-      const url = stringFrom(record.url);
+      const textItem = typeof item === 'string' ? item : '';
+      const legacyParts = textItem.split('|').map((part) => part.trim());
+      const firstPartIsUrl = /^https?:\/\//i.test(legacyParts[0] || '');
+      const title = stringFrom(record.title) || (firstPartIsUrl ? legacyParts[1] : legacyParts[0]) || `Enlace ${index + 1}`;
+      const url = stringFrom(record.url) || (firstPartIsUrl ? legacyParts[0] : legacyParts[1]);
 
       return {
         id: stringFrom(record.id) || `link-${index}`,
-        title: stringFrom(record.title) || `Enlace ${index + 1}`,
+        title,
         url,
       };
-    })
-    .filter((item) => item.url);
+    }),
+  ).filter((item) => item.title && isValidRelatedLinkUrl(item.url));
+}
+
+function parseRelatedLinksArray(value: unknown): unknown[] {
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  if (typeof value !== 'string' || !value.trim()) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(value);
+    if (Array.isArray(parsed)) {
+      return parsed;
+    }
+  } catch {
+    // Legacy values can be stored as "Titulo|https://...".
+  }
+
+  return value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
 }
 
 function parseJsonArray(value: unknown): unknown[] {
@@ -1171,27 +1312,57 @@ function normalizeMediaType(value: unknown): PublicationMediaType | '' {
 function inferMediaType(url: string): PublicationMediaType {
   const normalized = url.toLowerCase();
 
-  if (normalized.includes('youtube.com') || normalized.includes('youtu.be')) return 'youtube';
+  if (isYouTubeUrl(url)) return 'youtube';
   if (normalized.includes('open.spotify.com')) return 'spotify';
   if (normalized.includes('drive.google.com')) return 'driveVideo';
   return 'image';
 }
 
 function inferVideoMediaType(url: string): 'youtube' | 'driveVideo' {
-  const normalized = url.toLowerCase();
-  return normalized.includes('youtube.com') || normalized.includes('youtu.be') ? 'youtube' : 'driveVideo';
+  return isYouTubeUrl(url) ? 'youtube' : 'driveVideo';
 }
 
 function normalizeMediaItem(value: unknown, index = 0): PublicationMediaItem {
   const record = value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
   const url = stringFrom(record.url);
+  const type = normalizeMediaType(record.type) || inferMediaType(url);
+  const normalizedYouTubeUrl = type === 'youtube' ? getYouTubeWatchUrl(url) : '';
 
   return {
     id: stringFrom(record.id) || `media-${index}`,
-    type: normalizeMediaType(record.type) || inferMediaType(url),
-    url,
+    type,
+    url: normalizedYouTubeUrl || url,
     title: stringFrom(record.title),
   };
+}
+
+function parseUrlWithProtocol(value: string) {
+  try {
+    return new URL(value);
+  } catch {
+    try {
+      return new URL(`https://${value}`);
+    } catch {
+      return null;
+    }
+  }
+}
+
+function normalizeHost(value: unknown) {
+  return String(value || '').trim().toLowerCase().replace(/^www\./, '');
+}
+
+function isYouTubeHost(host: string) {
+  return host === 'youtu.be' || host.endsWith('.youtu.be') || host === 'youtube.com' || host.endsWith('.youtube.com');
+}
+
+function cleanYouTubeVideoId(value: unknown) {
+  try {
+    const decoded = decodeURIComponent(String(value || '').trim());
+    return decoded.match(/^([a-zA-Z0-9_-]{6,128})/)?.[1] || '';
+  } catch {
+    return String(value || '').trim().match(/^([a-zA-Z0-9_-]{6,128})/)?.[1] || '';
+  }
 }
 
 function readFileAsDataUrl(file: File): Promise<string> {

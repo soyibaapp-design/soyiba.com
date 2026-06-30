@@ -72,8 +72,6 @@ type AdminAction = {
 type ActivityType = 'saved' | 'events' | 'eco' | 'posts';
 
 const WHATSAPP_MEMBERS_PHONE = '573243339375';
-const MEMBERS_RESOURCES_MESSAGE =
-  'Hola, Dios les bendiga. Soy miembro de la Iglesia Bíblica Antioquía y deseo solicitar información sobre los recursos disponibles para miembros. Mi nombre es:';
 
 const adminTone = {
   blue: {
@@ -104,10 +102,16 @@ function isManager(user: SoyibaUser) {
 }
 
 function isMemberUser(user: SoyibaUser) {
-  const userType = String((user as SoyibaUser & { tipo?: string }).tipo || user.tipoUsuario || '')
-    .trim()
-    .toLowerCase();
+  const userType = normalizePlainText((user as SoyibaUser & { tipo?: string }).tipo || user.tipoUsuario);
   return userType === 'miembro';
+}
+
+function normalizePlainText(value: unknown) {
+  return String(value || '')
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
 }
 
 function getDisplayName(user: SoyibaUser) {
@@ -145,6 +149,10 @@ function buildWhatsappUrl(phone: string, message: string) {
   const number = digits.startsWith('57') ? digits : `57${digits}`;
   const text = message ? `?text=${encodeURIComponent(message)}` : '';
   return `https://wa.me/${number}${text}`;
+}
+
+function buildMemberResourcesMessage(displayName: string) {
+  return `Hola, Dios les bendiga. Soy ${displayName} miembro de la Iglesia Bíblica Antioquía y deseo solicitar la siguiente información:`;
 }
 
 function formatEcoSummary(publication: SoyibaPublication) {
@@ -259,8 +267,8 @@ export function ProfileScreen({
   const activityCards = useMemo<Array<{ id: ActivityType; label: string; count: number; icon: LucideIcon; tone: string }>>(
     () => [
       { id: 'saved', label: 'Publicaciones guardadas', count: activityGroups.saved.length, icon: Heart, tone: 'bg-[#EAF2FF] text-[#145CFF]' },
-      { id: 'events', label: 'Eventos a los que asistire', count: activityGroups.events.length, icon: CalendarDays, tone: 'bg-[#ECEBFF] text-[#3D4BFF]' },
-      { id: 'eco', label: 'Grupo ECO al que asistire', count: activityGroups.eco.length, icon: Home, tone: 'bg-[#EAF2FF] text-[#145CFF]' },
+      { id: 'events', label: 'Eventos a los que asistiré', count: activityGroups.events.length, icon: CalendarDays, tone: 'bg-[#ECEBFF] text-[#3D4BFF]' },
+      { id: 'eco', label: 'Grupo ECO al que asistiré', count: activityGroups.eco.length, icon: Home, tone: 'bg-[#EAF2FF] text-[#145CFF]' },
       { id: 'posts', label: 'Mis publicaciones', count: activityGroups.posts.length, icon: FileText, tone: 'bg-[#F8FBFF] text-[#0B1F5B]' },
     ],
     [activityGroups],
@@ -268,7 +276,7 @@ export function ProfileScreen({
   const activeActivity = activityCards.find((item) => item.id === openActivity) || activityCards[0];
   const activeItems = activityGroups[openActivity];
   const currentEco = activityGroups.eco[0] || null;
-  const memberResourcesWhatsappUrl = buildWhatsappUrl(WHATSAPP_MEMBERS_PHONE, MEMBERS_RESOURCES_MESSAGE);
+  const memberResourcesWhatsappUrl = buildWhatsappUrl(WHATSAPP_MEMBERS_PHONE, buildMemberResourcesMessage(displayName));
 
   async function handlePhotoSelected(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];

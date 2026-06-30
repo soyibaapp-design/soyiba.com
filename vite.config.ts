@@ -13,7 +13,7 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'assets/logo-soyiba.png', 'assets/logo-antioquia.png'],
+      includeAssets: ['assets/favicon-32.png', 'assets/app-icon-192.png', 'assets/app-icon-512.png', 'assets/apple-touch-icon.png', 'assets/logo-soyiba.png', 'assets/logo-antioquia.png'],
       manifest: {
         name: 'soyIBA',
         short_name: 'soyIBA',
@@ -25,8 +25,8 @@ export default defineConfig({
         scope: appBase,
         start_url: appBase,
         icons: [
-          { src: withBase('assets/logo-soyiba.png'), sizes: '192x192', type: 'image/png', purpose: 'any maskable' },
-          { src: withBase('assets/logo-soyiba.png'), sizes: '512x512', type: 'image/png', purpose: 'any maskable' }
+          { src: withBase('assets/app-icon-192.png'), sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: withBase('assets/app-icon-512.png'), sizes: '512x512', type: 'image/png', purpose: 'any maskable' }
         ]
       },
       devOptions: {

@@ -37,7 +37,21 @@ type PermissionKey = 'publicador' | 'publicadorEco' | 'publicadorEvento';
 const ASSISTANT_VALUE = 'Asistente';
 const MEMBER_VALUE = 'Miembro';
 const roleOptions = [ASSISTANT_VALUE, MEMBER_VALUE, 'Admin', 'Moderador', 'Usuario', 'Pruebas'];
-const userTitleOptions = [ASSISTANT_VALUE, MEMBER_VALUE, 'Servidor', 'Líder', 'Pastor', 'Administrativo', 'Músico', 'Audiovisuales', 'Creador de contenido'];
+const userTitleOptions = [
+  ASSISTANT_VALUE,
+  MEMBER_VALUE,
+  'Servidor',
+  'Líder',
+  'Pastor',
+  'Administrativo',
+  'Maestro ED',
+  'Maestro',
+  'Líder de pastorales',
+  'Equipo alabanza',
+  'Moderador de grupo ECO',
+  'Audiovisuales',
+  'Creador de contenido',
+];
 const userStateOptions = ['Activo', 'Inactivo', 'Pendiente', 'Bloqueado'];
 const permissionOptions: Array<{ id: PermissionKey; label: string; icon: LucideIcon; tone: string }> = [
   { id: 'publicador', label: 'Publicaciones', icon: Megaphone, tone: 'bg-[#EAF2FF] text-[#145CFF]' },
@@ -701,6 +715,10 @@ function normalizeUserType(value: string) {
 
 function normalizeUserTitle(value: string, tipoUsuario: string) {
   const normalized = normalizeAccessText(value);
+  if (normalized === 'musico') {
+    return 'Equipo alabanza';
+  }
+
   const match = userTitleOptions.find((option) => normalizeAccessText(option) === normalized);
 
   if (match) {

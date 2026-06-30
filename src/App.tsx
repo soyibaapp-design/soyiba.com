@@ -236,7 +236,12 @@ function SoyibaShell({
     <>
       <div className="soyiba-app-backdrop h-[100dvh] overflow-hidden text-slate-950">
         <div className="safe-area mx-auto flex h-full max-w-3xl flex-col overflow-hidden bg-white/78 shadow-2xl shadow-slate-950/10 backdrop-blur-[1px]">
-          <AppHeader activeTab={activeScreen} onMenuClick={() => setSideMenuOpen(true)} onNotificationsClick={onNotificationsClick} />
+          <AppHeader
+            activeTab={activeScreen}
+            onMenuClick={() => setSideMenuOpen(true)}
+            onChurchInfoClick={() => setChurchInfoOpen(true)}
+            onNotificationsClick={onNotificationsClick}
+          />
 
           <main className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 pb-[calc(112px+env(safe-area-inset-bottom))]">
             <AnimatePresence mode="wait">
@@ -290,7 +295,6 @@ function SoyibaShell({
                 <MembersPage
                   key="miembros"
                   session={session}
-                  onRequestValidation={() => onNavigate?.('perfil')}
                   onModalOpenChange={setMembersModalOpen}
                 />
               ) : null}
