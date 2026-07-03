@@ -16,7 +16,7 @@ import {
   X,
   type LucideIcon,
 } from 'lucide-react';
-import loginHero from '../../../PrimaryAssets/Login.png';
+import loginHero from '../../../PrimaryAssets/Login.jpg';
 import iglesiaFooterLogo from '../../../PrimaryAssets/logo-iglesia-letras.png';
 import {
   registerWithEmailPassword,

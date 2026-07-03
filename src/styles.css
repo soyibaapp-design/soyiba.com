@@ -54,7 +54,7 @@ input {
   overscroll-behavior: none;
   background:
     linear-gradient(180deg, rgba(6, 28, 74, 0.55) 0%, rgba(248, 250, 252, 0.84) 42%, rgba(248, 250, 252, 0.96) 100%),
-    url('../PrimaryAssets/back.png') center top / cover fixed no-repeat;
+    url('../PrimaryAssets/back.jpg') center top / cover fixed no-repeat;
 }
 
 .soyiba-new-event-image-pulse {
