@@ -35,10 +35,32 @@ export function getGoogleDriveDownloadUrl(fileIdOrUrl: string) {
   return id ? `https://drive.google.com/uc?export=download&id=${id}` : fileIdOrUrl;
 }
 
+export function isGoogleDriveFile(value: string) {
+  return Boolean(extractGoogleDriveFileId(value));
+}
+
 export function extractGoogleDriveFileId(value: string) {
   const trimmed = value.trim();
-  const filePathMatch = trimmed.match(/\/d\/([a-zA-Z0-9_-]+)/);
-  const queryMatch = trimmed.match(/[?&]id=([a-zA-Z0-9_-]+)/);
 
-  return filePathMatch?.[1] || queryMatch?.[1] || (/^[a-zA-Z0-9_-]{20,}$/.test(trimmed) ? trimmed : '');
+  if (!trimmed) {
+    return '';
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    const pathMatch = parsed.pathname.match(/\/(?:file\/)?d\/([a-zA-Z0-9_-]+)/);
+    const queryId = parsed.searchParams.get('id');
+
+    return cleanGoogleDriveFileId(pathMatch?.[1] || queryId || '');
+  } catch {
+    const filePathMatch = trimmed.match(/\/(?:file\/)?d\/([a-zA-Z0-9_-]+)/);
+    const queryMatch = trimmed.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+
+    return cleanGoogleDriveFileId(filePathMatch?.[1] || queryMatch?.[1] || trimmed);
+  }
+}
+
+function cleanGoogleDriveFileId(value: string) {
+  const decoded = decodeURIComponent(String(value || '').trim());
+  return /^[a-zA-Z0-9_-]{20,}$/.test(decoded) ? decoded : '';
 }

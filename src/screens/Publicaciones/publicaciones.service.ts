@@ -1,4 +1,5 @@
 import { callAppsScript } from '../../services/appsScriptClient';
+import { canUploadToFirebaseStorage, deleteSoyibaMediaFromStorage, getFirebaseStoragePath, uploadSoyibaMediaToStorage } from '../../services/firebaseStorage';
 import type { SoyibaSession, SoyibaUser } from '../Auth/auth.service';
 
 export const PUBLICATION_TYPES = ['Publicacion', 'Devocional', 'Evento', 'Grupo ECO', 'Transmision'] as const;
@@ -7,6 +8,8 @@ export const PUBLICATION_CTA_TYPES = ['Ninguno', 'Enlace', 'Inscripcion', 'Whats
 export type PublicationType = (typeof PUBLICATION_TYPES)[number];
 export type PublicationCtaType = (typeof PUBLICATION_CTA_TYPES)[number];
 export type PublicationMediaType = 'image' | 'youtube' | 'driveVideo' | 'spotify';
+export const MAX_PUBLICATION_IMAGE_UPLOAD_BYTES = 8 * 1024 * 1024;
+export const MAX_PUBLICATION_VIDEO_UPLOAD_BYTES = 80 * 1024 * 1024;
 export const MAX_RELATED_LINKS = 3;
 
 export type PublicationMediaItem = {
@@ -577,29 +580,80 @@ export async function deletePublication(session: SoyibaSession, publicationId: s
   invalidatePublicationFeedCache(session);
 }
 
+export async function deletePublicationStorageMedia(items: PublicationMediaItem[]) {
+  const firebaseItems = items.filter((item) => item.type === 'image' || item.type === 'driveVideo').filter((item) => getFirebaseStoragePath(item.url || item.id));
+
+  await Promise.allSettled(firebaseItems.map((item) => deleteSoyibaMediaFromStorage(item.url || item.id)));
+}
+
+export async function deleteRemovedPublicationStorageMedia(previousItems: PublicationMediaItem[], nextItems: PublicationMediaItem[]) {
+  const nextStoragePaths = new Set(nextItems.map((item) => getFirebaseStoragePath(item.url || item.id)).filter(Boolean));
+  const removedItems = previousItems.filter((item) => {
+    const path = getFirebaseStoragePath(item.url || item.id);
+    return path && !nextStoragePaths.has(path);
+  });
+
+  await deletePublicationStorageMedia(removedItems);
+}
+
 export async function uploadPublicationMedia(session: SoyibaSession, file: File, mediaType: 'image' | 'driveVideo') {
+  const maxBytes = mediaType === 'image' ? MAX_PUBLICATION_IMAGE_UPLOAD_BYTES : MAX_PUBLICATION_VIDEO_UPLOAD_BYTES;
+
+  if (file.size > maxBytes) {
+    throw new Error(
+      mediaType === 'image'
+        ? `La imagen pesa ${formatFileSize(file.size)}. Sube una imagen de maximo ${formatFileSize(maxBytes)}.`
+        : `El video pesa ${formatFileSize(file.size)}. Sube un video de maximo ${formatFileSize(maxBytes)} o pega un enlace de YouTube/Drive.`,
+    );
+  }
+
+  if (canUploadToFirebaseStorage()) {
+    try {
+      const uploaded = await uploadSoyibaMediaToStorage({
+        file,
+        mediaType,
+        userId: session.user.id,
+        userEmail: session.user.email,
+      });
+
+      return normalizeMediaItem(uploaded);
+    } catch (error) {
+      throw new Error(formatFirebaseStorageUploadError(error instanceof Error ? error.message : String(error || '')));
+    }
+  }
+
+  if (mediaType === 'driveVideo' && file.size > 24 * 1024 * 1024) {
+    throw new Error('Para subir videos mayores a 24 MB debes configurar Firebase Storage en las variables VITE_FIREBASE_*.');
+  }
+
   const dataUrl = await readFileAsDataUrl(file);
-  const response = await callAppsScript<PublicationsResponse>(
-    'Publicaciones',
-    'uploadMedia',
-    {
-      mediaType,
-      fileName: file.name,
-      mimeType: file.type,
-      dataUrl,
-      token: session.token,
-      user: getUserRequest(session.user),
-    },
-    () => ({
-      ok: true,
-      media: {
-        id: `local-file-${Date.now()}`,
-        type: mediaType,
-        url: dataUrl,
-        title: file.name,
+  let response: PublicationsResponse;
+
+  try {
+    response = await callAppsScript<PublicationsResponse>(
+      'Publicaciones',
+      'uploadMedia',
+      {
+        mediaType,
+        fileName: file.name,
+        mimeType: file.type,
+        dataUrl,
+        token: session.token,
+        user: getUserRequest(session.user),
       },
-    }),
-  );
+      () => ({
+        ok: true,
+        media: {
+          id: `local-file-${Date.now()}`,
+          type: mediaType,
+          url: dataUrl,
+          title: file.name,
+        },
+      }),
+    );
+  } catch (error) {
+    throw new Error(formatPublicationUploadError(error instanceof Error ? error.message : String(error || '')));
+  }
 
   if (!response.ok || !response.media) {
     throw new Error(formatPublicationUploadError(response.error));
@@ -1380,7 +1434,43 @@ function formatPublicationUploadError(error?: string) {
     return 'Drive no pudo guardar el archivo. Verifica que el Web App ejecute como soyiba.app@gmail.com y que SOYIBA_PUBLICACIONES_MEDIA_FOLDER_ID apunte a una carpeta de Drive creada por esa cuenta y compartida como "Anyone with the link".';
   }
 
+  if (error && /Load failed|Failed to fetch|NetworkError|timeout|timed out|aborted/i.test(error)) {
+    return 'La carga se corto antes de terminar. En celular intenta con un archivo mas liviano, buena conexion, o pega un enlace de YouTube/Drive para videos largos.';
+  }
+
   return error || 'No fue posible cargar el archivo a Drive.';
+}
+
+function formatFirebaseStorageUploadError(error?: string) {
+  if (error && /auth\/operation-not-allowed|auth\/admin-restricted-operation/i.test(error)) {
+    return 'Firebase no permitio iniciar sesion anonima. Activa Authentication > Sign-in method > Anonymous para subir archivos desde la app.';
+  }
+
+  if (error && /storage\/unauthorized|permission|unauthorized|denied/i.test(error)) {
+    return 'Firebase Storage rechazo la subida. Revisa las reglas del bucket para permitir cargas autenticadas desde la app.';
+  }
+
+  if (error && /storage\/quota-exceeded|quota/i.test(error)) {
+    return 'Firebase Storage alcanzo la cuota disponible. Revisa el plan o el uso del bucket.';
+  }
+
+  if (error && /storage\/canceled|cancel/i.test(error)) {
+    return 'La subida a Firebase fue cancelada antes de terminar.';
+  }
+
+  if (error && /storage\/retry-limit-exceeded|timeout|network|failed to fetch/i.test(error)) {
+    return 'La subida a Firebase se corto por conexion. Intenta de nuevo con mejor senal o un archivo mas liviano.';
+  }
+
+  return error || 'No fue posible subir el archivo a Firebase Storage.';
+}
+
+function formatFileSize(bytes: number) {
+  if (bytes >= 1024 * 1024) {
+    return `${(bytes / (1024 * 1024)).toFixed(bytes >= 10 * 1024 * 1024 ? 0 : 1)} MB`;
+  }
+
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }
 
 function getUserDisplayName(user: SoyibaUser) {

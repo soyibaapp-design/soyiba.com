@@ -19,7 +19,9 @@ import {
 import loginHero from '../../../PrimaryAssets/Login.jpg';
 import iglesiaFooterLogo from '../../../PrimaryAssets/logo-iglesia-letras.png';
 import {
+  completePasswordReset,
   registerWithEmailPassword,
+  requestPasswordReset,
   signInWithEmailPassword,
   type RegisterPayload,
   type SoyibaSession,
@@ -27,10 +29,11 @@ import {
 
 type AuthScreenProps = {
   onSignedIn: (session: SoyibaSession) => void;
-  initialMode?: AuthMode;
+  initialMode?: LoginRegisterMode;
 };
 
-type AuthMode = 'login' | 'register';
+type LoginRegisterMode = 'login' | 'register';
+type AuthMode = LoginRegisterMode | 'forgot' | 'reset';
 type LegalModalId = 'privacy' | 'terms' | null;
 
 type LoginFormState = {
@@ -39,6 +42,17 @@ type LoginFormState = {
 };
 
 type RegisterFormState = RegisterPayload & {
+  confirmPassword: string;
+};
+
+type PasswordResetRequestState = {
+  email: string;
+};
+
+type PasswordResetConfirmState = {
+  email: string;
+  token: string;
+  password: string;
   confirmPassword: string;
 };
 
@@ -56,31 +70,58 @@ const emptyRegisterForm: RegisterFormState = {
   confirmPassword: '',
 };
 
+const emptyPasswordResetRequestForm: PasswordResetRequestState = {
+  email: '',
+};
+
+const emptyPasswordResetConfirmForm: PasswordResetConfirmState = {
+  email: '',
+  token: '',
+  password: '',
+  confirmPassword: '',
+};
+
 export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
   const [mode, setMode] = useState<AuthMode>(() => initialMode || getInitialMode());
   const [loginForm, setLoginForm] = useState<LoginFormState>(emptyLoginForm);
   const [registerForm, setRegisterForm] = useState<RegisterFormState>(emptyRegisterForm);
+  const [passwordResetRequestForm, setPasswordResetRequestForm] = useState<PasswordResetRequestState>(emptyPasswordResetRequestForm);
+  const [passwordResetConfirmForm, setPasswordResetConfirmForm] = useState<PasswordResetConfirmState>(() => getPasswordResetStateFromHash() || emptyPasswordResetConfirmForm);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [error, setError] = useState('');
+  const [statusMessage, setStatusMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [showRegisterPassword, setShowRegisterPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [showResetPassword, setShowResetPassword] = useState(false);
+  const [showResetConfirmPassword, setShowResetConfirmPassword] = useState(false);
   const [activeLegalModal, setActiveLegalModal] = useState<LegalModalId>(null);
 
   const passwordRules = useMemo(() => getPasswordRules(registerForm.password), [registerForm.password]);
+  const resetPasswordRules = useMemo(() => getPasswordRules(passwordResetConfirmForm.password), [passwordResetConfirmForm.password]);
   const isRegister = mode === 'register';
 
   useEffect(() => {
     if (initialMode) {
       setMode(initialMode);
       setError('');
+      setStatusMessage('');
       return;
     }
 
     function syncModeFromHash() {
-      setMode(getInitialMode());
+      const nextMode = getInitialMode();
+      setMode(nextMode);
       setError('');
+      setStatusMessage('');
+
+      if (nextMode === 'reset') {
+        const resetState = getPasswordResetStateFromHash();
+        if (resetState) {
+          setPasswordResetConfirmForm((current) => ({ ...current, ...resetState, password: '', confirmPassword: '' }));
+        }
+      }
     }
 
     window.addEventListener('hashchange', syncModeFromHash);
@@ -90,12 +131,19 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
   function switchMode(nextMode: AuthMode) {
     setMode(nextMode);
     setError('');
-    window.history.replaceState(null, '', nextMode === 'register' ? '#registro' : '#login');
+    setStatusMessage('');
+    window.history.replaceState(null, '', getHashForMode(nextMode));
+  }
+
+  function openForgotPassword() {
+    setPasswordResetRequestForm({ email: loginForm.email });
+    switchMode('forgot');
   }
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError('');
+    setStatusMessage('');
     setIsSubmitting(true);
 
     try {
@@ -116,6 +164,7 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
   async function handleRegister(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError('');
+    setStatusMessage('');
 
     if (registerForm.password !== registerForm.confirmPassword) {
       setError('Las contraseñas no coinciden.');
@@ -144,6 +193,67 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
       }
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : 'No fue posible crear la cuenta.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function handlePasswordResetRequest(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError('');
+    setStatusMessage('');
+    setIsSubmitting(true);
+
+    try {
+      const result = await requestPasswordReset(passwordResetRequestForm.email, getPasswordResetAppUrl());
+
+      if (result.ok) {
+        setStatusMessage(result.message);
+      } else {
+        setError(result.error);
+      }
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : 'No fue posible enviar el correo de recuperación.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  async function handlePasswordResetComplete(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError('');
+    setStatusMessage('');
+
+    if (passwordResetConfirmForm.password !== passwordResetConfirmForm.confirmPassword) {
+      setError('Las contraseñas no coinciden.');
+      return;
+    }
+
+    if (resetPasswordRules.some((rule) => !rule.isMet)) {
+      setError('La contraseña debe cumplir todos los requisitos.');
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      const result = await completePasswordReset(
+        passwordResetConfirmForm.email,
+        passwordResetConfirmForm.token,
+        passwordResetConfirmForm.password,
+      );
+
+      if (result.ok) {
+        setLoginForm((current) => ({ ...current, email: passwordResetConfirmForm.email, password: '' }));
+        setPasswordResetConfirmForm(emptyPasswordResetConfirmForm);
+        setMode('login');
+        window.history.replaceState(null, '', '#login');
+        setStatusMessage(result.message);
+      } else {
+        setError(result.error);
+      }
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : 'No fue posible restablecer la contraseña.');
     } finally {
       setIsSubmitting(false);
     }
@@ -210,11 +320,12 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
               </div>
 
               <div className="mt-2 flex justify-end">
-                <button type="button" className="max-w-full whitespace-normal pr-1 text-right text-[11px] font-medium text-[#115bd8] transition hover:text-[#06245c]">
+                <button type="button" onClick={openForgotPassword} className="max-w-full whitespace-normal pr-1 text-right text-[11px] font-medium text-[#115bd8] transition hover:text-[#06245c]">
                   ¿Olvidaste tu contraseña?
                 </button>
               </div>
 
+              <AuthStatus message={statusMessage} />
               <AuthError message={error} />
 
               <PrimaryAuthButton label="Ingresar" isLoading={isSubmitting} />
@@ -228,6 +339,129 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
                 <span>Crear cuenta</span>
                 <span className="w-5" aria-hidden="true" />
               </button>
+              <AuthFooter />
+            </form>
+          ) : mode === 'forgot' ? (
+            <form onSubmit={handlePasswordResetRequest} className="mx-auto w-full max-w-md">
+              <div className="flex items-start gap-3">
+                <button
+                  type="button"
+                  onClick={() => switchMode('login')}
+                  aria-label="Volver al inicio de sesión"
+                  className="mt-1 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#1459d4]/10 text-[#1459d4] transition hover:bg-blue-50"
+                >
+                  <ArrowLeft size={18} aria-hidden="true" />
+                </button>
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-[#1459d4]/10 text-[#1459d4] ring-1 ring-[#1459d4]/10" aria-hidden="true">
+                  <Mail size={18} strokeWidth={2} />
+                </span>
+                <div className="min-w-0">
+                  <h1 className="text-[19px] font-bold leading-tight tracking-normal text-[#06245c]">Recuperar contraseña</h1>
+                  <p className="mt-1 text-[12px] leading-4 text-[#5b6a8f]">Te enviaremos un enlace para crear una nueva contraseña.</p>
+                </div>
+              </div>
+
+              <div className="mt-4 space-y-2.5">
+                <AuthField
+                  id="reset-request-email"
+                  label="Correo electrónico"
+                  icon={Mail}
+                  type="email"
+                  autoComplete="email"
+                  inputMode="email"
+                  placeholder="Ingresa tu correo electrónico"
+                  value={passwordResetRequestForm.email}
+                  onChange={(value) => setPasswordResetRequestForm({ email: value })}
+                />
+              </div>
+
+              <AuthStatus message={statusMessage} />
+              <AuthError message={error} />
+
+              <PrimaryAuthButton label="Enviar enlace" isLoading={isSubmitting} />
+              <AuthFooter />
+            </form>
+          ) : mode === 'reset' ? (
+            <form onSubmit={handlePasswordResetComplete} className="mx-auto w-full max-w-md">
+              <div className="flex items-start gap-3">
+                <button
+                  type="button"
+                  onClick={() => switchMode('login')}
+                  aria-label="Volver al inicio de sesión"
+                  className="mt-1 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#1459d4]/10 text-[#1459d4] transition hover:bg-blue-50"
+                >
+                  <ArrowLeft size={18} aria-hidden="true" />
+                </button>
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-[#1459d4]/10 text-[#1459d4] ring-1 ring-[#1459d4]/10" aria-hidden="true">
+                  <LockKeyhole size={18} strokeWidth={2} />
+                </span>
+                <div className="min-w-0">
+                  <h1 className="text-[19px] font-bold leading-tight tracking-normal text-[#06245c]">Nueva contraseña</h1>
+                  <p className="mt-1 text-[12px] leading-4 text-[#5b6a8f]">Define una contraseña segura para volver a ingresar.</p>
+                </div>
+              </div>
+
+              <div className="mt-4 space-y-2.5">
+                <AuthField
+                  id="reset-email"
+                  label="Correo electrónico"
+                  icon={Mail}
+                  type="email"
+                  autoComplete="email"
+                  inputMode="email"
+                  placeholder="Ingresa tu correo electrónico"
+                  value={passwordResetConfirmForm.email}
+                  onChange={(value) => setPasswordResetConfirmForm((current) => ({ ...current, email: value }))}
+                />
+                <AuthField
+                  id="reset-password"
+                  label="Nueva contraseña"
+                  icon={LockKeyhole}
+                  type={showResetPassword ? 'text' : 'password'}
+                  autoComplete="new-password"
+                  placeholder="Crea una contraseña"
+                  value={passwordResetConfirmForm.password}
+                  onChange={(value) => setPasswordResetConfirmForm((current) => ({ ...current, password: value }))}
+                  rightSlot={
+                    <IconButton
+                      label={showResetPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                      onClick={() => setShowResetPassword((current) => !current)}
+                      icon={showResetPassword ? EyeOff : Eye}
+                    />
+                  }
+                />
+                <AuthField
+                  id="reset-confirm-password"
+                  label="Confirmar contraseña"
+                  icon={LockKeyhole}
+                  type={showResetConfirmPassword ? 'text' : 'password'}
+                  autoComplete="new-password"
+                  placeholder="Confirma tu contraseña"
+                  value={passwordResetConfirmForm.confirmPassword}
+                  onChange={(value) => setPasswordResetConfirmForm((current) => ({ ...current, confirmPassword: value }))}
+                  rightSlot={
+                    <IconButton
+                      label={showResetConfirmPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+                      onClick={() => setShowResetConfirmPassword((current) => !current)}
+                      icon={showResetConfirmPassword ? EyeOff : Eye}
+                    />
+                  }
+                />
+              </div>
+
+              <div className="mt-3 text-[11px] leading-4 text-[#4d5b7d]">
+                <p className="font-medium">Tu contraseña debe contener:</p>
+                <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
+                  {resetPasswordRules.map((rule) => (
+                    <PasswordRule key={rule.label} label={rule.label} isMet={rule.isMet} />
+                  ))}
+                </div>
+              </div>
+
+              <AuthStatus message={statusMessage} />
+              <AuthError message={error} />
+
+              <PrimaryAuthButton label="Actualizar contraseña" isLoading={isSubmitting} />
               <AuthFooter />
             </form>
           ) : (
@@ -372,7 +606,21 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
 }
 
 function getInitialMode(): AuthMode {
-  if (typeof window !== 'undefined' && window.location.hash.toLowerCase().includes('registro')) {
+  if (typeof window === 'undefined') {
+    return 'login';
+  }
+
+  const hash = window.location.hash.toLowerCase();
+
+  if (hash.includes('restablecer')) {
+    return 'reset';
+  }
+
+  if (hash.includes('recuperar')) {
+    return 'forgot';
+  }
+
+  if (hash.includes('registro')) {
     return 'register';
   }
 
@@ -481,6 +729,66 @@ function AuthError({ message }: { message: string }) {
   }
 
   return <p className="mt-2.5 rounded-xl bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">{message}</p>;
+}
+
+function AuthStatus({ message }: { message: string }) {
+  if (!message) {
+    return null;
+  }
+
+  return <p className="mt-2.5 rounded-xl bg-blue-50 px-3 py-2 text-xs font-semibold text-[#115bd8]">{message}</p>;
+}
+
+function getHashForMode(mode: AuthMode) {
+  if (mode === 'register') {
+    return '#registro';
+  }
+
+  if (mode === 'forgot') {
+    return '#recuperar';
+  }
+
+  if (mode === 'reset') {
+    return '#restablecer';
+  }
+
+  return '#login';
+}
+
+function getPasswordResetAppUrl() {
+  if (typeof window === 'undefined') {
+    return '';
+  }
+
+  return window.location.href.split('#')[0];
+}
+
+function getPasswordResetStateFromHash(): PasswordResetConfirmState | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  const hash = window.location.hash || '';
+  const queryStart = hash.indexOf('?');
+
+  if (queryStart < 0) {
+    return null;
+  }
+
+  const params = new URLSearchParams(hash.slice(queryStart + 1));
+  const email = params.get('email') || '';
+  const token = params.get('token') || '';
+
+  if (!email || !token) {
+    return null;
+  }
+
+  return {
+    email,
+    token,
+    password: '',
+    confirmPassword: '',
+  };
 }
 
 function InlineLink({ children, onClick }: { children: ReactNode; onClick: () => void }) {

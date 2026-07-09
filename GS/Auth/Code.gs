@@ -1,6 +1,7 @@
 var SOYIBA_AUTH_SPREADSHEET_ID = '1Sk6f6mScrMTcXfa-psxoY4boa_1gqJmFt7anP-lpErM';
 var SOYIBA_AUTH_SHEET = 'Auth';
-var SOYIBA_AUTH_CODE_VERSION = 'users-verification-2026-06-24';
+var SOYIBA_AUTH_CODE_VERSION = 'password-reset-2026-07-04';
+var SOYIBA_PASSWORD_RESET_TTL_MINUTES = 60;
 var SOYIBA_AUTH_HEADERS = [
   'user_id',
   'email',
@@ -28,7 +29,11 @@ var SOYIBA_AUTH_HEADERS = [
   'active',
   'tiempo_iba',
   'usuario_verificado',
-  'photo_url'
+  'photo_url',
+  'reset_token_hash',
+  'reset_token_salt',
+  'reset_token_expires_at',
+  'reset_requested_at'
 ];
 
 function doGet() {
@@ -71,6 +76,14 @@ function doPost(e) {
 
     if (action === 'changePassword') {
       return soyibaAuthJson_(soyibaAuthChangePassword_(data));
+    }
+
+    if (action === 'requestPasswordReset') {
+      return soyibaAuthJson_(soyibaAuthRequestPasswordReset_(data));
+    }
+
+    if (action === 'completePasswordReset') {
+      return soyibaAuthJson_(soyibaAuthCompletePasswordReset_(data));
     }
 
     if (action === 'listUsers') {
@@ -340,6 +353,98 @@ function soyibaAuthChangePassword_(data) {
   soyibaAuthSetCell_(sheet, headers, found.row, 'updated_at', now);
 
   return soyibaAuthSessionFromRow_(sheet, found.row, data.token);
+}
+
+function soyibaAuthRequestPasswordReset_(data) {
+  var email = soyibaAuthNormalizeEmail_(data.email);
+  var genericMessage = 'Si el correo esta registrado, enviaremos un enlace para restablecer la contrasena.';
+
+  if (!email) {
+    return { ok: false, error: 'Ingresa tu correo electronico.' };
+  }
+
+  var sheet = soyibaAuthGetSheet_();
+  var found = soyibaAuthFindUserByEmail_(sheet, email);
+
+  if (found.row < 1 || found.user.status !== 'active') {
+    return { ok: true, message: genericMessage };
+  }
+
+  var headers = soyibaAuthGetHeaders_(sheet);
+  var now = new Date();
+  var token = soyibaAuthCreateResetToken_();
+  var tokenSalt = Utilities.getUuid();
+  var expiresAt = new Date(now.getTime() + SOYIBA_PASSWORD_RESET_TTL_MINUTES * 60 * 1000).toISOString();
+  var resetLink = soyibaAuthBuildResetLink_(data.appUrl, email, token);
+
+  soyibaAuthSetCell_(sheet, headers, found.row, 'reset_token_hash', soyibaAuthHashPassword_(token, tokenSalt));
+  soyibaAuthSetCell_(sheet, headers, found.row, 'reset_token_salt', tokenSalt);
+  soyibaAuthSetCell_(sheet, headers, found.row, 'reset_token_expires_at', expiresAt);
+  soyibaAuthSetCell_(sheet, headers, found.row, 'reset_requested_at', now.toISOString());
+  soyibaAuthSetCell_(sheet, headers, found.row, 'updated_at', now.toISOString());
+
+  MailApp.sendEmail({
+    to: email,
+    subject: 'Restablece tu contrasena de SOY IBA',
+    name: 'SOY IBA',
+    body:
+      'Hola ' + soyibaAuthGetFirstName_(found.user) + ',\n\n' +
+      'Recibimos una solicitud para restablecer tu contrasena de SOY IBA.\n\n' +
+      'Abre este enlace durante los proximos ' + SOYIBA_PASSWORD_RESET_TTL_MINUTES + ' minutos:\n' +
+      resetLink + '\n\n' +
+      'Si no hiciste esta solicitud, puedes ignorar este mensaje.',
+    htmlBody: soyibaAuthBuildPasswordResetEmailHtml_(found.user, resetLink)
+  });
+
+  return { ok: true, message: genericMessage };
+}
+
+function soyibaAuthCompletePasswordReset_(data) {
+  var email = soyibaAuthNormalizeEmail_(data.email);
+  var token = String(data.token || '').trim();
+  var newPassword = String(data.newPassword || '');
+
+  if (!email || !token || !newPassword) {
+    return { ok: false, error: 'El enlace de recuperacion no esta completo.' };
+  }
+
+  if (newPassword.length < 8) {
+    return { ok: false, error: 'La contrasena debe tener minimo 8 caracteres.' };
+  }
+
+  var sheet = soyibaAuthGetSheet_();
+  var found = soyibaAuthFindUserByEmail_(sheet, email);
+
+  if (found.row < 1) {
+    return { ok: false, error: 'El enlace de recuperacion no es valido o expiro.' };
+  }
+
+  var resetSalt = String(found.user.reset_token_salt || '');
+  var resetHash = String(found.user.reset_token_hash || '');
+  var resetExpiresAt = new Date(found.user.reset_token_expires_at || '').getTime();
+
+  if (!resetSalt || !resetHash || !resetExpiresAt || resetExpiresAt < new Date().getTime()) {
+    soyibaAuthClearPasswordReset_(sheet, found.row);
+    return { ok: false, error: 'El enlace de recuperacion no es valido o expiro.' };
+  }
+
+  if (soyibaAuthHashPassword_(token, resetSalt) !== resetHash) {
+    return { ok: false, error: 'El enlace de recuperacion no es valido o expiro.' };
+  }
+
+  var headers = soyibaAuthGetHeaders_(sheet);
+  var now = new Date().toISOString();
+  var passwordSalt = Utilities.getUuid();
+
+  soyibaAuthSetCell_(sheet, headers, found.row, 'salt', passwordSalt);
+  soyibaAuthSetCell_(sheet, headers, found.row, 'password_hash', soyibaAuthHashPassword_(newPassword, passwordSalt));
+  soyibaAuthSetCell_(sheet, headers, found.row, 'updated_at', now);
+  soyibaAuthSetCell_(sheet, headers, found.row, 'reset_token_hash', '');
+  soyibaAuthSetCell_(sheet, headers, found.row, 'reset_token_salt', '');
+  soyibaAuthSetCell_(sheet, headers, found.row, 'reset_token_expires_at', '');
+  soyibaAuthSetCell_(sheet, headers, found.row, 'reset_requested_at', '');
+
+  return { ok: true, message: 'Tu contrasena fue actualizada. Ya puedes iniciar sesion.' };
 }
 
 function soyibaAuthUpdateProfilePhoto_(data) {
@@ -677,6 +782,62 @@ function soyibaAuthNormalizeAccessText_(value) {
     .replace(/[íìïî]/g, 'i')
     .replace(/[óòöô]/g, 'o')
     .replace(/[úùüû]/g, 'u');
+}
+
+function soyibaAuthClearPasswordReset_(sheet, row) {
+  var headers = soyibaAuthGetHeaders_(sheet);
+  soyibaAuthSetCell_(sheet, headers, row, 'reset_token_hash', '');
+  soyibaAuthSetCell_(sheet, headers, row, 'reset_token_salt', '');
+  soyibaAuthSetCell_(sheet, headers, row, 'reset_token_expires_at', '');
+  soyibaAuthSetCell_(sheet, headers, row, 'reset_requested_at', '');
+}
+
+function soyibaAuthCreateResetToken_() {
+  return Utilities.getUuid() + Utilities.getUuid().replace(/-/g, '');
+}
+
+function soyibaAuthBuildResetLink_(appUrl, email, token) {
+  var baseUrl = String(appUrl || '').trim().split('#')[0];
+
+  if (!baseUrl) {
+    throw new Error('Falta la URL de la app para generar el enlace de recuperacion.');
+  }
+
+  return baseUrl + '#restablecer?email=' + encodeURIComponent(email) + '&token=' + encodeURIComponent(token);
+}
+
+function soyibaAuthGetFirstName_(user) {
+  var firstName = String(user.first_name || user.firstName || '').trim();
+
+  if (firstName) {
+    return firstName;
+  }
+
+  return String(user.display_name || user.displayName || user.email || 'SOY IBA').trim().split(' ')[0];
+}
+
+function soyibaAuthBuildPasswordResetEmailHtml_(user, resetLink) {
+  var name = soyibaAuthEscapeHtml_(soyibaAuthGetFirstName_(user));
+  var safeLink = soyibaAuthEscapeHtml_(resetLink);
+
+  return [
+    '<div style="font-family:Arial,sans-serif;color:#06245c;line-height:1.5">',
+    '<h2 style="margin:0 0 12px">Restablece tu contrasena</h2>',
+    '<p>Hola ' + name + ', recibimos una solicitud para restablecer tu contrasena de SOY IBA.</p>',
+    '<p><a href="' + safeLink + '" style="display:inline-block;background:#062b70;color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:10px;font-weight:700">Crear nueva contrasena</a></p>',
+    '<p>Este enlace vence en ' + SOYIBA_PASSWORD_RESET_TTL_MINUTES + ' minutos.</p>',
+    '<p>Si no hiciste esta solicitud, puedes ignorar este mensaje.</p>',
+    '</div>'
+  ].join('');
+}
+
+function soyibaAuthEscapeHtml_(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function soyibaAuthHashPassword_(password, salt) {

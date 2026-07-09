@@ -42,6 +42,12 @@ export type UpdateProfilePayload = {
   tiempoIba: string;
 };
 
+type BasicAuthResponse = {
+  ok: boolean;
+  error?: string;
+  message?: string;
+};
+
 type AuthResponse = {
   ok: boolean;
   token?: string;
@@ -51,6 +57,10 @@ type AuthResponse = {
 
 type AuthResult =
   | { ok: true; session: SoyibaSession }
+  | { ok: false; error: string };
+
+export type BasicAuthResult =
+  | { ok: true; message: string }
   | { ok: false; error: string };
 
 export async function signInWithEmailPassword(email: string, password: string): Promise<AuthResult> {
@@ -242,6 +252,52 @@ export async function updateUserPassword(session: SoyibaSession, currentPassword
   return preserveLocalOnlyUserFields(normalizeAuthResponse(response, 'No fue posible actualizar la contraseña.'), session);
 }
 
+export async function requestPasswordReset(email: string, appUrl: string): Promise<BasicAuthResult> {
+  const normalizedEmail = normalizeEmail(email);
+  const normalizedAppUrl = normalizeText(appUrl);
+
+  if (!normalizedEmail) {
+    return { ok: false, error: 'Ingresa tu correo electrónico.' };
+  }
+
+  const response = await callAppsScript<BasicAuthResponse>(
+    'Auth',
+    'requestPasswordReset',
+    { email: normalizedEmail, appUrl: normalizedAppUrl },
+    () => ({
+      ok: true,
+      message: 'Si el correo está registrado, te enviaremos un enlace para restablecer tu contraseña.',
+    }),
+  );
+
+  return normalizeBasicAuthResponse(response, 'No fue posible enviar el correo de recuperación.');
+}
+
+export async function completePasswordReset(email: string, token: string, newPassword: string): Promise<BasicAuthResult> {
+  const normalizedEmail = normalizeEmail(email);
+  const normalizedToken = normalizeText(token);
+
+  if (!normalizedEmail || !normalizedToken || !newPassword) {
+    return { ok: false, error: 'El enlace de recuperación no está completo.' };
+  }
+
+  const response = await callAppsScript<BasicAuthResponse>(
+    'Auth',
+    'completePasswordReset',
+    {
+      email: normalizedEmail,
+      token: normalizedToken,
+      newPassword,
+    },
+    () => ({
+      ok: true,
+      message: 'Tu contraseña fue actualizada. Ya puedes iniciar sesión.',
+    }),
+  );
+
+  return normalizeBasicAuthResponse(response, 'No fue posible restablecer la contraseña.');
+}
+
 function normalizeAuthResponse(response: AuthResponse, fallbackError: string): AuthResult {
   if (!response.ok || !response.token || !response.user) {
     return { ok: false, error: response.error ?? fallbackError };
@@ -254,6 +310,14 @@ function normalizeAuthResponse(response: AuthResponse, fallbackError: string): A
       user: response.user,
     },
   };
+}
+
+function normalizeBasicAuthResponse(response: BasicAuthResponse, fallbackError: string): BasicAuthResult {
+  if (!response.ok) {
+    return { ok: false, error: response.error ?? fallbackError };
+  }
+
+  return { ok: true, message: response.message || 'Operación completada.' };
 }
 
 function normalizeText(value: unknown) {

@@ -46,14 +46,20 @@ import {
   getGoogleDriveFileUrl,
   getGoogleDriveImageCandidates,
   getGoogleDriveImageUrl,
+  getGoogleDrivePreviewUrl,
+  isGoogleDriveFile,
 } from '../../services/googleDrive';
 import type { SoyibaSession } from '../Auth/auth.service';
 import {
   PUBLICATION_CTA_TYPES,
+  MAX_PUBLICATION_IMAGE_UPLOAD_BYTES,
+  MAX_PUBLICATION_VIDEO_UPLOAD_BYTES,
   MAX_RELATED_LINKS,
   cleanRelatedLinks,
   createPublication,
   deletePublication,
+  deletePublicationStorageMedia,
+  deleteRemovedPublicationStorageMedia,
   extractYouTubeVideoId,
   buildPublicationMediaItems,
   canManagePublication,
@@ -383,6 +389,7 @@ export function PublicationsFeed({
       if (editingPublication) {
         const updated = await updatePublication(session, editingPublication.id, payload);
         setPublications((current) => sortPublications(current.map((item) => (item.id === updated.id ? mergeActivityStats(updated, item) : item))));
+        deleteRemovedPublicationStorageMedia(editingPublication.mediaItems, updated.mediaItems).catch(() => undefined);
       } else {
         const created = await createPublication(session, payload);
         setPublications((current) => sortPublications([created, ...current]));
@@ -407,6 +414,7 @@ export function PublicationsFeed({
 
     try {
       await deletePublication(session, publication.id);
+      deletePublicationStorageMedia(publication.mediaItems).catch(() => undefined);
     } catch (deleteError) {
       setError(deleteError instanceof Error ? deleteError.message : 'No fue posible eliminar la publicación.');
       setPublications((current) => sortPublications([publication, ...current]));
@@ -2612,7 +2620,7 @@ function PublicationMediaCarousel({
           activeItem.type === 'spotify'
             ? 'h-[352px]'
             : activeItem.type === 'driveVideo'
-              ? 'aspect-[4/5] min-[560px]:aspect-video'
+              ? 'aspect-video'
               : 'aspect-[16/8.5]',
         )}
       >
@@ -2697,7 +2705,7 @@ function PublicationMedia({
   }
 
   if (item.type === 'driveVideo') {
-    if (!item.url.includes('drive.google.com')) {
+    if (!isGoogleDriveFile(item.url)) {
       return (
         <video className="h-full w-full bg-black object-contain" src={item.url} title={item.title || publicationTitle} controls playsInline />
       );
@@ -2765,16 +2773,19 @@ function PublicationDriveImage({
 function DriveVideoPlayer({ url, title, allowExternalOpen }: { url: string; title: string; allowExternalOpen: boolean }) {
   const directUrl = getGoogleDriveDownloadUrl(url);
   const fileUrl = getGoogleDriveFileUrl(url);
+  const previewUrl = getGoogleDrivePreviewUrl(url);
   const videoSources = Array.from(new Set([directUrl, url, fileUrl].filter(Boolean)));
   const [sourceIndex, setSourceIndex] = useState(0);
   const [reloadKey, setReloadKey] = useState(0);
+  const [useDirectPlayer, setUseDirectPlayer] = useState(false);
   const currentSource = videoSources[Math.min(sourceIndex, Math.max(0, videoSources.length - 1))] || url;
   const failed = sourceIndex >= videoSources.length;
 
   useEffect(() => {
     setSourceIndex(0);
     setReloadKey(0);
-  }, [directUrl, fileUrl, url]);
+    setUseDirectPlayer(false);
+  }, [directUrl, fileUrl, previewUrl, url]);
 
   function handleVideoError() {
     setSourceIndex((current) => current + 1);
@@ -2782,7 +2793,16 @@ function DriveVideoPlayer({ url, title, allowExternalOpen }: { url: string; titl
 
   return (
     <div className="relative h-full w-full bg-black">
-      {!failed ? (
+      {!useDirectPlayer ? (
+        <iframe
+          key={`${previewUrl}-${reloadKey}`}
+          className="h-full w-full border-0"
+          src={previewUrl}
+          title={title}
+          allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
+          allowFullScreen
+        />
+      ) : !failed ? (
         <video
           key={`${currentSource}-${reloadKey}`}
           className="h-full w-full object-contain"
@@ -2804,7 +2824,7 @@ function DriveVideoPlayer({ url, title, allowExternalOpen }: { url: string; titl
         </div>
       )}
 
-      <div className="absolute right-3 top-3 flex gap-2">
+      <div className="hidden">
         <button
           type="button"
           aria-label="Reintentar video"
@@ -2812,6 +2832,7 @@ function DriveVideoPlayer({ url, title, allowExternalOpen }: { url: string; titl
           onClick={() => {
             setSourceIndex(0);
             setReloadKey((current) => current + 1);
+            setUseDirectPlayer(false);
           }}
           className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-black/70 text-white backdrop-blur transition hover:bg-black/82"
         >
@@ -2829,6 +2850,18 @@ function DriveVideoPlayer({ url, title, allowExternalOpen }: { url: string; titl
             <ExternalLink size={16} />
           </a>
         ) : null}
+        <button
+          type="button"
+          aria-label="Usar reproductor directo"
+          title="Usar reproductor directo"
+          onClick={() => {
+            setSourceIndex(0);
+            setUseDirectPlayer(true);
+          }}
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-black/70 text-white backdrop-blur transition hover:bg-black/82"
+        >
+          <Play size={15} />
+        </button>
       </div>
     </div>
   );
@@ -3117,6 +3150,7 @@ function PublicationComposerModal({
             placeholder="URL de imagen o archivo desde tu dispositivo"
             onChange={(value) => updateField('imageUrl', value)}
             onFileChange={(file) => updateField('imageFile', file)}
+            maxFileBytes={MAX_PUBLICATION_IMAGE_UPLOAD_BYTES}
           />
 
           <MediaUrlField
@@ -3129,6 +3163,7 @@ function PublicationComposerModal({
             onChange={(value) => updateField('videoUrl', value)}
             onFileChange={(file) => updateField('videoFile', file)}
             feedback={videoUrlFeedback}
+            maxFileBytes={MAX_PUBLICATION_VIDEO_UPLOAD_BYTES}
           />
 
           <TextField
@@ -3289,6 +3324,7 @@ function MediaUrlField({
   onChange,
   onFileChange,
   feedback,
+  maxFileBytes,
 }: {
   label: string;
   value: string;
@@ -3299,6 +3335,7 @@ function MediaUrlField({
   onChange: (value: string) => void;
   onFileChange: (file: File | null) => void;
   feedback?: { tone: 'success' | 'error'; message: string } | null;
+  maxFileBytes?: number;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -3337,11 +3374,17 @@ function MediaUrlField({
 
       {selectedFile ? (
         <div className="mt-2 flex items-center justify-between gap-2 rounded-[10px] bg-[#EAF2FF] px-3 py-2 text-[11px] font-bold text-[#0B1F5B]">
-          <span className="min-w-0 truncate">{selectedFile.name}</span>
+          <span className="min-w-0 truncate">{selectedFile.name} - {formatFileSize(selectedFile.size)}</span>
           <button type="button" onClick={() => onFileChange(null)} className="shrink-0 text-[#D92D2D]">
             Quitar
           </button>
         </div>
+      ) : null}
+
+      {selectedFile && maxFileBytes && selectedFile.size > maxFileBytes ? (
+        <p className="mt-2 rounded-[10px] bg-red-50 px-3 py-2 text-[11px] font-black text-red-700">
+          El archivo supera el limite de {formatFileSize(maxFileBytes)}.
+        </p>
       ) : null}
 
       {feedback ? (
@@ -3371,6 +3414,14 @@ function getVideoUrlFeedback(value: string, selectedFile: File | null) {
     tone: 'error' as const,
     message: 'No pudimos reconocer esta URL de YouTube. Verifica el enlace.',
   };
+}
+
+function formatFileSize(bytes: number) {
+  if (bytes >= 1024 * 1024) {
+    return `${(bytes / (1024 * 1024)).toFixed(bytes >= 10 * 1024 * 1024 ? 0 : 1)} MB`;
+  }
+
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }
 
 function RelatedLinksEditor({
