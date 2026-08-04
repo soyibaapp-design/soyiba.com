@@ -61,6 +61,8 @@ type AuthResponse = {
   error?: string;
 };
 
+const AUTH_LOGIN_RETRY_DELAYS_MS = [900, 2200];
+
 type AuthResult =
   | { ok: true; session: SoyibaSession }
   | { ok: false; error: string };
@@ -80,32 +82,58 @@ export async function signInWithEmailPassword(email: string, password: string): 
     return { ok: false, error: 'Ingresa correo y contraseña.' };
   }
 
-  const response = await callAppsScript<AuthResponse>(
-    'Auth',
-    'login',
-    { email: normalizedEmail, password },
-    () => ({
-      ok: true,
-      token: 'local-dev-token',
-      user: {
-        id: 'local-user',
-        email: normalizedEmail,
-        name: normalizedEmail.split('@')[0] || 'Usuario',
-        role: 'local',
-        tipoUsuario: 'Asistente',
-        tituloUsuario: 'Asistente',
-        rolSistema: 'Usuario',
-        estadoUsuario: 'Activo',
-        publicador: false,
-        publicadorEco: false,
-        publicadorEvento: false,
-        verificado: false,
-        active: true,
-      },
-    }),
-  );
+  const response = await callLoginWithRetry(normalizedEmail, password);
 
   return normalizeAuthResponse(response, 'No fue posible iniciar sesión.');
+}
+
+async function callLoginWithRetry(email: string, password: string) {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= AUTH_LOGIN_RETRY_DELAYS_MS.length; attempt += 1) {
+    try {
+      return await callAppsScript<AuthResponse>(
+        'Auth',
+        'login',
+        { email, password },
+        () => ({
+          ok: true,
+          token: 'local-dev-token',
+          user: {
+            id: 'local-user',
+            email,
+            name: email.split('@')[0] || 'Usuario',
+            role: 'local',
+            tipoUsuario: 'Asistente',
+            tituloUsuario: 'Asistente',
+            rolSistema: 'Usuario',
+            estadoUsuario: 'Activo',
+            publicador: false,
+            publicadorEco: false,
+            publicadorEvento: false,
+            verificado: false,
+            active: true,
+          },
+        }),
+      );
+    } catch (error) {
+      lastError = error;
+
+      if (!isTransientAppsScriptError(error)) {
+        break;
+      }
+
+      const retryDelay = AUTH_LOGIN_RETRY_DELAYS_MS[attempt];
+
+      if (retryDelay === undefined) {
+        break;
+      }
+
+      await wait(retryDelay);
+    }
+  }
+
+  throw lastError;
 }
 
 export async function registerWithEmailPassword(payload: RegisterPayload): Promise<AuthResult> {
@@ -388,6 +416,20 @@ function normalizeEmail(value: unknown) {
 
 function normalizeCc(value: unknown) {
   return normalizeText(value).replace(/\D/g, '');
+}
+
+function isTransientAppsScriptError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return /respuesta no JSON|JSON invalido|Failed to fetch|NetworkError|Load failed/i.test(error.message);
+}
+
+function wait(delayMs: number) {
+  return new Promise((resolve) => {
+    globalThis.setTimeout(resolve, delayMs);
+  });
 }
 
 function preserveLocalOnlyUserFields(result: AuthResult, currentSession: SoyibaSession): AuthResult {

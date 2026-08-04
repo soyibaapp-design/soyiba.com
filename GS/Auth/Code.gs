@@ -254,8 +254,10 @@ function soyibaAuthLogin_(data) {
 
   var headers = soyibaAuthGetHeaders_(sheet);
   var now = new Date().toISOString();
-  sheet.getRange(found.row, headers.indexOf('last_login_at') + 1).setValue(now);
-  sheet.getRange(found.row, headers.indexOf('updated_at') + 1).setValue(now);
+  sheet.getRangeList([
+    sheet.getRange(found.row, headers.indexOf('last_login_at') + 1).getA1Notation(),
+    sheet.getRange(found.row, headers.indexOf('updated_at') + 1).getA1Notation()
+  ]).setValue(now);
 
   return {
     ok: true,

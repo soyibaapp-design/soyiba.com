@@ -20,6 +20,7 @@ type AuthMode = 'login' | 'register';
 
 const SESSION_STORAGE_KEY = 'soyiba.session';
 const LIVE_BADGE_TEST_STORAGE_KEY = 'soyiba.liveBadgeTest';
+const SESSION_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 
 const navigation: BottomNavItem<ScreenId>[] = [
   { id: 'inicio', label: 'Inicio', icon: Home },
@@ -56,6 +57,7 @@ export default function App() {
   const [liveNow, setLiveNow] = useState(() => isSundayLiveWindow(new Date()));
   const [liveBadgeTestEnabled, setLiveBadgeTestEnabled] = useState(() => loadLiveBadgeTestFlag());
   const refreshSessionKeyRef = useRef('');
+  const lastSessionRefreshAtRef = useRef(0);
   const showLiveBadge = liveNow || (liveBadgeTestEnabled && isLiveBadgeTestUser(session));
 
   useEffect(() => {
@@ -101,6 +103,7 @@ export default function App() {
 
     refreshCurrentSession(session).then((result) => {
       if (!cancelled && result.ok) {
+        lastSessionRefreshAtRef.current = Date.now();
         handleSessionUpdated(result.session);
       }
     }).catch(() => {
@@ -118,6 +121,11 @@ export default function App() {
         return;
       }
 
+      if (Date.now() - lastSessionRefreshAtRef.current < SESSION_REFRESH_INTERVAL_MS) {
+        return;
+      }
+
+      lastSessionRefreshAtRef.current = Date.now();
       refreshCurrentSession(session)
         .then((result) => {
           if (result.ok) {
@@ -145,6 +153,8 @@ export default function App() {
   }
 
   function handleSessionUpdated(nextSession: SoyibaSession) {
+    refreshSessionKeyRef.current = getSessionIdentityKey(nextSession);
+    lastSessionRefreshAtRef.current = Date.now();
     setSession(nextSession);
     storeSession(nextSession);
   }
@@ -243,6 +253,10 @@ export default function App() {
       <PwaInstallPrompt hasBottomNav={!publicationComposerOpen} />
     </>
   );
+}
+
+function getSessionIdentityKey(session: SoyibaSession) {
+  return `${session.token}|${session.user.id || ''}|${session.user.email || ''}`;
 }
 
 function SoyibaShell({
