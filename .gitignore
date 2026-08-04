@@ -13,3 +13,4 @@ GS/*enlaces.txt
 *-responsive-*.png
 firebase-service-account*.json
 *.service-account.json
+*firebase-adminsdk*.json

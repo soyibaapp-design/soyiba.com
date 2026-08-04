@@ -158,6 +158,11 @@ function printPlan() {
 }
 
 function printConclusion(signInResults) {
+  if (signInResults.some((result) => result.error === 'PASSWORD_LOGIN_DISABLED')) {
+    console.log('CONCLUSION: Email/password sign-in is disabled in Firebase Auth. Enable it and run this test again.');
+    return;
+  }
+
   const currentCompatible = signInResults.some(
     (result) => result.ok && result.email.includes('soyiba-auth-import-current-'),
   );
