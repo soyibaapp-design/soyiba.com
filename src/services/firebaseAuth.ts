@@ -25,25 +25,14 @@ export async function signInWithFirebaseEmailPassword(email: string, password: s
     throw new Error('Firebase no esta configurado.');
   }
 
-  const [{ getAuth, signInWithEmailAndPassword }, { doc, getDoc, getFirestore }] = await Promise.all([
-    import('firebase/auth'),
-    import('firebase/firestore'),
-  ]);
+  const { getAuth, signInWithEmailAndPassword } = await import('firebase/auth');
   const auth = getAuth(app);
   const credential = await signInWithEmailAndPassword(auth, email, password);
   const [token, tokenResult] = await Promise.all([credential.user.getIdToken(), credential.user.getIdTokenResult()]);
-  let profile: FirebaseUserProfile = {};
-
-  try {
-    const snapshot = await getDoc(doc(getFirestore(app), 'users', credential.user.uid));
-    profile = snapshot.exists() ? (snapshot.data() as FirebaseUserProfile) : {};
-  } catch {
-    profile = {};
-  }
 
   return {
     token,
-    user: buildSoyibaUserFromFirebase(credential.user, tokenResult.claims, profile),
+    user: buildSoyibaUserFromFirebase(credential.user, tokenResult.claims, {}),
   };
 }
 
