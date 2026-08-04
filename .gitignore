@@ -14,3 +14,4 @@ GS/*enlaces.txt
 firebase-service-account*.json
 *.service-account.json
 *firebase-adminsdk*.json
+TSV/Auth.tsv

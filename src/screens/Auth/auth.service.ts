@@ -1,4 +1,5 @@
 import { callAppsScript } from '../../services/appsScriptClient';
+import { isFirebaseAuthEnabled, refreshFirebaseSession, signInWithFirebaseEmailPassword } from '../../services/firebaseAuth';
 
 export type SoyibaUser = {
   id: string;
@@ -93,6 +94,14 @@ export async function signInWithEmailPassword(email: string, password: string): 
 
   if (!normalizedEmail || !password) {
     return { ok: false, error: 'Ingresa correo y contraseña.' };
+  }
+
+  if (isFirebaseAuthEnabled()) {
+    try {
+      return { ok: true, session: await signInWithFirebaseEmailPassword(normalizedEmail, password) };
+    } catch {
+      return { ok: false, error: 'Correo o contrasena invalidos.' };
+    }
   }
 
   let response: AuthResponse;
@@ -335,6 +344,10 @@ export async function updateUserPassword(session: SoyibaSession, currentPassword
 export async function refreshCurrentSession(session: SoyibaSession): Promise<AuthResult> {
   if (!session.user.email && !session.user.id) {
     return { ok: false, error: 'No hay usuario para actualizar la sesión.' };
+  }
+
+  if (isFirebaseAuthEnabled()) {
+    return { ok: true, session: await refreshFirebaseSession(session) };
   }
 
   const response = await callAppsScript<AuthResponse>(
