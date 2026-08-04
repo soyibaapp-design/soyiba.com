@@ -7,6 +7,8 @@ import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 const args = new Set(process.argv.slice(2));
 const shouldRun = args.has('--confirm');
 const shouldDeleteUserCc = args.has('--delete-user-cc');
+const shouldReadGoogleSheet = args.has('--from-google-sheet');
+const shouldReplaceRegistry = args.has('--replace-registry');
 const env = loadEnvFile(resolve(process.cwd(), '.env'));
 const serviceAccountPath =
   process.env.FIREBASE_SERVICE_ACCOUNT_PATH ||
@@ -15,17 +17,23 @@ const serviceAccountPath =
 const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
 const tsvPath = process.env.SOYIBA_MIEMBROS_IBA_TSV_PATH || resolve(process.cwd(), 'TSV', 'MiembrosIBA.tsv');
 const firestoreDatabaseId = process.env.FIREBASE_FIRESTORE_DATABASE_ID || env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || 'soyibadb';
+const miembrosIbaSpreadsheetId =
+  process.env.SOYIBA_MIEMBROS_IBA_SPREADSHEET_ID ||
+  env.SOYIBA_MIEMBROS_IBA_SPREADSHEET_ID ||
+  '1Sk6f6mScrMTcXfa-psxoY4boa_1gqJmFt7anP-lpErM';
+const miembrosIbaSheetGid = Number(process.env.SOYIBA_MIEMBROS_IBA_GID || env.SOYIBA_MIEMBROS_IBA_GID || '1721819683');
 
-const registryRows = parseTsvIfExists(tsvPath).map(normalizeRegistryRow).filter((row) => row.cc);
+const registryRows = await loadRegistryRows();
 
 if (!shouldRun) {
   console.log(
     JSON.stringify(
       {
         dryRun: true,
-        source: tsvPath,
+        source: shouldReadGoogleSheet ? `google-sheet:${miembrosIbaSpreadsheetId}:${miembrosIbaSheetGid}` : tsvPath,
         registryRows: registryRows.length,
         firestoreDatabaseId,
+        replaceRegistry: shouldReplaceRegistry,
         action: 'Add --confirm to import into Firebase Firestore.',
       },
       null,
@@ -39,22 +47,30 @@ initializeFirebaseAdmin();
 
 const db = getFirestore(firestoreDatabaseId);
 const usersSnapshot = await db.collection('users').get();
+const existingRegistrySnapshot = await db.collection('memberRegistry').get();
 const now = new Date().toISOString();
 const registryRecords = new Map();
+const existingRegistryRecords = new Map(existingRegistrySnapshot.docs.map((item) => [item.id, item.data()]));
 
 for (const row of registryRows) {
   const ccHash = sha256Hex(row.cc);
+  const existing = existingRegistryRecords.get(ccHash) || {};
+  const claimedUserId = row.claimedUserId || stringValue(existing.claimedUserId);
+  const claimedEmailHash = row.claimedEmail ? sha256Hex(row.claimedEmail) : stringValue(existing.claimedEmailHash);
+  const claimedAt = row.claimedAt || stringValue(existing.claimedAt);
+  const claimStatus = row.claimStatus || stringValue(existing.claimStatus);
+  const claimNotes = row.claimNotes || stringValue(existing.claimNotes);
   registryRecords.set(ccHash, {
     ccHash,
     ccLast4: row.cc.slice(-4),
     emailHash: row.email ? sha256Hex(row.email) : '',
     estado: row.estado || 'Activo',
     active: isActiveState(row.estado || 'Activo'),
-    claimedUserId: row.claimedUserId,
-    claimedEmailHash: row.claimedEmail ? sha256Hex(row.claimedEmail) : '',
-    claimedAt: row.claimedAt,
-    claimStatus: row.claimStatus,
-    claimNotes: row.claimNotes,
+    ...(claimedUserId ? { claimedUserId } : {}),
+    ...(claimedEmailHash ? { claimedEmailHash } : {}),
+    ...(claimedAt ? { claimedAt } : {}),
+    ...(claimStatus ? { claimStatus } : {}),
+    ...(claimNotes ? { claimNotes } : {}),
     source: 'google-sheets-miembrosiba',
     migratedAt: now,
   });
@@ -78,21 +94,18 @@ for (const item of usersSnapshot.docs) {
     patch.ccHash = ccHash;
     patch.ccLast4 = cc.slice(-4);
 
-    const existing = registryRecords.get(ccHash) || {};
-    registryRecords.set(ccHash, {
-      ccHash,
-      ccLast4: cc.slice(-4),
-      emailHash: existing.emailHash || emailHash,
-      estado: existing.estado || 'Activo',
-      active: existing.active === undefined ? true : existing.active,
-      claimedUserId: existing.claimedUserId || item.id,
-      claimedEmailHash: existing.claimedEmailHash || emailHash,
-      claimedAt: existing.claimedAt || stringValue(data.miembroValidadoAt || data.updatedAt || now),
-      claimStatus: existing.claimStatus || stringValue(data.miembroValidacionEstado || 'validado'),
-      claimNotes: existing.claimNotes || stringValue(data.miembroValidacionNotas),
-      source: existing.source || 'firebase-users-existing-claim',
-      migratedAt: existing.migratedAt || now,
-    });
+    if (registryRecords.has(ccHash)) {
+      const existing = registryRecords.get(ccHash);
+      registryRecords.set(ccHash, {
+        ...existing,
+        emailHash: existing.emailHash || emailHash,
+        claimedUserId: existing.claimedUserId || item.id,
+        claimedEmailHash: existing.claimedEmailHash || emailHash,
+        claimedAt: existing.claimedAt || stringValue(data.miembroValidadoAt || data.updatedAt || now),
+        claimStatus: existing.claimStatus || stringValue(data.miembroValidacionEstado || 'validado'),
+        claimNotes: existing.claimNotes || stringValue(data.miembroValidacionNotas),
+      });
+    }
   }
 
   if (shouldDeleteUserCc && data.cc !== undefined) {
@@ -106,6 +119,7 @@ for (const item of usersSnapshot.docs) {
 }
 
 let registryWritten = 0;
+let registryDeleted = 0;
 let usersUpdated = 0;
 
 for (const recordChunk of chunk(Array.from(registryRecords.values()), 400)) {
@@ -117,6 +131,24 @@ for (const recordChunk of chunk(Array.from(registryRecords.values()), 400)) {
   }
 
   await batch.commit();
+}
+
+if (shouldReplaceRegistry) {
+  const registryIds = new Set(registryRecords.keys());
+
+  for (const staleChunk of chunk(
+    existingRegistrySnapshot.docs.filter((item) => !registryIds.has(item.id)),
+    400,
+  )) {
+    const batch = db.batch();
+
+    for (const item of staleChunk) {
+      batch.delete(item.ref);
+      registryDeleted += 1;
+    }
+
+    await batch.commit();
+  }
 }
 
 for (const userChunk of chunk(Array.from(userPatches.entries()), 400)) {
@@ -132,19 +164,96 @@ for (const userChunk of chunk(Array.from(userPatches.entries()), 400)) {
 
 console.log(
   JSON.stringify(
-    {
-      source: tsvPath,
+      {
+      source: shouldReadGoogleSheet ? `google-sheet:${miembrosIbaSpreadsheetId}:${miembrosIbaSheetGid}` : tsvPath,
       firestoreDatabaseId,
       registryRows: registryRows.length,
       registryWritten,
+      registryDeleted,
+      existingRegistryBefore: existingRegistrySnapshot.size,
       usersScanned: usersSnapshot.size,
       usersUpdated,
       deletedRawUserCc: shouldDeleteUserCc,
+      replacedRegistry: shouldReplaceRegistry,
     },
     null,
     2,
   ),
-);
+  );
+
+async function loadRegistryRows() {
+  const rows = shouldReadGoogleSheet ? await readRegistryRowsFromGoogleSheet() : parseTsvIfExists(tsvPath);
+  return rows.map(normalizeRegistryRow).filter((row) => row.cc);
+}
+
+async function readRegistryRowsFromGoogleSheet() {
+  const token = await getGoogleAccessToken();
+  const metadata = await googleApiRequest(
+    `https://sheets.googleapis.com/v4/spreadsheets/${miembrosIbaSpreadsheetId}?fields=sheets(properties(sheetId,title,gridProperties(rowCount,columnCount)))`,
+    token,
+  );
+  const sheet = metadata.sheets
+    ?.map((item) => item.properties)
+    .find((properties) => Number(properties.sheetId) === miembrosIbaSheetGid);
+
+  if (!sheet?.title) {
+    throw new Error(`Sheet gid not found: ${miembrosIbaSheetGid}`);
+  }
+
+  const columnCount = Math.max(12, Math.min(Number(sheet.gridProperties?.columnCount || 26), 52));
+  const endColumn = columnName(columnCount);
+  const range = `${quoteSheetName(sheet.title)}!A:${endColumn}`;
+  const values = await googleApiRequest(
+    `https://sheets.googleapis.com/v4/spreadsheets/${miembrosIbaSpreadsheetId}/values/${encodeURIComponent(range)}?valueRenderOption=FORMATTED_VALUE`,
+    token,
+  );
+  const [headers = [], ...lines] = values.values || [];
+  const normalizedHeaders = headers.map((header) => normalizeHeader(header));
+
+  return lines
+    .filter((line) => line.some((value) => stringValue(value)))
+    .map((line) =>
+      Object.fromEntries(
+        line.map((value, index) => [normalizedHeaders[index] || `column_${index + 1}`, stringValue(value)]),
+      ),
+    );
+}
+
+async function getGoogleAccessToken() {
+  const { GoogleAuth } = await import('google-auth-library');
+  const credentials = serviceAccountJson ? JSON.parse(serviceAccountJson) : undefined;
+  const auth = credentials
+    ? new GoogleAuth({ credentials, scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'] })
+    : new GoogleAuth({ keyFile: serviceAccountPath, scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'] });
+  const client = await auth.getClient();
+  const accessToken = await client.getAccessToken();
+  return accessToken.token;
+}
+
+async function googleApiRequest(url, token) {
+  const response = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
+    },
+  });
+  const text = await response.text();
+  let body;
+
+  try {
+    body = JSON.parse(text);
+  } catch {
+    body = text;
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      `Google Sheets API ${response.status}: ${typeof body === 'string' ? body : JSON.stringify(body)}`,
+    );
+  }
+
+  return body;
+}
 
 function initializeFirebaseAdmin() {
   if (getApps().length) {
@@ -202,6 +311,23 @@ function loadEnvFile(path) {
 
 function splitTsvLine(line) {
   return String(line || '').split('\t');
+}
+
+function quoteSheetName(value) {
+  return `'${String(value).replace(/'/g, "''")}'`;
+}
+
+function columnName(position) {
+  let name = '';
+  let value = position;
+
+  while (value > 0) {
+    value -= 1;
+    name = String.fromCharCode(65 + (value % 26)) + name;
+    value = Math.floor(value / 26);
+  }
+
+  return name || 'Z';
 }
 
 function normalizeRegistryRow(row) {
