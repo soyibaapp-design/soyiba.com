@@ -44,7 +44,19 @@ export async function callAppsScript<T>(
   });
 
   const text = await response.text();
-  const parsed = text ? (JSON.parse(text) as T) : ({} as T);
+  const trimmedText = text.trimStart();
+
+  if (trimmedText && !trimmedText.startsWith('{') && !trimmedText.startsWith('[')) {
+    throw new Error(`Apps Script devolvio una respuesta no JSON para ${moduleName}.`);
+  }
+
+  let parsed: T;
+
+  try {
+    parsed = trimmedText ? (JSON.parse(trimmedText) as T) : ({} as T);
+  } catch {
+    throw new Error(`Apps Script devolvio JSON invalido para ${moduleName}.`);
+  }
 
   if (!response.ok) {
     throw new Error(`Apps Script respondio ${response.status} para ${moduleName}.`);
