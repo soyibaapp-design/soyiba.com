@@ -3,7 +3,9 @@ var SOYIBA_INICIO_SHEET = 'Inicio';
 var SOYIBA_INICIO_HEADERS = ['metric_id', 'label', 'value', 'sort_order', 'visible', 'updated_at'];
 var SOYIBA_AUTH_SPREADSHEET_ID = '1Sk6f6mScrMTcXfa-psxoY4boa_1gqJmFt7anP-lpErM';
 var SOYIBA_AUTH_SHEET = 'Auth';
-var SOYIBA_INICIO_CODE_VERSION = 'publicaciones-solo-miembros-2026-06-27';
+var SOYIBA_MIEMBROS_IBA_SHEET = 'MiembrosIBA';
+var SOYIBA_INICIO_CODE_VERSION = 'password-reset-publicaciones-list-cache-2026-07-26';
+var SOYIBA_PASSWORD_RESET_TTL_MINUTES = 60;
 var SOYIBA_AUTH_HEADERS = [
   'user_id',
   'email',
@@ -31,12 +33,36 @@ var SOYIBA_AUTH_HEADERS = [
   'active',
   'tiempo_iba',
   'usuario_verificado',
-  'photo_url'
+  'photo_url',
+  'reset_token_hash',
+  'reset_token_salt',
+  'reset_token_expires_at',
+  'reset_requested_at',
+  'cc',
+  'miembro_validado_at',
+  'miembro_validado_por',
+  'miembro_validacion_estado',
+  'miembro_validacion_notas'
+];
+var SOYIBA_MIEMBROS_IBA_HEADERS = [
+  'cc',
+  'nombre',
+  'apellido',
+  'estado',
+  'email',
+  'telefono',
+  'claimed_user_id',
+  'claimed_email',
+  'claimed_at',
+  'claim_status',
+  'claim_notes',
+  'updated_at'
 ];
 var SOYIBA_PUBLICACIONES_SPREADSHEET_ID = SOYIBA_INICIO_SPREADSHEET_ID;
 var SOYIBA_PUBLICACIONES_SHEET = 'Publicaciones';
 var SOYIBA_GUARDADOS_SHEET = 'Guardados';
 var SOYIBA_YOVOY_SHEET = 'YoVoy';
+var SOYIBA_VIEWS_SHEET = 'Views';
 var SOYIBA_ASISTENCIAS_ECO_SHEET = 'AsistenciasECO';
 var SOYIBA_PUBLICACIONES_MEDIA_FOLDER_ID = '1QqE9UI2Y0O2Md0sb3tyYPYFiUAUw_vXn';
 var SOYIBA_PUBLICACIONES_MEDIA_FOLDER_NAME = 'SOYIBA Publicaciones';
@@ -94,6 +120,14 @@ var SOYIBA_GUARDADOS_HEADERS = [
 ];
 var SOYIBA_YOVOY_HEADERS = [
   'yovoy_id',
+  'publication_id',
+  'user_id',
+  'user_email',
+  'user_name',
+  'created_at'
+];
+var SOYIBA_VIEWS_HEADERS = [
+  'view_id',
   'publication_id',
   'user_id',
   'user_email',
@@ -159,10 +193,14 @@ function doPost(e) {
       moduleName === 'Miembros' ||
       action === 'register' ||
       action === 'login' ||
+      action === 'getCurrentUser' ||
       action === 'updateFcmToken' ||
       action === 'updateProfile' ||
       action === 'updateProfilePhoto' ||
+      action === 'verifyMembershipByCc' ||
       action === 'changePassword' ||
+      action === 'requestPasswordReset' ||
+      action === 'completePasswordReset' ||
       action === 'listUsers' ||
       action === 'listMembers' ||
       action === 'listDirectoryMembers' ||
@@ -214,6 +252,10 @@ function soyibaAuthHandle_(action, data) {
     return soyibaAuthLogin_(data);
   }
 
+  if (action === 'getCurrentUser') {
+    return soyibaAuthGetCurrentUser_(data);
+  }
+
   if (action === 'updateFcmToken') {
     return soyibaAuthUpdateFcmToken_(data);
   }
@@ -226,8 +268,20 @@ function soyibaAuthHandle_(action, data) {
     return soyibaAuthUpdateProfilePhoto_(data);
   }
 
+  if (action === 'verifyMembershipByCc') {
+    return soyibaAuthVerifyMembershipByCc_(data);
+  }
+
   if (action === 'changePassword') {
     return soyibaAuthChangePassword_(data);
+  }
+
+  if (action === 'requestPasswordReset') {
+    return soyibaAuthRequestPasswordReset_(data);
+  }
+
+  if (action === 'completePasswordReset') {
+    return soyibaAuthCompletePasswordReset_(data);
   }
 
   if (action === 'listUsers') {
@@ -439,6 +493,17 @@ function soyibaAuthUpdateFcmToken_(data) {
   return { ok: true };
 }
 
+function soyibaAuthGetCurrentUser_(data) {
+  var sheet = soyibaAuthGetSheet_();
+  var found = soyibaAuthFindUserByIdOrEmail_(sheet, data.userId, data.email || data.currentEmail);
+
+  if (found.row < 1) {
+    return { ok: false, error: 'Usuario no encontrado.' };
+  }
+
+  return soyibaAuthSessionFromRow_(sheet, found.row, data.token);
+}
+
 function soyibaAuthUpdateProfile_(data) {
   var sheet = soyibaAuthGetSheet_();
   var found = soyibaAuthFindUserByIdOrEmail_(sheet, data.userId, data.currentEmail || data.email);
@@ -449,7 +514,7 @@ function soyibaAuthUpdateProfile_(data) {
 
   var headers = soyibaAuthGetHeaders_(sheet);
   var currentEmail = soyibaAuthNormalizeEmail_(found.user.email);
-  var email = soyibaAuthNormalizeEmail_(data.email || currentEmail);
+  var email = currentEmail;
   var firstName = String(data.firstName || data.first_name || '').trim();
   var lastName = String(data.lastName || data.last_name || '').trim();
   var phone = String(data.phone || data.celular || '').trim();
@@ -457,18 +522,10 @@ function soyibaAuthUpdateProfile_(data) {
   var displayName = String(data.displayName || data.display_name || [firstName, lastName].join(' ').trim() || email.split('@')[0] || 'Usuario');
 
   if (!email || !firstName || !lastName || !phone) {
-    return { ok: false, error: 'Nombre, apellido, correo y celular son requeridos.' };
-  }
-
-  if (email !== currentEmail) {
-    var duplicate = soyibaAuthFindUserByEmail_(sheet, email);
-    if (duplicate.row > 0 && duplicate.row !== found.row) {
-      return { ok: false, error: 'Ese correo ya esta en uso.' };
-    }
+    return { ok: false, error: 'Nombre, apellido y celular son requeridos.' };
   }
 
   var now = new Date().toISOString();
-  soyibaAuthSetCell_(sheet, headers, found.row, 'email', email);
   soyibaAuthSetCell_(sheet, headers, found.row, 'display_name', displayName);
   soyibaAuthSetCell_(sheet, headers, found.row, 'first_name', firstName);
   soyibaAuthSetCell_(sheet, headers, found.row, 'last_name', lastName);
@@ -508,6 +565,98 @@ function soyibaAuthChangePassword_(data) {
   return soyibaAuthSessionFromRow_(sheet, found.row, data.token);
 }
 
+function soyibaAuthRequestPasswordReset_(data) {
+  var email = soyibaAuthNormalizeEmail_(data.email);
+  var genericMessage = 'Si el correo esta registrado, enviaremos un enlace para restablecer la contrasena.';
+
+  if (!email) {
+    return { ok: false, error: 'Ingresa tu correo electronico.' };
+  }
+
+  var sheet = soyibaAuthGetSheet_();
+  var found = soyibaAuthFindUserByEmail_(sheet, email);
+
+  if (found.row < 1 || found.user.status !== 'active') {
+    return { ok: true, message: genericMessage };
+  }
+
+  var headers = soyibaAuthGetHeaders_(sheet);
+  var now = new Date();
+  var token = soyibaAuthCreateResetToken_();
+  var tokenSalt = Utilities.getUuid();
+  var expiresAt = new Date(now.getTime() + SOYIBA_PASSWORD_RESET_TTL_MINUTES * 60 * 1000).toISOString();
+  var resetLink = soyibaAuthBuildResetLink_(data.appUrl, email, token);
+
+  soyibaAuthSetCell_(sheet, headers, found.row, 'reset_token_hash', soyibaAuthHashPassword_(token, tokenSalt));
+  soyibaAuthSetCell_(sheet, headers, found.row, 'reset_token_salt', tokenSalt);
+  soyibaAuthSetCell_(sheet, headers, found.row, 'reset_token_expires_at', expiresAt);
+  soyibaAuthSetCell_(sheet, headers, found.row, 'reset_requested_at', now.toISOString());
+  soyibaAuthSetCell_(sheet, headers, found.row, 'updated_at', now.toISOString());
+
+  MailApp.sendEmail({
+    to: email,
+    subject: 'Restablece tu contrasena de SOY IBA',
+    name: 'SOY IBA',
+    body:
+      'Hola ' + soyibaAuthGetFirstName_(found.user) + ',\n\n' +
+      'Recibimos una solicitud para restablecer tu contrasena de SOY IBA.\n\n' +
+      'Abre este enlace durante los proximos ' + SOYIBA_PASSWORD_RESET_TTL_MINUTES + ' minutos:\n' +
+      resetLink + '\n\n' +
+      'Si no hiciste esta solicitud, puedes ignorar este mensaje.',
+    htmlBody: soyibaAuthBuildPasswordResetEmailHtml_(found.user, resetLink)
+  });
+
+  return { ok: true, message: genericMessage };
+}
+
+function soyibaAuthCompletePasswordReset_(data) {
+  var email = soyibaAuthNormalizeEmail_(data.email);
+  var token = String(data.token || '').trim();
+  var newPassword = String(data.newPassword || '');
+
+  if (!email || !token || !newPassword) {
+    return { ok: false, error: 'El enlace de recuperacion no esta completo.' };
+  }
+
+  if (newPassword.length < 8) {
+    return { ok: false, error: 'La contrasena debe tener minimo 8 caracteres.' };
+  }
+
+  var sheet = soyibaAuthGetSheet_();
+  var found = soyibaAuthFindUserByEmail_(sheet, email);
+
+  if (found.row < 1) {
+    return { ok: false, error: 'El enlace de recuperacion no es valido o expiro.' };
+  }
+
+  var resetSalt = String(found.user.reset_token_salt || '');
+  var resetHash = String(found.user.reset_token_hash || '');
+  var resetExpiresAt = new Date(found.user.reset_token_expires_at || '').getTime();
+
+  if (!resetSalt || !resetHash || !resetExpiresAt || resetExpiresAt < new Date().getTime()) {
+    soyibaAuthClearPasswordReset_(sheet, found.row);
+    return { ok: false, error: 'El enlace de recuperacion no es valido o expiro.' };
+  }
+
+  if (soyibaAuthHashPassword_(token, resetSalt) !== resetHash) {
+    return { ok: false, error: 'El enlace de recuperacion no es valido o expiro.' };
+  }
+
+  var headers = soyibaAuthGetHeaders_(sheet);
+  var now = new Date().toISOString();
+  var passwordSalt = Utilities.getUuid();
+
+  soyibaAuthSetCell_(sheet, headers, found.row, 'salt', passwordSalt);
+  soyibaAuthSetCell_(sheet, headers, found.row, 'password_hash', soyibaAuthHashPassword_(newPassword, passwordSalt));
+  soyibaAuthSetCell_(sheet, headers, found.row, 'updated_at', now);
+  soyibaAuthSetCell_(sheet, headers, found.row, 'reset_token_hash', '');
+  soyibaAuthSetCell_(sheet, headers, found.row, 'reset_token_salt', '');
+  soyibaAuthSetCell_(sheet, headers, found.row, 'reset_token_expires_at', '');
+  soyibaAuthSetCell_(sheet, headers, found.row, 'reset_requested_at', '');
+
+  return { ok: true, message: 'Tu contrasena fue actualizada. Ya puedes iniciar sesion.' };
+}
+
 function soyibaAuthUpdateProfilePhoto_(data) {
   var sheet = soyibaAuthGetSheet_();
   var found = soyibaAuthFindUserByIdOrEmail_(sheet, data.userId, data.email || data.currentEmail);
@@ -528,6 +677,66 @@ function soyibaAuthUpdateProfilePhoto_(data) {
   soyibaAuthSetCell_(sheet, headers, found.row, 'updated_at', now);
 
   return soyibaAuthSessionFromRow_(sheet, found.row, data.token);
+}
+
+function soyibaAuthVerifyMembershipByCc_(data) {
+  var cc = soyibaAuthNormalizeCc_(data.cc || data.cedula || data.cedulaCiudadania);
+
+  if (!cc) {
+    return { ok: false, error: 'Ingresa tu CC sin puntos ni comas.' };
+  }
+
+  var authSheet = soyibaAuthGetSheet_();
+  var found = soyibaAuthFindUserByIdOrEmail_(authSheet, data.userId, data.email || data.currentEmail);
+
+  if (found.row < 1) {
+    return { ok: false, error: 'Usuario no encontrado.' };
+  }
+
+  var currentEmail = soyibaAuthNormalizeEmail_(found.user.email || data.email || data.currentEmail);
+  var membersSheet = soyibaMiembrosIbaGetSheet_();
+  var member = soyibaMiembrosIbaFindByCc_(membersSheet, cc);
+
+  if (member.row < 1) {
+    return { ok: false, error: 'No encontramos esa CC en el listado de miembros IBA.' };
+  }
+
+  if (soyibaMiembrosIbaIsInactiveRecord_(member.record)) {
+    return { ok: false, error: 'Tu registro existe en MiembrosIBA, pero aparece inactivo.' };
+  }
+
+  var existingClaim = soyibaAuthFindUserByCc_(authSheet, cc, found.user.user_id, currentEmail);
+  if (existingClaim.row > 0) {
+    return { ok: false, error: 'Esta CC ya fue reclamada por otra cuenta.' };
+  }
+
+  if (!soyibaMembershipClaimBelongsToUser_(member.record, found.user, currentEmail)) {
+    return { ok: false, error: 'Esta CC ya tiene una solicitud o validacion asociada a otra cuenta.' };
+  }
+
+  var now = new Date().toISOString();
+  var memberEmail = soyibaAuthNormalizeEmail_(soyibaMiembrosIbaRecordValue_(member.record, ['email', 'correo', 'correo_electronico', 'correo electronico']));
+
+  if (!memberEmail || memberEmail !== currentEmail) {
+    var pendingReason = memberEmail
+      ? 'El correo de MiembrosIBA no coincide con el correo de la cuenta.'
+      : 'El registro de MiembrosIBA no tiene correo para validacion automatica.';
+    var pendingHeaders = soyibaAuthGetHeaders_(authSheet);
+    soyibaAuthSetMembershipPending_(authSheet, pendingHeaders, found.row, cc, pendingReason, now);
+    soyibaMiembrosIbaSetClaim_(membersSheet, member.row, found.user, currentEmail, 'pendiente_revision', pendingReason, now);
+
+    var pendingResult = soyibaAuthSessionFromRow_(authSheet, found.row, data.token);
+    pendingResult.message = 'Recibimos tu solicitud de membresia. Queda pendiente de revision por un administrador.';
+    return pendingResult;
+  }
+
+  var headers = soyibaAuthGetHeaders_(authSheet);
+  soyibaAuthSetMembershipValidated_(authSheet, headers, found.row, cc, now);
+  soyibaMiembrosIbaSetClaim_(membersSheet, member.row, found.user, currentEmail, 'validado', 'Validado automaticamente por correo coincidente.', now);
+
+  var result = soyibaAuthSessionFromRow_(authSheet, found.row, data.token);
+  result.message = 'Tu CC fue validada. Ahora eres miembro SOY IBA.';
+  return result;
 }
 
 function soyibaAuthListUsers_(data) {
@@ -692,6 +901,11 @@ function soyibaAuthBuildUser_(user) {
     firstName: user.first_name || '',
     lastName: user.last_name || '',
     phone: user.phone || '',
+    cc: user.cc || '',
+    miembroValidadoAt: user.miembro_validado_at || '',
+    miembroValidadoPor: user.miembro_validado_por || '',
+    miembroValidacionEstado: user.miembro_validacion_estado || '',
+    miembroValidacionNotas: user.miembro_validacion_notas || '',
     photoUrl: user.photo_url || '',
     tipoUsuario: user.tipo_usuario || 'Asistente',
     tituloUsuario: user.titulo_usuario || 'Asistente',
@@ -722,6 +936,173 @@ function soyibaAuthGetSheet_() {
   var sheet = spreadsheet.getSheetByName(SOYIBA_AUTH_SHEET) || spreadsheet.insertSheet(SOYIBA_AUTH_SHEET);
   soyibaAuthEnsureHeaders_(sheet);
   return sheet;
+}
+
+function soyibaMiembrosIbaGetSheet_() {
+  var spreadsheet = SOYIBA_AUTH_SPREADSHEET_ID
+    ? SpreadsheetApp.openById(SOYIBA_AUTH_SPREADSHEET_ID)
+    : SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = spreadsheet.getSheetByName(SOYIBA_MIEMBROS_IBA_SHEET) || spreadsheet.insertSheet(SOYIBA_MIEMBROS_IBA_SHEET);
+  soyibaMiembrosIbaEnsureHeaders_(sheet);
+  return sheet;
+}
+
+function soyibaMiembrosIbaEnsureHeaders_(sheet) {
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(SOYIBA_MIEMBROS_IBA_HEADERS);
+    return;
+  }
+
+  var currentWidth = Math.max(sheet.getLastColumn(), SOYIBA_MIEMBROS_IBA_HEADERS.length);
+  var headers = sheet.getRange(1, 1, 1, currentWidth).getValues()[0].map(function (value) {
+    return soyibaMiembrosIbaNormalizeHeader_(value);
+  });
+  var hasKnownCcHeader = headers.some(function (header) {
+    return soyibaMiembrosIbaIsCcHeader_(header);
+  });
+
+  if (!hasKnownCcHeader) {
+    sheet.insertRowBefore(1);
+    sheet.getRange(1, 1, 1, SOYIBA_MIEMBROS_IBA_HEADERS.length).setValues([SOYIBA_MIEMBROS_IBA_HEADERS]);
+    return;
+  }
+
+  var originalHeaders = sheet.getRange(1, 1, 1, currentWidth).getValues()[0];
+  var needsRewrite = false;
+
+  SOYIBA_MIEMBROS_IBA_HEADERS.forEach(function (expectedHeader) {
+    if (headers.indexOf(soyibaMiembrosIbaNormalizeHeader_(expectedHeader)) === -1) {
+      originalHeaders.push(expectedHeader);
+      headers.push(soyibaMiembrosIbaNormalizeHeader_(expectedHeader));
+      needsRewrite = true;
+    }
+  });
+
+  if (needsRewrite) {
+    sheet.getRange(1, 1, 1, originalHeaders.length).setValues([originalHeaders]);
+  }
+}
+
+function soyibaMiembrosIbaFindByCc_(sheet, cc) {
+  var values = sheet.getDataRange().getValues();
+
+  if (values.length < 2) {
+    return { row: -1, record: null };
+  }
+
+  var headers = values[0].map(function (header) {
+    return soyibaMiembrosIbaNormalizeHeader_(header);
+  });
+  var ccColumn = -1;
+
+  for (var index = 0; index < headers.length; index += 1) {
+    if (soyibaMiembrosIbaIsCcHeader_(headers[index])) {
+      ccColumn = index;
+      break;
+    }
+  }
+
+  if (ccColumn < 0) {
+    ccColumn = 0;
+  }
+
+  for (var rowIndex = 1; rowIndex < values.length; rowIndex += 1) {
+    if (soyibaAuthNormalizeCc_(values[rowIndex][ccColumn]) === cc) {
+      return { row: rowIndex + 1, record: soyibaAuthRowToObject_(values[0], values[rowIndex]) };
+    }
+  }
+
+  return { row: -1, record: null };
+}
+
+function soyibaMiembrosIbaNormalizeHeader_(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[áàäâ]/g, 'a')
+    .replace(/[éèëê]/g, 'e')
+    .replace(/[íìïî]/g, 'i')
+    .replace(/[óòöô]/g, 'o')
+    .replace(/[úùüû]/g, 'u')
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function soyibaMiembrosIbaIsCcHeader_(header) {
+  return ['cc', 'cedula', 'cedula_ciudadania', 'cedula_de_ciudadania', 'documento', 'numero_documento'].indexOf(header) >= 0;
+}
+
+function soyibaMiembrosIbaRecordValue_(record, aliases) {
+  if (!record) {
+    return '';
+  }
+
+  var normalizedAliases = aliases.map(function (alias) {
+    return soyibaMiembrosIbaNormalizeHeader_(alias);
+  });
+
+  for (var key in record) {
+    if (!Object.prototype.hasOwnProperty.call(record, key)) {
+      continue;
+    }
+
+    if (normalizedAliases.indexOf(soyibaMiembrosIbaNormalizeHeader_(key)) >= 0) {
+      var value = record[key];
+      return value === null || value === undefined ? '' : String(value).trim();
+    }
+  }
+
+  return '';
+}
+
+function soyibaMiembrosIbaIsInactiveRecord_(record) {
+  var estado = soyibaAuthNormalizeNameForMatch_(soyibaMiembrosIbaRecordValue_(record, ['estado', 'status', 'active', 'activo']));
+  return ['inactivo', 'inactive', 'false', 'no', '0'].indexOf(estado) >= 0;
+}
+
+function soyibaMiembrosIbaGetHeaders_(sheet) {
+  return sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), SOYIBA_MIEMBROS_IBA_HEADERS.length)).getValues()[0];
+}
+
+function soyibaMiembrosIbaSetCell_(sheet, headers, row, header, value) {
+  var normalizedHeaders = headers.map(function (item) {
+    return soyibaMiembrosIbaNormalizeHeader_(item);
+  });
+  var column = normalizedHeaders.indexOf(soyibaMiembrosIbaNormalizeHeader_(header));
+
+  if (column >= 0) {
+    sheet.getRange(row, column + 1).setValue(value);
+  }
+}
+
+function soyibaMiembrosIbaSetClaim_(sheet, row, authUser, email, status, notes, now) {
+  var headers = soyibaMiembrosIbaGetHeaders_(sheet);
+  var userId = String((authUser && (authUser.user_id || authUser.id)) || '').trim();
+
+  soyibaMiembrosIbaSetCell_(sheet, headers, row, 'claimed_user_id', userId);
+  soyibaMiembrosIbaSetCell_(sheet, headers, row, 'claimed_email', soyibaAuthNormalizeEmail_(email));
+  soyibaMiembrosIbaSetCell_(sheet, headers, row, 'claimed_at', now);
+  soyibaMiembrosIbaSetCell_(sheet, headers, row, 'claim_status', status);
+  soyibaMiembrosIbaSetCell_(sheet, headers, row, 'claim_notes', notes);
+  soyibaMiembrosIbaSetCell_(sheet, headers, row, 'updated_at', now);
+}
+
+function soyibaMembershipClaimBelongsToUser_(record, authUser, currentEmail) {
+  var claimUserId = String(soyibaMiembrosIbaRecordValue_(record, ['claimed_user_id', 'claim_user_id', 'user_id']) || '').trim();
+  var claimEmail = soyibaAuthNormalizeEmail_(soyibaMiembrosIbaRecordValue_(record, ['claimed_email', 'claim_email', 'email_reclamado']));
+  var claimStatus = soyibaAuthNormalizeMembershipStatus_(soyibaMiembrosIbaRecordValue_(record, ['claim_status', 'estado_validacion', 'validacion_estado']));
+  var userId = String((authUser && (authUser.user_id || authUser.id)) || '').trim();
+  var email = soyibaAuthNormalizeEmail_(currentEmail || (authUser && authUser.email));
+
+  if (!claimUserId && !claimEmail) {
+    return true;
+  }
+
+  if (claimStatus === 'rechazado' || claimStatus === 'rejected') {
+    return true;
+  }
+
+  return (!!claimUserId && !!userId && claimUserId === userId) || (!!claimEmail && !!email && claimEmail === email);
 }
 
 function soyibaAuthEnsureHeaders_(sheet) {
@@ -774,6 +1155,39 @@ function soyibaAuthFindUserByIdOrEmail_(sheet, userId, email) {
   return { row: -1, user: null };
 }
 
+function soyibaAuthFindUserByCc_(sheet, cc, currentUserId, currentEmail) {
+  var headers = soyibaAuthGetHeaders_(sheet);
+  var ccColumn = headers.indexOf('cc');
+  var idColumn = headers.indexOf('user_id');
+  var emailColumn = headers.indexOf('email');
+  var normalizedCc = soyibaAuthNormalizeCc_(cc);
+  var normalizedUserId = String(currentUserId || '').trim();
+  var normalizedEmail = soyibaAuthNormalizeEmail_(currentEmail);
+
+  if (ccColumn < 0 || !normalizedCc) {
+    return { row: -1, user: null };
+  }
+
+  var values = sheet.getDataRange().getValues();
+
+  for (var rowIndex = 1; rowIndex < values.length; rowIndex += 1) {
+    if (soyibaAuthNormalizeCc_(values[rowIndex][ccColumn]) !== normalizedCc) {
+      continue;
+    }
+
+    var rowUserId = String(values[rowIndex][idColumn] || '').trim();
+    var rowEmail = soyibaAuthNormalizeEmail_(values[rowIndex][emailColumn]);
+
+    if ((normalizedUserId && rowUserId === normalizedUserId) || (normalizedEmail && rowEmail === normalizedEmail)) {
+      continue;
+    }
+
+    return { row: rowIndex + 1, user: soyibaAuthRowToObject_(headers, values[rowIndex]) };
+  }
+
+  return { row: -1, user: null };
+}
+
 function soyibaAuthGetUserByRow_(sheet, row) {
   var headers = soyibaAuthGetHeaders_(sheet);
   var values = sheet.getRange(row, 1, 1, Math.max(sheet.getLastColumn(), SOYIBA_AUTH_HEADERS.length)).getValues()[0];
@@ -786,6 +1200,31 @@ function soyibaAuthSetCell_(sheet, headers, row, header, value) {
   if (column >= 0) {
     sheet.getRange(row, column + 1).setValue(value);
   }
+}
+
+function soyibaAuthSetMembershipValidated_(sheet, headers, row, cc, now) {
+  soyibaAuthSetCell_(sheet, headers, row, 'role', 'Miembro');
+  soyibaAuthSetCell_(sheet, headers, row, 'tipo_usuario', 'Miembro');
+  soyibaAuthSetCell_(sheet, headers, row, 'titulo_usuario', 'Miembro');
+  soyibaAuthSetCell_(sheet, headers, row, 'rol_sistema', 'Miembro');
+  soyibaAuthSetCell_(sheet, headers, row, 'estado_usuario', 'Activo');
+  soyibaAuthSetCell_(sheet, headers, row, 'status', 'active');
+  soyibaAuthSetCell_(sheet, headers, row, 'active', true);
+  soyibaAuthSetCell_(sheet, headers, row, 'cc', cc);
+  soyibaAuthSetCell_(sheet, headers, row, 'miembro_validado_at', now);
+  soyibaAuthSetCell_(sheet, headers, row, 'miembro_validado_por', 'MiembrosIBA.email');
+  soyibaAuthSetCell_(sheet, headers, row, 'miembro_validacion_estado', 'validado');
+  soyibaAuthSetCell_(sheet, headers, row, 'miembro_validacion_notas', '');
+  soyibaAuthSetCell_(sheet, headers, row, 'updated_at', now);
+}
+
+function soyibaAuthSetMembershipPending_(sheet, headers, row, cc, reason, now) {
+  soyibaAuthSetCell_(sheet, headers, row, 'cc', cc);
+  soyibaAuthSetCell_(sheet, headers, row, 'miembro_validado_at', '');
+  soyibaAuthSetCell_(sheet, headers, row, 'miembro_validado_por', '');
+  soyibaAuthSetCell_(sheet, headers, row, 'miembro_validacion_estado', 'pendiente_revision');
+  soyibaAuthSetCell_(sheet, headers, row, 'miembro_validacion_notas', reason);
+  soyibaAuthSetCell_(sheet, headers, row, 'updated_at', now);
 }
 
 function soyibaAuthRowToObject_(headers, row) {
@@ -801,6 +1240,27 @@ function soyibaAuthGetHeaders_(sheet) {
 
 function soyibaAuthNormalizeEmail_(email) {
   return String(email || '').trim().toLowerCase();
+}
+
+function soyibaAuthNormalizeCc_(value) {
+  return String(value || '').replace(/\D/g, '').trim();
+}
+
+function soyibaAuthNormalizeMembershipStatus_(value) {
+  return soyibaAuthNormalizeNameForMatch_(value).replace(/\s+/g, '_');
+}
+
+function soyibaAuthNormalizeNameForMatch_(value) {
+  var text = String(value || '').trim().toLowerCase();
+
+  if (text.normalize) {
+    text = text.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  }
+
+  return text
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function soyibaAuthIsTrue_(value) {
@@ -879,6 +1339,62 @@ function soyibaAuthNormalizeAccessText_(value) {
     .replace(/[íìïî]/g, 'i')
     .replace(/[óòöô]/g, 'o')
     .replace(/[úùüû]/g, 'u');
+}
+
+function soyibaAuthClearPasswordReset_(sheet, row) {
+  var headers = soyibaAuthGetHeaders_(sheet);
+  soyibaAuthSetCell_(sheet, headers, row, 'reset_token_hash', '');
+  soyibaAuthSetCell_(sheet, headers, row, 'reset_token_salt', '');
+  soyibaAuthSetCell_(sheet, headers, row, 'reset_token_expires_at', '');
+  soyibaAuthSetCell_(sheet, headers, row, 'reset_requested_at', '');
+}
+
+function soyibaAuthCreateResetToken_() {
+  return Utilities.getUuid() + Utilities.getUuid().replace(/-/g, '');
+}
+
+function soyibaAuthBuildResetLink_(appUrl, email, token) {
+  var baseUrl = String(appUrl || '').trim().split('#')[0];
+
+  if (!baseUrl) {
+    throw new Error('Falta la URL de la app para generar el enlace de recuperacion.');
+  }
+
+  return baseUrl + '#restablecer?email=' + encodeURIComponent(email) + '&token=' + encodeURIComponent(token);
+}
+
+function soyibaAuthGetFirstName_(user) {
+  var firstName = String(user.first_name || user.firstName || '').trim();
+
+  if (firstName) {
+    return firstName;
+  }
+
+  return String(user.display_name || user.displayName || user.email || 'SOY IBA').trim().split(' ')[0];
+}
+
+function soyibaAuthBuildPasswordResetEmailHtml_(user, resetLink) {
+  var name = soyibaAuthEscapeHtml_(soyibaAuthGetFirstName_(user));
+  var safeLink = soyibaAuthEscapeHtml_(resetLink);
+
+  return [
+    '<div style="font-family:Arial,sans-serif;color:#06245c;line-height:1.5">',
+    '<h2 style="margin:0 0 12px">Restablece tu contrasena</h2>',
+    '<p>Hola ' + name + ', recibimos una solicitud para restablecer tu contrasena de SOY IBA.</p>',
+    '<p><a href="' + safeLink + '" style="display:inline-block;background:#062b70;color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:10px;font-weight:700">Crear nueva contrasena</a></p>',
+    '<p>Este enlace vence en ' + SOYIBA_PASSWORD_RESET_TTL_MINUTES + ' minutos.</p>',
+    '<p>Si no hiciste esta solicitud, puedes ignorar este mensaje.</p>',
+    '</div>'
+  ].join('');
+}
+
+function soyibaAuthEscapeHtml_(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function soyibaAuthHashPassword_(password, salt) {
@@ -1087,7 +1603,11 @@ function soyibaPublicacionesHandle_(action, data) {
   }
 
   if (action === 'recordView') {
-    return soyibaPublicacionesRecordStat_(data, 'views');
+    return soyibaPublicacionesRecordView_(data);
+  }
+
+  if (action === 'recordViews') {
+    return soyibaPublicacionesRecordViews_(data);
   }
 
   if (action === 'recordShare') {
@@ -1104,7 +1624,8 @@ function soyibaPublicacionesList_(data) {
   var asistenciasEcoSheet = soyibaAsistenciasEcoGetSheet_();
   var values = sheet.getDataRange().getValues();
   var headers = soyibaPublicacionesGetHeaders_(sheet);
-  var currentUser = soyibaPublicacionesGetCurrentUser_(data);
+  var publisherUsersByKey = soyibaPublicacionesGetAuthUsersMap_();
+  var currentUser = soyibaPublicacionesGetCurrentUser_(data, publisherUsersByKey);
   var savedMap = soyibaPublicacionesGetSavedMap_(savedSheet, currentUser);
   var yovoyMap = soyibaPublicacionesGetYoVoyMap_(yovoySheet, currentUser);
   var ecoAttendanceMap = soyibaPublicacionesGetEcoAttendanceMap_(asistenciasEcoSheet, currentUser);
@@ -1131,7 +1652,8 @@ function soyibaPublicacionesList_(data) {
       record,
       savedMap[String(record.publication_id)] === true,
       yovoyMap[String(record.publication_id)] === true,
-      ecoAttendanceMap[String(record.publication_id)] === true
+      ecoAttendanceMap[String(record.publication_id)] === true,
+      publisherUsersByKey
     ));
   }
 
@@ -1542,6 +2064,140 @@ function soyibaPublicacionesToggleEcoAttendance_(data) {
   }
 }
 
+function soyibaPublicacionesRecordView_(data) {
+  var publicationId = String(data.publicationId || data.publication_id || '').trim();
+  var user = soyibaPublicacionesGetCurrentUser_(data);
+
+  if (!publicationId) {
+    return { ok: false, error: 'Publicacion requerida.' };
+  }
+
+  if (!user.id && !user.email) {
+    return { ok: false, error: 'Usuario requerido para registrar vista.' };
+  }
+
+  var lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+
+  try {
+    var publicationSheet = soyibaPublicacionesGetSheet_();
+    var foundPublication = soyibaPublicacionesFindRow_(publicationSheet, publicationId);
+
+    if (foundPublication.row < 1) {
+      return { ok: false, error: 'Publicacion no encontrada.' };
+    }
+
+    var viewsSheet = soyibaViewsGetSheet_();
+    var foundView = soyibaPublicacionesFindViewRow_(viewsSheet, publicationId, user);
+
+    if (foundView.row > 0) {
+      return {
+        ok: true,
+        viewRecorded: false,
+        viewsCount: Number(foundPublication.record.views || 0)
+      };
+    }
+
+    viewsSheet.appendRow([Utilities.getUuid(), publicationId, user.id, user.email, user.name, new Date().toISOString()]);
+    soyibaPublicacionesIncrement_(publicationSheet, foundPublication.row, 'views', 1);
+
+    var updatedRecord = soyibaPublicacionesReadRow_(publicationSheet, foundPublication.row);
+
+    return {
+      ok: true,
+      viewRecorded: true,
+      viewsCount: Number(updatedRecord.views || 0)
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function soyibaPublicacionesRecordViews_(data) {
+  var publicationIds = soyibaPublicacionesNormalizeIdList_(data.publicationIds || data.publication_ids || data.ids);
+  var user = soyibaPublicacionesGetCurrentUser_(data);
+
+  if (publicationIds.length === 0) {
+    return { ok: false, error: 'Publicaciones requeridas.' };
+  }
+
+  if (!user.id && !user.email) {
+    return { ok: false, error: 'Usuario requerido para registrar vistas.' };
+  }
+
+  var lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+
+  try {
+    var now = new Date().toISOString();
+    var publicationSheet = soyibaPublicacionesGetSheet_();
+    var publicationHeaders = soyibaPublicacionesGetHeaders_(publicationSheet);
+    var publicationValues = publicationSheet.getDataRange().getValues();
+    var publicationIdColumn = publicationHeaders.indexOf('publication_id');
+    var viewsColumn = publicationHeaders.indexOf('views');
+    var publicationRowsById = {};
+    var viewsCountById = {};
+
+    for (var publicationRowIndex = 1; publicationRowIndex < publicationValues.length; publicationRowIndex += 1) {
+      var rowPublicationId = String(publicationValues[publicationRowIndex][publicationIdColumn] || '').trim();
+
+      if (rowPublicationId) {
+        publicationRowsById[rowPublicationId] = publicationRowIndex + 1;
+        viewsCountById[rowPublicationId] = Number(publicationValues[publicationRowIndex][viewsColumn] || 0);
+      }
+    }
+
+    var viewsSheet = soyibaViewsGetSheet_();
+    var viewHeaders = viewsSheet.getRange(1, 1, 1, Math.max(viewsSheet.getLastColumn(), SOYIBA_VIEWS_HEADERS.length)).getValues()[0];
+    var viewValues = viewsSheet.getDataRange().getValues();
+    var viewPublicationColumn = viewHeaders.indexOf('publication_id');
+    var viewUserIdColumn = viewHeaders.indexOf('user_id');
+    var viewEmailColumn = viewHeaders.indexOf('user_email');
+    var existingViews = {};
+
+    for (var viewRowIndex = 1; viewRowIndex < viewValues.length; viewRowIndex += 1) {
+      var existingPublicationId = String(viewValues[viewRowIndex][viewPublicationColumn] || '').trim();
+      var sameUser = (user.id && String(viewValues[viewRowIndex][viewUserIdColumn] || '').trim() === user.id) ||
+        (user.email && soyibaAuthNormalizeEmail_(viewValues[viewRowIndex][viewEmailColumn]) === user.email);
+
+      if (sameUser && existingPublicationId) {
+        existingViews[existingPublicationId] = true;
+      }
+    }
+
+    var rowsToAppend = [];
+    var recordedIds = [];
+
+    for (var index = 0; index < publicationIds.length; index += 1) {
+      var publicationId = publicationIds[index];
+      var publicationRow = publicationRowsById[publicationId];
+
+      if (!publicationRow || existingViews[publicationId]) {
+        continue;
+      }
+
+      var nextViews = Number(viewsCountById[publicationId] || 0) + 1;
+      viewsCountById[publicationId] = nextViews;
+      existingViews[publicationId] = true;
+      recordedIds.push(publicationId);
+      rowsToAppend.push([Utilities.getUuid(), publicationId, user.id, user.email, user.name, now]);
+      publicationSheet.getRange(publicationRow, viewsColumn + 1).setValue(nextViews);
+    }
+
+    if (rowsToAppend.length > 0) {
+      viewsSheet.getRange(viewsSheet.getLastRow() + 1, 1, rowsToAppend.length, SOYIBA_VIEWS_HEADERS.length).setValues(rowsToAppend);
+    }
+
+    return {
+      ok: true,
+      viewRecordedIds: recordedIds,
+      viewsCountById: viewsCountById
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 function soyibaPublicacionesRecordStat_(data, header) {
   var sheet = soyibaPublicacionesGetSheet_();
   var found = soyibaPublicacionesFindRow_(sheet, data.publicationId || data.publication_id);
@@ -1554,19 +2210,28 @@ function soyibaPublicacionesRecordStat_(data, header) {
   return { ok: true };
 }
 
-function soyibaPublicacionesGetCurrentUser_(data) {
+function soyibaPublicacionesGetCurrentUser_(data, usersByKey) {
+  data = data || {};
   var source = (data && data.user) || {};
   var user = null;
+  var userId = source.id || data.userId;
+  var email = source.email || data.email;
 
-  try {
-    var authSheet = soyibaAuthGetSheet_();
-    var found = soyibaAuthFindUserByIdOrEmail_(authSheet, source.id || data.userId, source.email || data.email);
+  if (usersByKey) {
+    user = usersByKey[soyibaPublicacionesUserMapKey_(userId)] || usersByKey[soyibaPublicacionesUserMapKey_(email)] || null;
+  }
 
-    if (found.row > 0) {
-      user = found.user;
+  if (!user) {
+    try {
+      var authSheet = soyibaAuthGetSheet_();
+      var found = soyibaAuthFindUserByIdOrEmail_(authSheet, userId, email);
+
+      if (found.row > 0) {
+        user = found.user;
+      }
+    } catch (error) {
+      user = null;
     }
-  } catch (error) {
-    user = null;
   }
 
   var verificado = user
@@ -1615,7 +2280,19 @@ function soyibaPublicacionesIsManager_(user) {
   return role === 'admin' || role === 'moderador';
 }
 
-function soyibaPublicacionesFindPublisherUser_(record) {
+function soyibaPublicacionesFindPublisherUser_(record, usersByKey) {
+  if (usersByKey) {
+    var byId = usersByKey[soyibaPublicacionesUserMapKey_(record.publisher_user_id)];
+    if (byId) {
+      return byId;
+    }
+
+    var byEmail = usersByKey[soyibaPublicacionesUserMapKey_(record.publisher_email)];
+    if (byEmail) {
+      return byEmail;
+    }
+  }
+
   try {
     var authSheet = soyibaAuthGetSheet_();
     var found = soyibaAuthFindUserByIdOrEmail_(authSheet, record.publisher_user_id, record.publisher_email);
@@ -1625,14 +2302,48 @@ function soyibaPublicacionesFindPublisherUser_(record) {
   }
 }
 
-function soyibaPublicacionesBuildResponse_(record, savedByCurrentUser, yovoyByCurrentUser, ecoAttendanceByCurrentUser) {
+function soyibaPublicacionesGetAuthUsersMap_() {
+  var map = {};
+
+  try {
+    var sheet = soyibaAuthGetSheet_();
+    var headers = soyibaAuthGetHeaders_(sheet);
+    var values = sheet.getDataRange().getValues();
+    var idColumn = headers.indexOf('user_id');
+    var emailColumn = headers.indexOf('email');
+
+    for (var rowIndex = 1; rowIndex < values.length; rowIndex += 1) {
+      var user = soyibaAuthRowToObject_(headers, values[rowIndex]);
+      var idKey = soyibaPublicacionesUserMapKey_(idColumn >= 0 ? values[rowIndex][idColumn] : user.user_id);
+      var emailKey = soyibaPublicacionesUserMapKey_(emailColumn >= 0 ? values[rowIndex][emailColumn] : user.email);
+
+      if (idKey) {
+        map[idKey] = user;
+      }
+
+      if (emailKey) {
+        map[emailKey] = user;
+      }
+    }
+  } catch (error) {
+    return {};
+  }
+
+  return map;
+}
+
+function soyibaPublicacionesUserMapKey_(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function soyibaPublicacionesBuildResponse_(record, savedByCurrentUser, yovoyByCurrentUser, ecoAttendanceByCurrentUser, publisherUsersByKey) {
   var capacityAvailable = Number(record.cupos || 0);
   var attendeesCount = Number(record.yovoy || 0);
   var capacityTotal = capacityAvailable + attendeesCount;
   var ecoAttendeesCount = Number(record.asistentes || 0);
   var ecoLatitude = soyibaPublicacionesNumberOrNull_(record.latitud);
   var ecoLongitude = soyibaPublicacionesLongitudeOrNull_(record.longitud);
-  var publisherUser = soyibaPublicacionesFindPublisherUser_(record);
+  var publisherUser = soyibaPublicacionesFindPublisherUser_(record, publisherUsersByKey);
   var publisherPhotoUrl = String((publisherUser && publisherUser.photo_url) || record.publisher_photo_url || '');
 
   return {
@@ -1869,6 +2580,15 @@ function soyibaYoVoyGetSheet_() {
   return sheet;
 }
 
+function soyibaViewsGetSheet_() {
+  var spreadsheet = SOYIBA_PUBLICACIONES_SPREADSHEET_ID
+    ? SpreadsheetApp.openById(SOYIBA_PUBLICACIONES_SPREADSHEET_ID)
+    : SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = spreadsheet.getSheetByName(SOYIBA_VIEWS_SHEET) || spreadsheet.insertSheet(SOYIBA_VIEWS_SHEET);
+  soyibaPublicacionesEnsureHeaders_(sheet, SOYIBA_VIEWS_HEADERS);
+  return sheet;
+}
+
 function soyibaAsistenciasEcoGetSheet_() {
   var spreadsheet = SOYIBA_PUBLICACIONES_SPREADSHEET_ID
     ? SpreadsheetApp.openById(SOYIBA_PUBLICACIONES_SPREADSHEET_ID)
@@ -1981,6 +2701,26 @@ function soyibaPublicacionesGetYoVoyMap_(sheet, user) {
 
 function soyibaPublicacionesFindYoVoyRow_(sheet, publicationId, user) {
   var headers = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), SOYIBA_YOVOY_HEADERS.length)).getValues()[0];
+  var publicationColumn = headers.indexOf('publication_id');
+  var userIdColumn = headers.indexOf('user_id');
+  var emailColumn = headers.indexOf('user_email');
+  var values = sheet.getDataRange().getValues();
+
+  for (var rowIndex = 1; rowIndex < values.length; rowIndex += 1) {
+    var samePublication = String(values[rowIndex][publicationColumn] || '').trim() === publicationId;
+    var sameUser = (user.id && String(values[rowIndex][userIdColumn] || '').trim() === user.id) ||
+      (user.email && soyibaAuthNormalizeEmail_(values[rowIndex][emailColumn]) === user.email);
+
+    if (samePublication && sameUser) {
+      return { row: rowIndex + 1 };
+    }
+  }
+
+  return { row: -1 };
+}
+
+function soyibaPublicacionesFindViewRow_(sheet, publicationId, user) {
+  var headers = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), SOYIBA_VIEWS_HEADERS.length)).getValues()[0];
   var publicationColumn = headers.indexOf('publication_id');
   var userIdColumn = headers.indexOf('user_id');
   var emailColumn = headers.indexOf('user_email');
@@ -2303,6 +3043,30 @@ function soyibaPublicacionesIsMembersOnly_(record) {
 
 function soyibaPublicacionesIsMemberUser_(user) {
   return String((user && (user.tipoUsuario || user.tipo_usuario)) || '').trim().toLowerCase() === 'miembro';
+}
+
+function soyibaPublicacionesNormalizeIdList_(value) {
+  var rawItems = [];
+
+  if (Array.isArray(value)) {
+    rawItems = value;
+  } else if (value) {
+    rawItems = String(value).split(',');
+  }
+
+  var seen = {};
+  var ids = [];
+
+  for (var index = 0; index < rawItems.length; index += 1) {
+    var id = String(rawItems[index] || '').trim();
+
+    if (id && !seen[id]) {
+      seen[id] = true;
+      ids.push(id);
+    }
+  }
+
+  return ids;
 }
 
 function soyibaPublicacionesIsTrue_(value) {

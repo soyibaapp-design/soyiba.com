@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type TouchEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type InputHTMLAttributes, type TouchEvent } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
   BadgeCheck,
@@ -74,7 +74,7 @@ import {
   isValidRelatedLinkUrl,
   isYouTubeUrl,
   recordPublicationShare,
-  recordPublicationView,
+  recordPublicationViews,
   toggleEcoAttendance,
   toggleEventGoing,
   togglePublicationSave,
@@ -235,15 +235,12 @@ export function PublicationsFeed({
       setPublications(cached);
       setIsLoading(false);
       setError('');
-      return () => {
-        isMounted = false;
-      };
+    } else {
+      setIsLoading(true);
+      setError('');
     }
 
-    setIsLoading(true);
-    setError('');
-
-    getPublicationFeed(session, filterType ? { type: filterType } : {})
+    getPublicationFeed(session, filterType ? { type: filterType } : {}, Boolean(cached))
       .then((items) => {
         if (isMounted) {
           setPublications(items);
@@ -341,19 +338,37 @@ export function PublicationsFeed({
       return;
     }
 
-    publications.forEach((publication) => {
-      const viewKey = `soyiba.viewed.${session.user.id || session.user.email}.${publication.id}`;
+    const publicationIdsToRecord: string[] = [];
+    const viewKeysToRollback: string[] = [];
 
-      if (window.sessionStorage.getItem(viewKey)) {
+    publications.forEach((publication) => {
+      const viewKey = getPublicationViewStorageKey(session, publication.id);
+
+      if (readPublicationViewStored(viewKey)) {
         return;
       }
 
-      window.sessionStorage.setItem(viewKey, '1');
-      setPublications((current) =>
-        current.map((item) => (item.id === publication.id ? { ...item, viewsCount: item.viewsCount + 1 } : item)),
-      );
-      recordPublicationView(session, publication.id).catch(() => undefined);
+      storePublicationView(viewKey);
+      publicationIdsToRecord.push(publication.id);
+      viewKeysToRollback.push(viewKey);
     });
+
+    if (publicationIdsToRecord.length === 0) {
+      return;
+    }
+
+    const publicationIdsToRecordSet = new Set(publicationIdsToRecord);
+    setPublications((current) =>
+      current.map((item) => (publicationIdsToRecordSet.has(item.id) ? { ...item, viewsCount: item.viewsCount + 1 } : item)),
+    );
+
+    const timeout = window.setTimeout(() => {
+      recordPublicationViews(session, publicationIdsToRecord).catch(() => {
+        viewKeysToRollback.forEach(removePublicationViewStored);
+      });
+    }, 900);
+
+    return () => window.clearTimeout(timeout);
   }, [publicMode, publications, session]);
 
   useEffect(() => {
@@ -852,6 +867,7 @@ export function PublicationsFeed({
               publicMode={publicMode}
               onClose={() => setActivePublicationId('')}
               onShare={() => handleShare(activeDetailPublication)}
+              onToggleSave={() => handleToggleSave(activeDetailPublication)}
               onToggleGoing={() => handleToggleGoing(activeDetailPublication)}
               onAuthRequired={onAuthRequired}
               onOpenImage={(preview) => setImagePreview(preview)}
@@ -1873,6 +1889,7 @@ function PublicationDetailsModal({
   publicMode,
   onClose,
   onShare,
+  onToggleSave,
   onToggleGoing,
   onAuthRequired,
   onOpenImage,
@@ -1882,6 +1899,7 @@ function PublicationDetailsModal({
   publicMode: boolean;
   onClose: () => void;
   onShare: () => void;
+  onToggleSave: () => void;
   onToggleGoing: () => void;
   onAuthRequired?: (mode: 'login' | 'register') => void;
   onOpenImage: (preview: ImagePreview) => void;
@@ -1930,7 +1948,17 @@ function PublicationDetailsModal({
           <div className="px-4 pb-4 pt-3">
             <div className="flex items-center justify-between gap-3">
               <div className="flex min-w-0 items-center gap-3 text-[#253047]">
-                <Stat icon={Bookmark} value={publication.savedCount} label="Guardados" />
+                {publicMode ? (
+                  <Stat icon={Bookmark} value={publication.savedCount} label="Guardados" />
+                ) : (
+                  <StatButton
+                    active={publication.savedByCurrentUser}
+                    icon={Bookmark}
+                    value={publication.savedCount}
+                    label="Guardados"
+                    onClick={onToggleSave}
+                  />
+                )}
                 <Stat icon={Eye} value={publication.viewsCount} label="Views" />
                 {!publicMode ? (
                   <button type="button" onClick={onShare} className="inline-flex items-center gap-1.5 text-sm font-bold text-[#253047]">
@@ -2707,7 +2735,14 @@ function PublicationMedia({
   if (item.type === 'driveVideo') {
     if (!isGoogleDriveFile(item.url)) {
       return (
-        <video className="h-full w-full bg-black object-contain" src={item.url} title={item.title || publicationTitle} controls playsInline />
+        <video
+          className="h-full w-full bg-black object-contain"
+          src={item.url}
+          title={item.title || publicationTitle}
+          controls
+          playsInline
+          preload="metadata"
+        />
       );
     }
 
@@ -2965,6 +3000,15 @@ function PublicationComposerModal({
       }
     }
 
+    if (form.type === 'Grupo ECO') {
+      const coordinateValidation = validateEcoCoordinateInputs(form.ecoLatitude, form.ecoLongitude);
+
+      if (coordinateValidation) {
+        setError(coordinateValidation);
+        return;
+      }
+    }
+
     const currentVideoFeedback = getVideoUrlFeedback(form.videoUrl, form.videoFile);
 
     if (currentVideoFeedback?.tone === 'error') {
@@ -3134,8 +3178,8 @@ function PublicationComposerModal({
               <TextField label="Barrio o sector" value={form.ecoNeighborhood} onChange={(value) => updateField('ecoNeighborhood', value)} icon={MapPin} placeholder="Barrio" />
               <TextField label="Ciudad" value={form.ecoCity} onChange={(value) => updateField('ecoCity', value)} icon={MapPinned} placeholder="Ibagué" />
               <TextField label="Dirección o punto de encuentro" value={form.ecoAddress} onChange={(value) => updateField('ecoAddress', value)} icon={Navigation} placeholder="Dirección o referencia" />
-              <TextField label="Latitud" value={form.ecoLatitude} onChange={(value) => updateField('ecoLatitude', value)} icon={Compass} type="number" placeholder="4.4389" />
-              <TextField label="Longitud" value={form.ecoLongitude} onChange={(value) => updateField('ecoLongitude', value)} icon={Compass} type="number" placeholder="-75.2322" />
+              <TextField label="Latitud" value={form.ecoLatitude} onChange={(value) => updateField('ecoLatitude', value)} icon={Compass} inputMode="decimal" placeholder="6,153316268" />
+              <TextField label="Longitud" value={form.ecoLongitude} onChange={(value) => updateField('ecoLongitude', value)} icon={Compass} inputMode="decimal" placeholder="-75,58455071" />
               <TextField label="Inicio de vigencia" value={form.ecoValidFrom} onChange={(value) => updateField('ecoValidFrom', value)} icon={Clock3} type="datetime-local" />
               <TextField label="Fin de vigencia" value={form.ecoValidUntil} onChange={(value) => updateField('ecoValidUntil', value)} icon={Clock3} type="datetime-local" />
             </div>
@@ -3289,6 +3333,7 @@ function TextField({
   icon: Icon,
   type = 'text',
   placeholder,
+  inputMode,
 }: {
   label: string;
   value: string;
@@ -3296,6 +3341,7 @@ function TextField({
   icon?: LucideIcon;
   type?: string;
   placeholder?: string;
+  inputMode?: InputHTMLAttributes<HTMLInputElement>['inputMode'];
 }) {
   return (
     <label className="block min-w-0">
@@ -3304,6 +3350,7 @@ function TextField({
         {Icon ? <Icon size={16} className="shrink-0 text-[#8A99AE]" /> : null}
         <input
           type={type}
+          inputMode={inputMode}
           value={value}
           onChange={(event) => onChange(event.target.value)}
           placeholder={placeholder}
@@ -3896,6 +3943,52 @@ function clampIndex(index: number, length: number) {
   return Math.min(Math.max(index, 0), length - 1);
 }
 
+function getPublicationViewStorageKey(session: SoyibaSession, publicationId: string) {
+  const userKey = session.user.id
+    ? `id:${session.user.id}`
+    : session.user.email
+      ? `email:${session.user.email.trim().toLowerCase()}`
+      : 'anon';
+
+  return `soyiba.publicationView.${encodeURIComponent(userKey)}.${encodeURIComponent(publicationId)}`;
+}
+
+function readPublicationViewStored(viewKey: string) {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  try {
+    return window.localStorage.getItem(viewKey) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function storePublicationView(viewKey: string) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(viewKey, '1');
+  } catch {
+    // Local storage can be disabled in private contexts.
+  }
+}
+
+function removePublicationViewStored(viewKey: string) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    window.localStorage.removeItem(viewKey);
+  } catch {
+    // Local storage can be disabled in private contexts.
+  }
+}
+
 function readHomeEventOpened(publicationId: string) {
   if (typeof window === 'undefined') {
     return false;
@@ -4081,10 +4174,40 @@ function numberFromInput(value: string) {
   return Number.isFinite(parsed) ? Math.max(0, Math.round(parsed)) : 0;
 }
 
+function validateEcoCoordinateInputs(latitudeValue: string, longitudeValue: string) {
+  const latitudeText = latitudeValue.trim();
+  const longitudeText = longitudeValue.trim();
+
+  if (!latitudeText && !longitudeText) {
+    return '';
+  }
+
+  if (!latitudeText || !longitudeText) {
+    return 'Ingresa latitud y longitud. Las coordenadas deben ser decimales, por ejemplo: latitud 6,153316268 y longitud -75,58455071.';
+  }
+
+  const latitude = parseCoordinateInput(latitudeText);
+  const longitude = parseCoordinateInput(longitudeText);
+
+  if (latitude === null || longitude === null || latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+    return 'Las coordenadas no son validas. Deben obedecer a un formato decimal como este ejemplo: latitud 6,153316268 y longitud -75,58455071.';
+  }
+
+  return '';
+}
+
 function geoNumberFromInput(value: string) {
+  return parseCoordinateInput(value);
+}
+
+function parseCoordinateInput(value: string) {
   const normalized = value.trim().replace(',', '.');
 
   if (!normalized) {
+    return null;
+  }
+
+  if (!/^[+-]?\d+(?:\.\d+)?$/.test(normalized)) {
     return null;
   }
 

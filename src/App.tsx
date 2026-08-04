@@ -1,11 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { CalendarDays, Heart, Home, UserRound, UsersRound } from 'lucide-react';
 import { AppHeader } from './components/AppHeader';
 import { BottomNav, type BottomNavItem } from './components/BottomNav';
 import { IbaSlidesModal, SoyibaSideMenu, type SideMenuScreenId } from './components/ChurchInfoExperience';
+import { PwaInstallPrompt } from './components/PwaInstallPrompt';
 import { AuthScreen } from './screens/Auth/AuthScreen';
-import type { SoyibaSession } from './screens/Auth/auth.service';
+import { refreshCurrentSession, type SoyibaSession } from './screens/Auth/auth.service';
 import { DonacionesScreen } from './screens/Donaciones/DonacionesScreen';
 import { InicioScreen } from './screens/Inicio/InicioScreen';
 import { MembersPage } from './screens/Miembros/MembersPage';
@@ -54,6 +55,7 @@ export default function App() {
   const [authMode, setAuthMode] = useState<AuthMode | null>(null);
   const [liveNow, setLiveNow] = useState(() => isSundayLiveWindow(new Date()));
   const [liveBadgeTestEnabled, setLiveBadgeTestEnabled] = useState(() => loadLiveBadgeTestFlag());
+  const refreshSessionKeyRef = useRef('');
   const showLiveBadge = liveNow || (liveBadgeTestEnabled && isLiveBadgeTestUser(session));
 
   useEffect(() => {
@@ -82,6 +84,57 @@ export default function App() {
     const interval = window.setInterval(updateLiveState, 30000);
     return () => window.clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (!session || session.token === publicSession.token || (!session.user.id && !session.user.email)) {
+      return;
+    }
+
+    const identityKey = `${session.token}|${session.user.id || ''}|${session.user.email || ''}`;
+
+    if (refreshSessionKeyRef.current === identityKey) {
+      return;
+    }
+
+    refreshSessionKeyRef.current = identityKey;
+    let cancelled = false;
+
+    refreshCurrentSession(session).then((result) => {
+      if (!cancelled && result.ok) {
+        handleSessionUpdated(result.session);
+      }
+    }).catch(() => {
+      refreshSessionKeyRef.current = '';
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.token, session?.user.id, session?.user.email]);
+
+  useEffect(() => {
+    function refreshWhenVisible() {
+      if (document.visibilityState !== 'visible' || !session || session.token === publicSession.token) {
+        return;
+      }
+
+      refreshCurrentSession(session)
+        .then((result) => {
+          if (result.ok) {
+            handleSessionUpdated(result.session);
+          }
+        })
+        .catch(() => undefined);
+    }
+
+    window.addEventListener('focus', refreshWhenVisible);
+    document.addEventListener('visibilitychange', refreshWhenVisible);
+
+    return () => {
+      window.removeEventListener('focus', refreshWhenVisible);
+      document.removeEventListener('visibilitychange', refreshWhenVisible);
+    };
+  }, [session]);
 
   function handleSignedIn(nextSession: SoyibaSession) {
     handleSessionUpdated(nextSession);
@@ -129,55 +182,66 @@ export default function App() {
 
   if (!session) {
     if (authMode || !publicationToOpenId) {
-      return <AuthScreen onSignedIn={handleSignedIn} initialMode={authMode || undefined} />;
+      return (
+        <>
+          <AuthScreen onSignedIn={handleSignedIn} initialMode={authMode || undefined} />
+          <PwaInstallPrompt />
+        </>
+      );
     }
 
     return (
-      <SoyibaShell
-        activeScreen={activeScreen}
-        session={publicSession}
-        publicationToOpenId={publicationToOpenId}
-        publicationComposerSignal={0}
-        publicationComposerOpen={false}
-        publicMode
-        onNotificationsClick={() => setAuthMode('login')}
-        onComposerOpenChange={setPublicationComposerOpen}
-        onOpenEventFromHome={handleOpenEventFromHome}
-        onOpenEventsFromHome={handleOpenEventsFromHome}
-        onOpenEcoFromHome={handleOpenEcoFromHome}
-        onPublicationOpened={() => undefined}
-        onAuthRequired={setAuthMode}
-        showLiveBadge={liveNow}
-      />
+      <>
+        <SoyibaShell
+          activeScreen={activeScreen}
+          session={publicSession}
+          publicationToOpenId={publicationToOpenId}
+          publicationComposerSignal={0}
+          publicationComposerOpen={false}
+          publicMode
+          onNotificationsClick={() => setAuthMode('login')}
+          onComposerOpenChange={setPublicationComposerOpen}
+          onOpenEventFromHome={handleOpenEventFromHome}
+          onOpenEventsFromHome={handleOpenEventsFromHome}
+          onOpenEcoFromHome={handleOpenEcoFromHome}
+          onPublicationOpened={() => undefined}
+          onAuthRequired={setAuthMode}
+          showLiveBadge={liveNow}
+        />
+        <PwaInstallPrompt />
+      </>
     );
   }
 
   return (
-    <SoyibaShell
-      activeScreen={activeScreen}
-      session={session}
-      publicationToOpenId={publicationToOpenId}
-      publicationComposerSignal={publicationComposerSignal}
-      publicationComposerOpen={publicationComposerOpen}
-      onNotificationsClick={() => setActiveScreen('perfil')}
-      onComposerOpenChange={setPublicationComposerOpen}
-      onOpenEventFromHome={handleOpenEventFromHome}
-      onOpenEventsFromHome={handleOpenEventsFromHome}
-      onOpenEcoFromHome={handleOpenEcoFromHome}
-      onPublicationOpened={() => setPublicationToOpenId('')}
-      onAuthRequired={setAuthMode}
-      onNavigate={setActiveScreen}
-      onLogout={handleLogout}
-      onSessionUpdated={handleSessionUpdated}
-      showLiveBadge={showLiveBadge}
-      liveBadgeTestEnabled={liveBadgeTestEnabled}
-      onLiveBadgeTestChange={handleLiveBadgeTestChange}
-      onCreatePublication={() => {
-        setActiveScreen('inicio');
-        setPublicationComposerSignal(Date.now());
-      }}
-      onOpenPublicationFromProfile={handleOpenPublicationFromProfile}
-    />
+    <>
+      <SoyibaShell
+        activeScreen={activeScreen}
+        session={session}
+        publicationToOpenId={publicationToOpenId}
+        publicationComposerSignal={publicationComposerSignal}
+        publicationComposerOpen={publicationComposerOpen}
+        onNotificationsClick={() => setActiveScreen('perfil')}
+        onComposerOpenChange={setPublicationComposerOpen}
+        onOpenEventFromHome={handleOpenEventFromHome}
+        onOpenEventsFromHome={handleOpenEventsFromHome}
+        onOpenEcoFromHome={handleOpenEcoFromHome}
+        onPublicationOpened={() => setPublicationToOpenId('')}
+        onAuthRequired={setAuthMode}
+        onNavigate={setActiveScreen}
+        onLogout={handleLogout}
+        onSessionUpdated={handleSessionUpdated}
+        showLiveBadge={showLiveBadge}
+        liveBadgeTestEnabled={liveBadgeTestEnabled}
+        onLiveBadgeTestChange={handleLiveBadgeTestChange}
+        onCreatePublication={() => {
+          setActiveScreen('inicio');
+          setPublicationComposerSignal(Date.now());
+        }}
+        onOpenPublicationFromProfile={handleOpenPublicationFromProfile}
+      />
+      <PwaInstallPrompt hasBottomNav={!publicationComposerOpen} />
+    </>
   );
 }
 

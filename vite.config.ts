@@ -8,6 +8,12 @@ const withBase = (path: string) => `${appBase}${path.replace(/^\/+/, '')}`;
 
 export default defineConfig({
   base: appBase,
+  server: {
+    allowedHosts: ['.loca.lt'],
+  },
+  preview: {
+    allowedHosts: ['.loca.lt'],
+  },
   plugins: [
     react(),
     tailwindcss(),

@@ -8,6 +8,11 @@ export type SoyibaUser = {
   firstName?: string;
   lastName?: string;
   phone?: string;
+  cc?: string;
+  miembroValidadoAt?: string;
+  miembroValidadoPor?: string;
+  miembroValidacionEstado?: string;
+  miembroValidacionNotas?: string;
   tiempoIba?: string;
   photoUrl?: string;
   tipoUsuario?: 'Asistente' | 'Miembro' | string;
@@ -52,6 +57,7 @@ type AuthResponse = {
   ok: boolean;
   token?: string;
   user?: SoyibaUser;
+  message?: string;
   error?: string;
 };
 
@@ -61,6 +67,10 @@ type AuthResult =
 
 export type BasicAuthResult =
   | { ok: true; message: string }
+  | { ok: false; error: string };
+
+export type VerifyMembershipResult =
+  | { ok: true; session: SoyibaSession; message: string }
   | { ok: false; error: string };
 
 export async function signInWithEmailPassword(email: string, password: string): Promise<AuthResult> {
@@ -159,11 +169,11 @@ export async function updateUserProfile(session: SoyibaSession, payload: UpdateP
   const lastName = normalizeText(payload.lastName);
   const phone = normalizeText(payload.phone);
   const tiempoIba = normalizeText(payload.tiempoIba);
-  const normalizedEmail = normalizeEmail(payload.email);
+  const normalizedEmail = normalizeEmail(session.user.email);
   const displayName = [firstName, lastName].filter(Boolean).join(' ').trim();
 
   if (!firstName || !lastName || !normalizedEmail || !phone) {
-    return { ok: false, error: 'Nombre, apellido, correo y celular son requeridos.' };
+    return { ok: false, error: 'Nombre, apellido y celular son requeridos.' };
   }
 
   const response = await callAppsScript<AuthResponse>(
@@ -176,7 +186,6 @@ export async function updateUserProfile(session: SoyibaSession, payload: UpdateP
       firstName,
       lastName,
       phone,
-      email: normalizedEmail,
       tiempoIba,
       displayName,
     },
@@ -185,7 +194,7 @@ export async function updateUserProfile(session: SoyibaSession, payload: UpdateP
       token: session.token,
       user: {
         ...session.user,
-        email: normalizedEmail,
+        email: session.user.email,
         name: displayName,
         firstName,
         lastName,
@@ -250,6 +259,55 @@ export async function updateUserPassword(session: SoyibaSession, currentPassword
   );
 
   return preserveLocalOnlyUserFields(normalizeAuthResponse(response, 'No fue posible actualizar la contraseña.'), session);
+}
+
+export async function refreshCurrentSession(session: SoyibaSession): Promise<AuthResult> {
+  if (!session.user.email && !session.user.id) {
+    return { ok: false, error: 'No hay usuario para actualizar la sesión.' };
+  }
+
+  const response = await callAppsScript<AuthResponse>(
+    'Auth',
+    'getCurrentUser',
+    {
+      token: session.token,
+      userId: session.user.id,
+      email: session.user.email,
+    },
+  );
+
+  return preserveLocalOnlyUserFields(normalizeAuthResponse(response, 'No fue posible actualizar la sesión.'), session);
+}
+
+export async function verifyMembershipByCc(session: SoyibaSession, cc: string): Promise<VerifyMembershipResult> {
+  const normalizedCc = normalizeCc(cc);
+
+  if (!normalizedCc) {
+    return { ok: false, error: 'Ingresa tu CC sin puntos ni comas.' };
+  }
+
+  const response = await callAppsScript<AuthResponse>(
+    'Auth',
+    'verifyMembershipByCc',
+    {
+      token: session.token,
+      userId: session.user.id,
+      email: session.user.email,
+      cc: normalizedCc,
+    },
+  );
+
+  const result = preserveLocalOnlyUserFields(normalizeAuthResponse(response, 'No fue posible validar tu CC.'), session);
+
+  if (!result.ok) {
+    return result;
+  }
+
+  return {
+    ok: true,
+    session: result.session,
+    message: response.message || 'Tu CC fue validada. Ahora eres miembro SOY IBA.',
+  };
 }
 
 export async function requestPasswordReset(email: string, appUrl: string): Promise<BasicAuthResult> {
@@ -326,6 +384,10 @@ function normalizeText(value: unknown) {
 
 function normalizeEmail(value: unknown) {
   return normalizeText(value).toLowerCase();
+}
+
+function normalizeCc(value: unknown) {
+  return normalizeText(value).replace(/\D/g, '');
 }
 
 function preserveLocalOnlyUserFields(result: AuthResult, currentSession: SoyibaSession): AuthResult {

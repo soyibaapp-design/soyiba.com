@@ -11,6 +11,7 @@ import {
   FileText,
   Heart,
   Home,
+  IdCard,
   LoaderCircle,
   LockKeyhole,
   LogOut,
@@ -32,6 +33,7 @@ import {
   updateUserPassword,
   updateUserPhoto,
   updateUserProfile,
+  verifyMembershipByCc,
   type SoyibaSession,
   type SoyibaUser,
   type UpdateProfilePayload,
@@ -584,6 +586,7 @@ export function ProfileScreen({
         <EditProfileModal
           session={session}
           onClose={() => setEditOpen(false)}
+          onSessionUpdated={onSessionUpdated}
           onSaved={(nextSession) => {
             onSessionUpdated(nextSession);
             setEditOpen(false);
@@ -714,6 +717,7 @@ function AdminCard({
 type EditProfileModalProps = {
   session: SoyibaSession;
   onClose: () => void;
+  onSessionUpdated: (session: SoyibaSession) => void;
   onSaved: (session: SoyibaSession) => void;
 };
 
@@ -725,18 +729,22 @@ type PasswordFormState = {
 
 type EditPanel = 'personal' | 'security';
 
-function EditProfileModal({ session, onClose, onSaved }: EditProfileModalProps) {
+function EditProfileModal({ session, onClose, onSessionUpdated, onSaved }: EditProfileModalProps) {
   const user = session.user;
   const [openPanel, setOpenPanel] = useState<EditPanel>('personal');
   const [profileForm, setProfileForm] = useState<UpdateProfilePayload>(() => getInitialProfileForm(user));
+  const [membershipCc, setMembershipCc] = useState(() => getFieldValue(user.cc));
   const [passwordForm, setPasswordForm] = useState<PasswordFormState>({
     currentPassword: '',
     newPassword: '',
     confirmPassword: '',
   });
   const [profileSaving, setProfileSaving] = useState(false);
+  const [membershipSaving, setMembershipSaving] = useState(false);
   const [securitySaving, setSecuritySaving] = useState(false);
   const [profileError, setProfileError] = useState('');
+  const [membershipError, setMembershipError] = useState('');
+  const [membershipMessage, setMembershipMessage] = useState('');
   const [securityError, setSecurityError] = useState('');
   const rules = getPasswordRules(passwordForm.newPassword);
 
@@ -746,6 +754,28 @@ function EditProfileModal({ session, onClose, onSaved }: EditProfileModalProps) 
 
   function updatePasswordField(field: keyof PasswordFormState, value: string) {
     setPasswordForm((current) => ({ ...current, [field]: value }));
+  }
+
+  async function handleVerifyMembership() {
+    setMembershipError('');
+    setMembershipMessage('');
+    setMembershipSaving(true);
+
+    try {
+      const result = await verifyMembershipByCc(session, membershipCc);
+
+      if (result.ok) {
+        setMembershipCc(getFieldValue(result.session.user.cc || membershipCc));
+        setMembershipMessage(result.message);
+        onSessionUpdated(result.session);
+      } else {
+        setMembershipError(result.error);
+      }
+    } catch (error) {
+      setMembershipError(error instanceof Error ? error.message : 'No fue posible validar tu CC.');
+    } finally {
+      setMembershipSaving(false);
+    }
   }
 
   async function handleSaveProfile() {
@@ -856,14 +886,45 @@ function EditProfileModal({ session, onClose, onSaved }: EditProfileModalProps) 
                     icon={Clock3}
                     placeholder="Ej: 3 anos"
                   />
+                  <div className="grid gap-2 min-[500px]:col-span-2 min-[500px]:grid-cols-[minmax(0,1fr)_150px] min-[500px]:items-end">
+                    <EditableField
+                      label="CC"
+                      value={membershipCc}
+                      onChange={(value) => {
+                        setMembershipCc(value.replace(/\D/g, ''));
+                        setMembershipError('');
+                        setMembershipMessage('');
+                      }}
+                      icon={IdCard}
+                      inputMode="numeric"
+                      autoComplete="off"
+                      placeholder="Cédula sin puntos ni comas"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleVerifyMembership}
+                      disabled={membershipSaving || profileSaving || securitySaving}
+                      className="inline-flex h-11 items-center justify-center gap-2 rounded-[12px] bg-[#145CFF] px-4 text-xs font-black text-white shadow-[0_12px_26px_rgba(20,92,255,0.24)] disabled:cursor-not-allowed disabled:bg-slate-400"
+                    >
+                      {membershipSaving ? <LoaderCircle size={16} className="animate-spin" /> : <BadgeCheck size={16} />}
+                      Soy miembro
+                    </button>
+                  </div>
+                  {membershipMessage ? (
+                    <p className="min-[500px]:col-span-2 rounded-[10px] bg-emerald-50 px-3 py-2 text-[11px] font-bold text-emerald-700">{membershipMessage}</p>
+                  ) : null}
+                  {membershipError ? (
+                    <p className="min-[500px]:col-span-2 rounded-[10px] bg-red-50 px-3 py-2 text-[11px] font-bold text-red-700">{membershipError}</p>
+                  ) : null}
                   <EditableField
                     label="Correo electronico"
                     value={profileForm.email}
-                    onChange={(value) => updateProfileField('email', value)}
+                    onChange={() => undefined}
                     icon={Mail}
                     type="email"
                     inputMode="email"
                     autoComplete="email"
+                    readOnly
                     className="min-[500px]:col-span-2"
                   />
                 </div>
@@ -935,7 +996,7 @@ function EditProfileModal({ session, onClose, onSaved }: EditProfileModalProps) 
           <button
             type="button"
             onClick={onClose}
-            disabled={profileSaving || securitySaving}
+            disabled={profileSaving || membershipSaving || securitySaving}
             className="h-11 rounded-[12px] border border-[#CBD8EA] bg-white text-xs font-black text-[#51617A] disabled:cursor-not-allowed disabled:opacity-60"
           >
             Cancelar
@@ -943,7 +1004,7 @@ function EditProfileModal({ session, onClose, onSaved }: EditProfileModalProps) 
           <button
             type="button"
             onClick={handleSaveProfile}
-            disabled={profileSaving || securitySaving}
+            disabled={profileSaving || membershipSaving || securitySaving}
             className="inline-flex h-11 items-center justify-center gap-2 rounded-[12px] bg-[#062B70] px-4 text-xs font-black text-white shadow-[0_12px_26px_rgba(6,43,112,0.24)] disabled:cursor-not-allowed disabled:bg-slate-400"
           >
             {profileSaving ? <LoaderCircle size={16} className="animate-spin" /> : <Save size={16} />}
@@ -964,6 +1025,7 @@ function EditableField({
   placeholder,
   inputMode,
   autoComplete,
+  readOnly = false,
   className = '',
 }: {
   label: string;
@@ -974,21 +1036,32 @@ function EditableField({
   placeholder?: string;
   inputMode?: InputHTMLAttributes<HTMLInputElement>['inputMode'];
   autoComplete?: string;
+  readOnly?: boolean;
   className?: string;
 }) {
   return (
     <label className={`block min-w-0 ${className}`}>
       <span className="mb-1.5 block text-[10px] font-black text-[#52637C]">{label}</span>
-      <span className="flex h-11 items-center gap-2 rounded-[10px] border border-[#DCE6F5] bg-white px-3 text-xs font-bold text-[#0B1F5B] shadow-[0_10px_24px_rgba(15,23,42,0.04)] transition focus-within:border-[#145CFF] focus-within:ring-4 focus-within:ring-blue-100">
+      <span
+        className={`flex h-11 items-center gap-2 rounded-[10px] border border-[#DCE6F5] px-3 text-xs font-bold shadow-[0_10px_24px_rgba(15,23,42,0.04)] transition ${
+          readOnly ? 'bg-[#F2F6FC] text-[#64748B]' : 'bg-white text-[#0B1F5B] focus-within:border-[#145CFF] focus-within:ring-4 focus-within:ring-blue-100'
+        }`}
+      >
         {Icon ? <Icon size={16} className="shrink-0 text-[#8A99AE]" /> : null}
         <input
           type={type}
           value={value}
-          onChange={(event) => onChange(event.target.value)}
+          onChange={(event) => {
+            if (!readOnly) {
+              onChange(event.target.value);
+            }
+          }}
           placeholder={placeholder || label}
           inputMode={inputMode}
           autoComplete={autoComplete}
-          className="h-full min-w-0 flex-1 bg-transparent outline-none placeholder:text-[#98A1BD]"
+          readOnly={readOnly}
+          aria-readonly={readOnly}
+          className={`h-full min-w-0 flex-1 bg-transparent outline-none placeholder:text-[#98A1BD] ${readOnly ? 'cursor-default text-[#64748B]' : ''}`}
         />
       </span>
     </label>
