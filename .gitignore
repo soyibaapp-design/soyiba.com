@@ -11,3 +11,5 @@ desktop.ini
 GS/*enlaces.txt
 *-preview.png
 *-responsive-*.png
+firebase-service-account*.json
+*.service-account.json
