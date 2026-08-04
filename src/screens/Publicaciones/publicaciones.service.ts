@@ -152,6 +152,7 @@ type PublicationsResponse = {
 const publicationFeedCache = new Map<string, SoyibaPublication[]>();
 const PUBLICATION_FEED_STORAGE_PREFIX = 'soyiba.publications.feed.v2.';
 const PUBLICATION_FEED_STORAGE_TTL_MS = 10 * 60 * 1000;
+const PUBLICATION_FEED_RETRY_DELAYS_MS = [1200, 2600];
 
 const localPublications: SoyibaPublication[] = [
   {
@@ -480,19 +481,7 @@ export async function getPublicationFeed(session: SoyibaSession, options: Public
   let response: PublicationsResponse;
 
   try {
-    response = await callAppsScript<PublicationsResponse>(
-      'Publicaciones',
-      'list',
-      {
-        userId: session.user.id,
-        email: session.user.email,
-        type: options.type,
-      },
-      () => ({
-        ok: true,
-        publications: filterPublicationsByType(localPublications, options.type),
-      }),
-    );
+    response = await callPublicationList(session, options);
   } catch (error) {
     if (cached) {
       return hydrateCurrentUserAuthor(clonePublications(cached), session.user);
@@ -517,6 +506,46 @@ export async function getPublicationFeed(session: SoyibaSession, options: Public
 
   setPublicationFeedCache(session, options, publications);
   return publications;
+}
+
+async function callPublicationList(session: SoyibaSession, options: PublicationFeedOptions) {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt <= PUBLICATION_FEED_RETRY_DELAYS_MS.length; attempt += 1) {
+    try {
+      return await callAppsScript<PublicationsResponse>(
+        'Publicaciones',
+        'list',
+        {
+          userId: session.user.id,
+          email: session.user.email,
+          type: options.type,
+        },
+        () => ({
+          ok: true,
+          publications: filterPublicationsByType(localPublications, options.type),
+        }),
+      );
+    } catch (error) {
+      lastError = error;
+
+      const retryDelay = PUBLICATION_FEED_RETRY_DELAYS_MS[attempt];
+
+      if (retryDelay === undefined) {
+        break;
+      }
+
+      await wait(retryDelay);
+    }
+  }
+
+  throw lastError;
+}
+
+function wait(delayMs: number) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, delayMs);
+  });
 }
 
 export async function createPublication(session: SoyibaSession, payload: PublicationPayload) {
