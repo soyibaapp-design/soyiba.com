@@ -61,7 +61,10 @@ type AuthResponse = {
   error?: string;
 };
 
-const AUTH_LOGIN_RETRY_DELAYS_MS = [900, 2200];
+const AUTH_LOGIN_RETRY_DELAYS_MS = [800];
+const AUTH_LOGIN_TIMEOUT_MS = 18000;
+const AUTH_LOGIN_TRANSIENT_ERROR =
+  'El servidor de inicio de sesión está tardando. Intenta nuevamente en unos segundos.';
 
 type AuthResult =
   | { ok: true; session: SoyibaSession }
@@ -82,7 +85,17 @@ export async function signInWithEmailPassword(email: string, password: string): 
     return { ok: false, error: 'Ingresa correo y contraseña.' };
   }
 
-  const response = await callLoginWithRetry(normalizedEmail, password);
+  let response: AuthResponse;
+
+  try {
+    response = await callLoginWithRetry(normalizedEmail, password);
+  } catch (error) {
+    if (isTransientAppsScriptError(error)) {
+      return { ok: false, error: AUTH_LOGIN_TRANSIENT_ERROR };
+    }
+
+    throw error;
+  }
 
   return normalizeAuthResponse(response, 'No fue posible iniciar sesión.');
 }
@@ -115,6 +128,7 @@ async function callLoginWithRetry(email: string, password: string) {
             active: true,
           },
         }),
+        { timeoutMs: AUTH_LOGIN_TIMEOUT_MS },
       );
     } catch (error) {
       lastError = error;
@@ -423,7 +437,7 @@ function isTransientAppsScriptError(error: unknown) {
     return false;
   }
 
-  return /respuesta no JSON|JSON invalido|Failed to fetch|NetworkError|Load failed/i.test(error.message);
+  return /respuesta no JSON|JSON invalido|tardo demasiado|Failed to fetch|NetworkError|Load failed/i.test(error.message);
 }
 
 function wait(delayMs: number) {
