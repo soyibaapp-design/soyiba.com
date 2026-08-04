@@ -9,7 +9,7 @@ import { AuthScreen } from './screens/Auth/AuthScreen';
 import { refreshCurrentSession, type SoyibaSession } from './screens/Auth/auth.service';
 import { DonacionesScreen } from './screens/Donaciones/DonacionesScreen';
 import { HealthScreen } from './screens/Health/HealthScreen';
-import { useSoyibaHealthTelemetry } from './screens/Health/health.service';
+import { closeOtherHealthSessions } from './screens/Health/health.service';
 import { InicioScreen } from './screens/Inicio/InicioScreen';
 import { MembersPage } from './screens/Miembros/MembersPage';
 import { ProfileScreen } from './screens/Perfil/ProfileScreen';
@@ -57,13 +57,15 @@ export default function App() {
   const [publicationToOpenId, setPublicationToOpenId] = useState(initialSharedTarget?.publicationId || '');
   const [authMode, setAuthMode] = useState<AuthMode | null>(null);
   const [forcedLogoutMessage, setForcedLogoutMessage] = useState('');
+  const [otherSessionsCount, setOtherSessionsCount] = useState(0);
+  const [closingOtherSessions, setClosingOtherSessions] = useState(false);
+  const [otherSessionsMessage, setOtherSessionsMessage] = useState('');
+  const [dismissedOtherSessionsKey, setDismissedOtherSessionsKey] = useState('');
   const [liveNow, setLiveNow] = useState(() => isSundayLiveWindow(new Date()));
   const [liveBadgeTestEnabled, setLiveBadgeTestEnabled] = useState(() => loadLiveBadgeTestFlag());
   const refreshSessionKeyRef = useRef('');
   const lastSessionRefreshAtRef = useRef(0);
   const showLiveBadge = liveNow || (liveBadgeTestEnabled && isLiveBadgeTestUser(session));
-
-  useSoyibaHealthTelemetry(session, handleForcedLogout);
 
   useEffect(() => {
   function handleHashChange() {
@@ -172,7 +174,38 @@ export default function App() {
 
   function handleForcedLogout(message: string) {
     setForcedLogoutMessage(message);
+    setOtherSessionsCount(0);
+    setOtherSessionsMessage('');
     handleLogout();
+  }
+
+  function handleOtherSessionsDetected(count: number) {
+    if (session && dismissedOtherSessionsKey === getSessionIdentityKey(session)) {
+      return;
+    }
+
+    setOtherSessionsCount((current) => Math.max(current, count));
+  }
+
+  async function handleCloseOtherSessions() {
+    if (!session) {
+      return;
+    }
+
+    setClosingOtherSessions(true);
+    setOtherSessionsMessage('');
+
+    try {
+      const count = await closeOtherHealthSessions(session);
+      setOtherSessionsCount(0);
+      setDismissedOtherSessionsKey('');
+      setOtherSessionsMessage(`${count} sesion${count === 1 ? '' : 'es'} anterior${count === 1 ? '' : 'es'} cerrada${count === 1 ? '' : 's'}.`);
+      window.setTimeout(() => setOtherSessionsMessage(''), 3600);
+    } catch (error) {
+      setOtherSessionsMessage(error instanceof Error ? error.message : 'No fue posible cerrar las otras sesiones.');
+    } finally {
+      setClosingOtherSessions(false);
+    }
   }
 
   function handleLiveBadgeTestChange(enabled: boolean) {
@@ -261,6 +294,18 @@ export default function App() {
         }}
         onOpenPublicationFromProfile={handleOpenPublicationFromProfile}
       />
+      {otherSessionsCount ? (
+        <OtherSessionsNotice
+          count={otherSessionsCount}
+          closing={closingOtherSessions}
+          onCloseOthers={handleCloseOtherSessions}
+          onDismiss={() => {
+            setOtherSessionsCount(0);
+            setDismissedOtherSessionsKey(getSessionIdentityKey(session));
+          }}
+        />
+      ) : null}
+      {otherSessionsMessage ? <SecurityNotice message={otherSessionsMessage} onClose={() => setOtherSessionsMessage('')} /> : null}
       <PwaInstallPrompt hasBottomNav={!publicationComposerOpen} />
     </>
   );
@@ -448,6 +493,62 @@ function ForcedLogoutNotice({ message, onClose }: { message: string; onClose: ()
       <div className="flex items-start gap-3">
         <span className="min-w-0 flex-1">{message}</span>
         <button type="button" onClick={onClose} className="shrink-0 text-xs font-black text-[#E63737]">
+          Cerrar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function OtherSessionsNotice({
+  count,
+  closing,
+  onCloseOthers,
+  onDismiss,
+}: {
+  count: number;
+  closing: boolean;
+  onCloseOthers: () => void;
+  onDismiss: () => void;
+}) {
+  return (
+    <div className="fixed inset-x-3 top-4 z-[150] mx-auto max-w-md rounded-[18px] border border-[#FFD39A] bg-white px-4 py-3 text-sm shadow-[0_18px_42px_rgba(212,109,0,0.16)]">
+      <div className="space-y-3">
+        <div>
+          <h2 className="text-sm font-black text-[#0B1F5B]">Otra sesion activa detectada</h2>
+          <p className="mt-1 text-xs font-bold leading-5 text-[#637295]">
+            Encontramos {count} sesion{count === 1 ? '' : 'es'} abierta{count === 1 ? '' : 's'} con tu usuario. Puedes cerrar las otras y conservar este dispositivo.
+          </p>
+        </div>
+        <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+          <button
+            type="button"
+            onClick={onCloseOthers}
+            disabled={closing}
+            className="min-h-10 rounded-[12px] bg-[#062B70] px-3 text-xs font-black text-white disabled:cursor-not-allowed disabled:bg-slate-400"
+          >
+            {closing ? 'Cerrando...' : 'Cerrar otras sesiones y mantener esta'}
+          </button>
+          <button
+            type="button"
+            onClick={onDismiss}
+            disabled={closing}
+            className="min-h-10 rounded-[12px] border border-[#CBD8EA] bg-white px-3 text-xs font-black text-[#51617A] disabled:opacity-60"
+          >
+            Luego
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SecurityNotice({ message, onClose }: { message: string; onClose: () => void }) {
+  return (
+    <div className="fixed inset-x-3 top-4 z-[150] mx-auto max-w-md rounded-[16px] border border-emerald-100 bg-white px-4 py-3 text-sm font-bold text-emerald-700 shadow-[0_18px_42px_rgba(4,120,87,0.14)]">
+      <div className="flex items-start gap-3">
+        <span className="min-w-0 flex-1">{message}</span>
+        <button type="button" onClick={onClose} className="shrink-0 text-xs font-black text-emerald-700">
           Cerrar
         </button>
       </div>

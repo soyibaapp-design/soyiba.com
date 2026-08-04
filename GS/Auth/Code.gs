@@ -167,6 +167,10 @@ function doPost(e) {
       return soyibaAuthJson_(soyibaAuthForceLogoutSessions_(data));
     }
 
+    if (action === 'closeOtherHealthSessions') {
+      return soyibaAuthJson_(soyibaAuthCloseOtherHealthSessions_(data));
+    }
+
     if (action === 'endHealthSession') {
       return soyibaAuthJson_(soyibaAuthEndHealthSession_(data));
     }
@@ -822,14 +826,19 @@ function soyibaAuthHealthPing_(data) {
   };
 
   soyibaHealthWriteRecord_(healthSheet, located.row, record);
-  return { ok: true };
+  var otherActiveSessionCount = soyibaHealthCountOtherActiveSessions_(healthSheet, record.user_id, record.email, sessionId);
+  return {
+    ok: true,
+    hasOtherActiveSessions: otherActiveSessionCount > 0,
+    otherActiveSessionCount: otherActiveSessionCount
+  };
 }
 
 function soyibaAuthHealthDashboard_(data) {
   var authSheet = soyibaAuthGetSheet_();
   var actor = soyibaAuthFindUserByIdOrEmail_(authSheet, data.actorUserId || data.userId, data.actorEmail || data.email);
 
-  if (!soyibaAuthCanManageUsers_(actor.user)) {
+  if (!soyibaAuthIsAdmin_(actor.user)) {
     return { ok: false, error: 'No tienes permisos para ver el health de la app.' };
   }
 
@@ -898,7 +907,7 @@ function soyibaAuthForceLogoutSessions_(data) {
   var authSheet = soyibaAuthGetSheet_();
   var actor = soyibaAuthFindUserByIdOrEmail_(authSheet, data.actorUserId || data.userId, data.actorEmail || data.email);
 
-  if (!soyibaAuthCanManageUsers_(actor.user)) {
+  if (!soyibaAuthIsAdmin_(actor.user)) {
     return { ok: false, error: 'No tienes permisos para cerrar sesiones.' };
   }
 
@@ -932,6 +941,53 @@ function soyibaAuthForceLogoutSessions_(data) {
     soyibaAuthSetCell_(sheet, headers, row, 'revoked_at', now);
     soyibaAuthSetCell_(sheet, headers, row, 'revoked_by_user_id', String(actor.user.user_id || ''));
     soyibaAuthSetCell_(sheet, headers, row, 'revoked_by_email', String(actor.user.email || data.actorEmail || ''));
+    soyibaAuthSetCell_(sheet, headers, row, 'revoke_reason', reason);
+    soyibaAuthSetCell_(sheet, headers, row, 'active_call_count', 0);
+    soyibaAuthSetCell_(sheet, headers, row, 'updated_at', now);
+    revokedCount += 1;
+  }
+
+  return { ok: true, revokedCount: revokedCount };
+}
+
+function soyibaAuthCloseOtherHealthSessions_(data) {
+  var currentSessionId = String(data.currentSessionId || data.current_session_id || data.sessionId || data.session_id || '').trim();
+
+  if (!currentSessionId) {
+    return { ok: false, error: 'Falta la sesion actual.' };
+  }
+
+  var authSheet = soyibaAuthGetSheet_();
+  var actor = soyibaAuthFindUserByIdOrEmail_(authSheet, data.userId || data.actorUserId, data.email || data.actorEmail);
+
+  if (actor.row < 1) {
+    return { ok: false, error: 'Usuario no encontrado para cerrar sesiones.' };
+  }
+
+  var sheet = soyibaHealthGetSheet_();
+  var headers = soyibaHealthGetHeaders_(sheet);
+  var values = sheet.getDataRange().getValues();
+  var now = new Date().toISOString();
+  var revokedCount = 0;
+  var actorUserId = String(actor.user.user_id || '').trim();
+  var actorEmail = soyibaAuthNormalizeEmail_(actor.user.email || data.email || data.actorEmail);
+  var reason = String(data.reason || 'Cerrada por nuevo inicio de sesion');
+
+  for (var rowIndex = 1; rowIndex < values.length; rowIndex += 1) {
+    var record = soyibaAuthRowToObject_(headers, values[rowIndex]);
+    var sessionId = String(record.session_id || '').trim();
+    var sameUser = (actorUserId && String(record.user_id || '').trim() === actorUserId) ||
+      (actorEmail && soyibaAuthNormalizeEmail_(record.email) === actorEmail);
+
+    if (!sameUser || sessionId === currentSessionId || String(record.revoked_at || '').trim() || String(record.ended_at || '').trim()) {
+      continue;
+    }
+
+    var row = rowIndex + 1;
+    soyibaAuthSetCell_(sheet, headers, row, 'status', 'revoked');
+    soyibaAuthSetCell_(sheet, headers, row, 'revoked_at', now);
+    soyibaAuthSetCell_(sheet, headers, row, 'revoked_by_user_id', actorUserId);
+    soyibaAuthSetCell_(sheet, headers, row, 'revoked_by_email', actorEmail);
     soyibaAuthSetCell_(sheet, headers, row, 'revoke_reason', reason);
     soyibaAuthSetCell_(sheet, headers, row, 'active_call_count', 0);
     soyibaAuthSetCell_(sheet, headers, row, 'updated_at', now);
@@ -991,6 +1047,27 @@ function soyibaHealthIsActive_(record, nowMs) {
     !String(record.ended_at || '').trim() &&
     lastSeenMs &&
     nowMs - lastSeenMs <= SOYIBA_HEALTH_ACTIVE_WINDOW_MS;
+}
+
+function soyibaHealthCountOtherActiveSessions_(sheet, userId, email, currentSessionId) {
+  var headers = soyibaHealthGetHeaders_(sheet);
+  var values = sheet.getDataRange().getValues();
+  var nowMs = new Date().getTime();
+  var normalizedUserId = String(userId || '').trim();
+  var normalizedEmail = soyibaAuthNormalizeEmail_(email);
+  var count = 0;
+
+  for (var rowIndex = 1; rowIndex < values.length; rowIndex += 1) {
+    var record = soyibaAuthRowToObject_(headers, values[rowIndex]);
+    var sameUser = (normalizedUserId && String(record.user_id || '').trim() === normalizedUserId) ||
+      (normalizedEmail && soyibaAuthNormalizeEmail_(record.email) === normalizedEmail);
+
+    if (sameUser && String(record.session_id || '').trim() !== currentSessionId && soyibaHealthIsActive_(record, nowMs)) {
+      count += 1;
+    }
+  }
+
+  return count;
 }
 
 function soyibaHealthSessionIds_(value) {
@@ -1435,6 +1512,15 @@ function soyibaAuthCanManageUsers_(user) {
 
   var role = String(user.rol_sistema || user.rolSistema || user.role || '').trim().toLowerCase();
   return role === 'admin' || role === 'moderador';
+}
+
+function soyibaAuthIsAdmin_(user) {
+  if (!user) {
+    return false;
+  }
+
+  var role = String(user.rol_sistema || user.rolSistema || user.role || '').trim().toLowerCase();
+  return role === 'admin';
 }
 
 function soyibaAuthCanViewMembersDirectory_(user) {

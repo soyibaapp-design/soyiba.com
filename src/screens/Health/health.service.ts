@@ -49,6 +49,8 @@ type HealthDashboardResponse = {
 type HealthHeartbeatResponse = {
   ok: boolean;
   sessionRevoked?: boolean;
+  hasOtherActiveSessions?: boolean;
+  otherActiveSessionCount?: number;
   revokedAt?: string;
   message?: string;
   error?: string;
@@ -69,9 +71,12 @@ const ACTIVE_WINDOW_MS = 2 * 60 * 1000;
 export function useSoyibaHealthTelemetry(
   session: SoyibaSession | null,
   onForcedLogout: (message: string) => void,
+  onOtherSessionsDetected?: (count: number) => void,
 ) {
   const forcedLogoutRef = useRef(onForcedLogout);
+  const otherSessionsRef = useRef(onOtherSessionsDetected);
   forcedLogoutRef.current = onForcedLogout;
+  otherSessionsRef.current = onOtherSessionsDetected;
 
   useEffect(() => {
     if (!session || session.token === 'public-viewer' || (!session.user.id && !session.user.email)) {
@@ -87,6 +92,11 @@ export function useSoyibaHealthTelemetry(
 
         if (!cancelled && response.sessionRevoked) {
           forcedLogoutRef.current(response.message || 'Tu sesion fue cerrada por un administrador.');
+          return;
+        }
+
+        if (!cancelled && response.hasOtherActiveSessions) {
+          otherSessionsRef.current?.(Number(response.otherActiveSessionCount || 0));
         }
       } catch {
         // Health telemetry should never interrupt normal use of the app.
@@ -156,6 +166,33 @@ export async function forceLogoutHealthSessions(session: SoyibaSession, sessionI
   }
 
   return Number(response.revokedCount || 0);
+}
+
+export async function closeOtherHealthSessions(session: SoyibaSession) {
+  const currentSessionId = getClientSessionId(session);
+  const response = await callAppsScript<ForceLogoutResponse>(
+    'Auth',
+    'closeOtherHealthSessions',
+    {
+      token: session.token,
+      userId: session.user.id,
+      email: session.user.email,
+      currentSessionId,
+      reason: 'Cerrada por nuevo inicio de sesion',
+    },
+    () => closeOtherLocalHealthSessions(session, currentSessionId),
+    { timeoutMs: 10000 },
+  );
+
+  if (!response.ok) {
+    throw new Error(response.error || 'No fue posible cerrar las otras sesiones.');
+  }
+
+  return Number(response.revokedCount || 0);
+}
+
+export function getCurrentHealthSessionId(session: SoyibaSession) {
+  return getClientSessionId(session);
 }
 
 async function sendHealthHeartbeat(session: SoyibaSession, reason: string): Promise<HealthHeartbeatResponse> {
@@ -322,8 +359,10 @@ function upsertLocalHealthSession(
     ? sessions.map((item) => (item.sessionId === payload.sessionId ? nextRecord : item))
     : [nextRecord, ...sessions];
 
-  writeLocalHealthSessions(nextSessions.slice(0, 80));
-  return { ok: true };
+  const storedSessions = nextSessions.slice(0, 80);
+  writeLocalHealthSessions(storedSessions);
+  const otherActiveSessionCount = countOtherActiveSessions(storedSessions, nextRecord);
+  return { ok: true, hasOtherActiveSessions: otherActiveSessionCount > 0, otherActiveSessionCount };
 }
 
 function endLocalHealthSession(sessionId: string) {
@@ -353,6 +392,37 @@ function forceLogoutLocalSessions(sessionIds: string[]): ForceLogoutResponse {
         revokedAt: now,
         status: 'revoked',
         revokeReason: 'Cerrada desde Health SOY IBA',
+        activeCallCount: 0,
+      });
+    }),
+  );
+
+  return { ok: true, revokedCount };
+}
+
+function closeOtherLocalHealthSessions(session: SoyibaSession, currentSessionId: string): ForceLogoutResponse {
+  const currentUserId = session.user.id;
+  const currentEmail = session.user.email.trim().toLowerCase();
+  const now = new Date().toISOString();
+  let revokedCount = 0;
+
+  writeLocalHealthSessions(
+    readLocalHealthSessions().map((item) => {
+      const sameUser = Boolean(
+        (currentUserId && item.userId && currentUserId === item.userId) ||
+          (currentEmail && item.email && currentEmail === item.email),
+      );
+
+      if (!sameUser || item.sessionId === currentSessionId || item.revokedAt || item.endedAt) {
+        return item;
+      }
+
+      revokedCount += 1;
+      return normalizeSessionRecord({
+        ...item,
+        revokedAt: now,
+        status: 'revoked',
+        revokeReason: 'Cerrada por nuevo inicio de sesion',
         activeCallCount: 0,
       });
     }),
@@ -472,6 +542,18 @@ function aggregateCallsByUser(sessions: HealthSessionRecord[]): HealthCallsByUse
 function isActiveSession(session: HealthSessionRecord, now: number) {
   const lastSeenAt = new Date(session.lastSeenAt).getTime();
   return !session.revokedAt && !session.endedAt && Number.isFinite(lastSeenAt) && now - lastSeenAt <= ACTIVE_WINDOW_MS;
+}
+
+function countOtherActiveSessions(sessions: HealthSessionRecord[], currentSession: HealthSessionRecord) {
+  const now = Date.now();
+  return sessions.filter((item) => {
+    const sameUser = Boolean(
+      (currentSession.userId && item.userId && currentSession.userId === item.userId) ||
+        (currentSession.email && item.email && currentSession.email === item.email),
+    );
+
+    return sameUser && item.sessionId !== currentSession.sessionId && isActiveSession(item, now);
+  }).length;
 }
 
 function getDisplayName(user: SoyibaUser) {

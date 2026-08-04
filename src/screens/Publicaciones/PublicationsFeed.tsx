@@ -195,6 +195,9 @@ export function PublicationsFeed({
   const lastComposerSignal = useRef(0);
   const lastOpenPublicationId = useRef('');
   const viewTimersRef = useRef(new Map<string, number>());
+  const pendingViewIdsRef = useRef(new Set<string>());
+  const pendingViewKeysRef = useRef(new Map<string, string>());
+  const viewFlushTimerRef = useRef<number | null>(null);
   const permittedTypes = useMemo(() => getPermittedPublicationTypes(session.user), [session.user]);
   const composerTypes = useMemo(
     () => (filterType && permittedTypes.includes(filterType) ? [filterType] : permittedTypes),
@@ -252,9 +255,35 @@ export function PublicationsFeed({
       current.map((item) => (item.id === publication.id ? { ...item, viewsCount: item.viewsCount + 1 } : item)),
     );
 
-    recordPublicationViews(session, [publication.id]).catch(() => {
-      removePublicationViewStored(viewKey);
-    });
+    pendingViewIdsRef.current.add(publication.id);
+    pendingViewKeysRef.current.set(publication.id, viewKey);
+
+    if (viewFlushTimerRef.current !== null) {
+      window.clearTimeout(viewFlushTimerRef.current);
+    }
+
+    viewFlushTimerRef.current = window.setTimeout(() => {
+      const publicationIds = Array.from(pendingViewIdsRef.current);
+      const viewKeysById = new Map(pendingViewKeysRef.current);
+
+      pendingViewIdsRef.current.clear();
+      pendingViewKeysRef.current.clear();
+      viewFlushTimerRef.current = null;
+
+      if (!publicationIds.length) {
+        return;
+      }
+
+      recordPublicationViews(session, publicationIds).catch(() => {
+        publicationIds.forEach((id) => {
+          const storedKey = viewKeysById.get(id);
+
+          if (storedKey) {
+            removePublicationViewStored(storedKey);
+          }
+        });
+      });
+    }, 2500);
   }, [publicMode, publications, session]);
 
   const handleOpenImage = useCallback((publicationId: string, preview: ImagePreview) => {
@@ -432,6 +461,12 @@ export function PublicationsFeed({
     const timeout = window.setTimeout(() => setNotice(''), 3600);
     return () => window.clearTimeout(timeout);
   }, [notice]);
+
+  useEffect(() => () => {
+    if (viewFlushTimerRef.current !== null) {
+      window.clearTimeout(viewFlushTimerRef.current);
+    }
+  }, []);
 
   useEffect(() => {
     onComposerOpenChange?.(composerOpen);

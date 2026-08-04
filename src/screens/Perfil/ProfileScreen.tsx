@@ -103,6 +103,10 @@ function isManager(user: SoyibaUser) {
   return ['admin', 'moderador'].includes(String(user.rolSistema || user.role || '').trim().toLowerCase());
 }
 
+function isAdmin(user: SoyibaUser) {
+  return String(user.rolSistema || user.role || '').trim().toLowerCase() === 'admin';
+}
+
 function isMemberUser(user: SoyibaUser) {
   const userType = normalizePlainText((user as SoyibaUser & { tipo?: string }).tipo || user.tipoUsuario);
   return userType === 'miembro';
@@ -358,7 +362,7 @@ export function ProfileScreen({
           buttonLabel: 'Abrir',
           icon: Radio,
           tone: 'green',
-          visible: isManager(user),
+          visible: isAdmin(user),
           target: 'health',
         },
         {

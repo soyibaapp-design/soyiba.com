@@ -21,6 +21,7 @@ import {
 import type { SoyibaSession, SoyibaUser } from '../Auth/auth.service';
 import {
   forceLogoutHealthSessions,
+  getCurrentHealthSessionId,
   getHealthDashboard,
   type HealthDashboard,
   type HealthSessionRecord,
@@ -41,7 +42,8 @@ export function HealthScreen({ session, onBack, onModalOpenChange }: HealthScree
   const [revoking, setRevoking] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
-  const canManage = isManager(session.user);
+  const canManage = isAdmin(session.user);
+  const currentHealthSessionId = useMemo(() => getCurrentHealthSessionId(session), [session.token, session.user.id, session.user.email]);
 
   useEffect(() => {
     onModalOpenChange?.(revoking);
@@ -305,7 +307,7 @@ export function HealthScreen({ session, onBack, onModalOpenChange }: HealthScree
                 key={item.sessionId}
                 sessionRecord={item}
                 selected={selectedIds.includes(item.sessionId)}
-                currentSession={isCurrentSession(item, session)}
+                currentSession={item.sessionId === currentHealthSessionId}
                 onToggle={() => toggleSession(item.sessionId)}
               />
             ))
@@ -354,7 +356,11 @@ function HealthSessionCard({
   const callItems = parseCallSummary(sessionRecord.callSummary);
 
   return (
-    <article className={`rounded-[18px] border bg-white p-3 shadow-[0_14px_32px_rgba(15,23,42,0.06)] ${selected ? 'border-[#E63737]' : 'border-[#DCE6F5]'}`}>
+    <article
+      className={`rounded-[18px] border bg-white p-3 shadow-[0_14px_32px_rgba(15,23,42,0.06)] ${
+        selected ? 'border-[#E63737]' : currentSession ? 'border-[#047857] ring-2 ring-[#A7F3D0]' : 'border-[#DCE6F5]'
+      }`}
+    >
       <div className="grid min-w-0 grid-cols-[42px_minmax(0,1fr)_42px] items-start gap-3">
         <div className="grid h-11 w-11 place-items-center rounded-full bg-[#EAF2FF] text-[12px] font-black text-[#145CFF]">
           {getInitials(sessionRecord.name)}
@@ -362,7 +368,7 @@ function HealthSessionCard({
         <div className="min-w-0">
           <h3 className="flex min-w-0 items-center gap-1.5 text-sm font-black text-[#0B1F5B]">
             <span className="min-w-0 truncate">{sessionRecord.name}</span>
-            {currentSession ? <span className="shrink-0 rounded-full bg-[#E2F8EC] px-2 py-0.5 text-[9px] font-black text-[#047857]">Tu sesion</span> : null}
+            {currentSession ? <span className="shrink-0 rounded-full bg-[#047857] px-2 py-0.5 text-[9px] font-black text-white">Este dispositivo</span> : null}
           </h3>
           <p className="mt-0.5 truncate text-[11px] font-bold text-[#64748B]">{sessionRecord.email || 'Sin correo'}</p>
           <p className="mt-0.5 truncate text-[11px] font-bold text-[#64748B]">{sessionRecord.role || 'Usuario'}</p>
@@ -424,15 +430,8 @@ function countReportedIps(dashboard: HealthDashboard | null) {
   return new Set((dashboard?.sessions || []).map((item) => item.ipAddress).filter(Boolean)).size;
 }
 
-function isCurrentSession(record: HealthSessionRecord, session: SoyibaSession) {
-  return Boolean(
-    (record.userId && session.user.id && record.userId === session.user.id) ||
-      (record.email && session.user.email && record.email === session.user.email.trim().toLowerCase()),
-  );
-}
-
-function isManager(user: Pick<SoyibaUser, 'rolSistema' | 'role'>) {
-  return ['admin', 'moderador'].includes(String(user.rolSistema || user.role || '').trim().toLowerCase());
+function isAdmin(user: Pick<SoyibaUser, 'rolSistema' | 'role'>) {
+  return String(user.rolSistema || user.role || '').trim().toLowerCase() === 'admin';
 }
 
 function getInitials(name: string) {
