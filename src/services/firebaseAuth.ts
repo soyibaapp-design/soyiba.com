@@ -84,8 +84,8 @@ function buildSoyibaUserFromFirebase(
   profile: FirebaseUserProfile,
 ): SoyibaUser {
   const email = String(firebaseUser.email || profile.email || '').trim().toLowerCase();
-  const firstName = stringValue(profile.firstName || profile.first_name);
-  const lastName = stringValue(profile.lastName || profile.last_name);
+  const firstName = stringValue(profile.firstName || profile.first_name || claims.firstName);
+  const lastName = stringValue(profile.lastName || profile.last_name || claims.lastName);
   const displayName =
     stringValue(profile.name || profile.displayName || profile.display_name || firebaseUser.displayName) ||
     [firstName, lastName].filter(Boolean).join(' ') ||
@@ -102,14 +102,14 @@ function buildSoyibaUserFromFirebase(
     name: displayName,
     firstName,
     lastName,
-    phone: stringValue(profile.phone),
+    phone: stringValue(profile.phone || claims.phone),
     cc: stringValue(profile.cc),
     role: rolSistema,
     rolSistema,
     tipoUsuario,
     tituloUsuario,
     estadoUsuario,
-    tiempoIba: stringValue(profile.tiempoIba),
+    tiempoIba: stringValue(profile.tiempoIba || claims.tiempoIba),
     photoUrl: stringValue(profile.photoUrl || profile.photo_url || firebaseUser.photoURL),
     publicador: toBoolean(profile.publicador ?? claims.publicador),
     publicadorEco: toBoolean(profile.publicadorEco ?? claims.publicadorEco),

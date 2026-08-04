@@ -3,10 +3,13 @@ import { resolve } from 'node:path';
 import { cert, getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
+import { getStorage } from 'firebase-admin/storage';
+import { randomUUID } from 'node:crypto';
 
 const args = new Set(process.argv.slice(2));
 const shouldRun = args.has('--confirm');
 const shouldSkipFirestore = args.has('--skip-firestore');
+const shouldUploadProfilePhotos = args.has('--upload-profile-photos');
 const env = loadEnvFile(resolve(process.cwd(), '.env'));
 const serviceAccountPath =
   process.env.FIREBASE_SERVICE_ACCOUNT_PATH ||
@@ -39,6 +42,7 @@ if (!shouldRun) {
         source: tsvPath,
         validUsers: users.length,
         skippedRows: parseTsv(tsvPath).length - users.length,
+        base64ProfilePhotos: rows.filter((row) => isDataImage(row.photoUrl)).length,
         action: 'Add --confirm to import into Firebase Auth.',
       },
       null,
@@ -97,6 +101,12 @@ if (!shouldSkipFirestore) {
   }
 }
 
+let profilePhotosUploaded = 0;
+
+if (shouldUploadProfilePhotos) {
+  profilePhotosUploaded = await uploadProfilePhotosAndUpdateUsers(rows);
+}
+
 console.log(
   JSON.stringify(
     {
@@ -104,6 +114,7 @@ console.log(
       authImported: successCount,
       authFailed: failureCount,
       firestoreProfilesWritten: shouldSkipFirestore ? 0 : rows.length,
+      profilePhotosUploaded,
       errors,
     },
     null,
@@ -117,12 +128,12 @@ function initializeFirebaseAdmin() {
   }
 
   if (serviceAccountJson) {
-    initializeApp({ credential: cert(JSON.parse(serviceAccountJson)) });
+    initializeApp({ credential: cert(JSON.parse(serviceAccountJson)), storageBucket: getStorageBucketName() });
     return;
   }
 
   if (serviceAccountPath) {
-    initializeApp({ credential: cert(JSON.parse(readFileSync(serviceAccountPath, 'utf8'))) });
+    initializeApp({ credential: cert(JSON.parse(readFileSync(serviceAccountPath, 'utf8'))), storageBucket: getStorageBucketName() });
     return;
   }
 
@@ -205,6 +216,10 @@ function buildClaims(row) {
     tipoUsuario: row.tipoUsuario,
     tituloUsuario: row.tituloUsuario,
     estadoUsuario: row.estadoUsuario,
+    firstName: row.firstName,
+    lastName: row.lastName,
+    phone: row.phone,
+    tiempoIba: row.tiempoIba,
     publicador: row.publicador,
     publicadorEco: row.publicadorEco,
     publicadorEvento: row.publicadorEvento,
@@ -231,6 +246,59 @@ function toBoolean(value) {
   return ['true', '1', 'si', 'sí', 'yes', 'activo', 'active'].includes(String(value ?? '').trim().toLowerCase());
 }
 
+async function uploadProfilePhotosAndUpdateUsers(userRows) {
+  const auth = getAuth();
+  const bucket = getStorage().bucket();
+  let uploaded = 0;
+
+  for (const row of userRows) {
+    if (!isDataImage(row.photoUrl)) {
+      continue;
+    }
+
+    const parsed = parseDataImage(row.photoUrl);
+    const token = randomUUID();
+    const filePath = `profile-photos/${row.id}.${parsed.extension}`;
+    const file = bucket.file(filePath);
+
+    await file.save(parsed.buffer, {
+      resumable: false,
+      metadata: {
+        contentType: parsed.contentType,
+        metadata: {
+          firebaseStorageDownloadTokens: token,
+          soyibaUserId: row.id,
+          soyibaUserEmail: row.email,
+        },
+      },
+    });
+
+    const encodedPath = encodeURIComponent(filePath);
+    const photoUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodedPath}?alt=media&token=${token}`;
+    await auth.updateUser(row.id, { photoURL: photoUrl });
+    uploaded += 1;
+  }
+
+  return uploaded;
+}
+
+function parseDataImage(value) {
+  const match = String(value || '').match(/^data:(image\/(?:jpeg|jpg|png|webp));base64,(.+)$/i);
+
+  if (!match) {
+    throw new Error('Invalid data image.');
+  }
+
+  const contentType = match[1].toLowerCase() === 'image/jpg' ? 'image/jpeg' : match[1].toLowerCase();
+  const extension = contentType === 'image/png' ? 'png' : contentType === 'image/webp' ? 'webp' : 'jpg';
+
+  return {
+    contentType,
+    extension,
+    buffer: Buffer.from(match[2], 'base64'),
+  };
+}
+
 function isValidHttpUrl(value) {
   try {
     var url = new URL(String(value || ''));
@@ -238,6 +306,14 @@ function isValidHttpUrl(value) {
   } catch {
     return false;
   }
+}
+
+function isDataImage(value) {
+  return /^data:image\/(?:jpeg|jpg|png|webp);base64,/i.test(String(value || ''));
+}
+
+function getStorageBucketName() {
+  return process.env.FIREBASE_STORAGE_BUCKET || env.VITE_FIREBASE_STORAGE_BUCKET || 'soyiba.firebasestorage.app';
 }
 
 function loadEnvFile(path) {
