@@ -107,6 +107,10 @@ function doPost(e) {
       return soyibaAuthJson_(soyibaAuthLogin_(data));
     }
 
+    if (action === 'recordLogin') {
+      return soyibaAuthJson_(soyibaAuthRecordLogin_(data));
+    }
+
     if (action === 'getCurrentUser') {
       return soyibaAuthJson_(soyibaAuthGetCurrentUser_(data));
     }
@@ -293,6 +297,23 @@ function soyibaAuthLogin_(data) {
     return { ok: false, error: 'Credenciales invalidas.' };
   }
 
+  return {
+    ok: true,
+    token: Utilities.getUuid(),
+    user: soyibaAuthBuildUser_(user)
+  };
+}
+
+function soyibaAuthRecordLogin_(data) {
+  var email = soyibaAuthNormalizeEmail_(data.email);
+  var userId = String(data.userId || data.user_id || '').trim();
+  var sheet = soyibaAuthGetSheet_();
+  var found = soyibaAuthFindUserByIdOrEmail_(sheet, userId, email);
+
+  if (found.row < 1) {
+    return { ok: false, error: 'Usuario no encontrado para actualizar login.' };
+  }
+
   var headers = soyibaAuthGetHeaders_(sheet);
   var now = new Date().toISOString();
   sheet.getRangeList([
@@ -300,11 +321,7 @@ function soyibaAuthLogin_(data) {
     sheet.getRange(found.row, headers.indexOf('updated_at') + 1).getA1Notation()
   ]).setValue(now);
 
-  return {
-    ok: true,
-    token: Utilities.getUuid(),
-    user: soyibaAuthBuildUser_(user)
-  };
+  return { ok: true, updatedAt: now };
 }
 
 function soyibaAuthBuildUser_(user) {

@@ -107,9 +107,28 @@ export async function signInWithEmailPassword(email: string, password: string): 
     throw error;
   }
 
-  return normalizeAuthResponse(response, 'No fue posible iniciar sesión.');
+  const result = normalizeAuthResponse(response, 'No fue posible iniciar sesión.');
+
+  if (result.ok) {
+    recordLoginInBackground(result.session);
+  }
+
+  return result;
 }
 
+function recordLoginInBackground(session: SoyibaSession) {
+  callAppsScript<BasicAuthResponse>(
+    'Auth',
+    'recordLogin',
+    {
+      token: session.token,
+      userId: session.user.id,
+      email: session.user.email,
+    },
+    () => ({ ok: true }),
+    { timeoutMs: 6000 },
+  ).catch(() => undefined);
+}
 async function callLoginWithRetry(email: string, password: string) {
   let lastError: unknown;
 
