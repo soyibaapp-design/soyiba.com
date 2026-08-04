@@ -1,4 +1,6 @@
 import { callAppsScript } from '../../services/appsScriptClient';
+import { getFirebaseApp } from '../../services/firebase';
+import { isFirebaseAuthEnabled } from '../../services/firebaseAuth';
 import type { SoyibaSession, SoyibaUser } from '../Auth/auth.service';
 
 export type IbaMember = {
@@ -145,6 +147,10 @@ const localMembersSeed: Array<Partial<IbaMember>> = [
 ];
 
 export async function getMembersDirectory(session: SoyibaSession): Promise<IbaMember[]> {
+  if (isFirebaseAuthEnabled()) {
+    return getFirebaseMembersDirectory(session);
+  }
+
   const response = await callAppsScript<MembersResponse>(
     'Miembros',
     'listMembers',
@@ -178,6 +184,37 @@ export async function getMembersDirectory(session: SoyibaSession): Promise<IbaMe
   }
 
   throw new Error('No fue posible cargar el directorio.');
+}
+
+async function getFirebaseMembersDirectory(session: SoyibaSession): Promise<IbaMember[]> {
+  const app = getFirebaseApp();
+
+  if (!app) {
+    throw new Error('Firebase no esta configurado.');
+  }
+
+  try {
+    const { collection, getDocs, getFirestore, query, where } = await import('firebase/firestore');
+    const db = getFirestore(app, getFirebaseMembersDatabaseId());
+    const usersRef = collection(db, 'users');
+    const source = canManageMembersDirectory(session.user)
+      ? usersRef
+      : query(
+          usersRef,
+          where('tipoUsuario', '==', 'Miembro'),
+          where('active', '==', true),
+          where('estadoUsuario', '==', 'Activo'),
+          where('visibleDirectorio', '==', true),
+        );
+    const snapshot = await getDocs(source);
+    return normalizeMembers(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
+  } catch {
+    throw new Error('No fue posible cargar Miembros IBA desde Firebase. Revisa las reglas de Firestore.');
+  }
+}
+
+function getFirebaseMembersDatabaseId() {
+  return String(import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || 'soyibadb').trim() || 'soyibadb';
 }
 
 export function canViewMembersDirectory(user: SoyibaUser) {
