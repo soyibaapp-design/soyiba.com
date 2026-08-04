@@ -1,0 +1,58 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /profile-photos/{userId}/{filePath=**} {
+      allow get: if true;
+      allow list: if false;
+      allow create, update: if request.auth != null
+        && request.auth.uid == userId
+        && request.resource.size <= 4194304
+        && request.resource.contentType.matches('image/.*')
+        && request.resource.metadata.ownerUid == request.auth.uid;
+      allow delete: if request.auth != null
+        && request.auth.uid == userId
+        && resource.metadata.ownerUid == request.auth.uid;
+    }
+
+    match /publicaciones/videos/{filePath=**} {
+      allow get, list: if true;
+
+      allow create: if request.auth != null
+        && request.resource.size <= 83886080
+        && request.resource.contentType.matches('video/.*')
+        && request.resource.metadata.ownerUid == request.auth.uid;
+
+      allow update: if request.auth != null
+        && resource.metadata.ownerUid == request.auth.uid
+        && request.resource.metadata.ownerUid == resource.metadata.ownerUid
+        && request.resource.size <= 83886080
+        && request.resource.contentType.matches('video/.*');
+
+      allow delete: if request.auth != null
+        && resource.metadata.ownerUid == request.auth.uid;
+    }
+
+    match /publicaciones/imagenes/{filePath=**} {
+      allow get, list: if true;
+
+      allow create: if request.auth != null
+        && request.resource.size <= 8388608
+        && request.resource.contentType.matches('image/.*')
+        && request.resource.metadata.ownerUid == request.auth.uid;
+
+      allow update: if request.auth != null
+        && resource.metadata.ownerUid == request.auth.uid
+        && request.resource.metadata.ownerUid == resource.metadata.ownerUid
+        && request.resource.size <= 8388608
+        && request.resource.contentType.matches('image/.*');
+
+      allow delete: if request.auth != null
+        && resource.metadata.ownerUid == request.auth.uid;
+    }
+
+    match /{allPaths=**} {
+      allow get, list, create, update, delete: if false;
+    }
+  }
+}

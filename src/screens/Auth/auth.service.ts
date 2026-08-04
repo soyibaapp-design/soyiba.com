@@ -297,6 +297,10 @@ export async function updateUserPhoto(session: SoyibaSession, photoUrl: string):
     return { ok: false, error: 'Foto invalida.' };
   }
 
+  if (isFirebaseAuthEnabled()) {
+    return updateUserPhotoWithFirebase(session, normalizedPhotoUrl);
+  }
+
   const response = await callAppsScript<AuthResponse>(
     'Auth',
     'updateProfilePhoto',
@@ -317,6 +321,64 @@ export async function updateUserPhoto(session: SoyibaSession, photoUrl: string):
   );
 
   return preserveLocalOnlyUserFields(normalizeAuthResponse(response, 'No fue posible actualizar la foto.'), session);
+}
+
+async function updateUserPhotoWithFirebase(session: SoyibaSession, photoValue: string): Promise<AuthResult> {
+  const app = getFirebaseApp();
+
+  if (!app) {
+    return { ok: false, error: 'Firebase no esta configurado.' };
+  }
+
+  try {
+    const [{ getAuth, onAuthStateChanged, updateProfile }, { doc, getFirestore, serverTimestamp, setDoc }, { getDownloadURL, getStorage, ref, uploadBytes }] =
+      await Promise.all([import('firebase/auth'), import('firebase/firestore'), import('firebase/storage')]);
+    const auth = getAuth(app);
+    const firebaseUser = auth.currentUser || (await waitForFirebaseUser(auth, onAuthStateChanged));
+
+    if (!firebaseUser || firebaseUser.uid !== session.user.id) {
+      return { ok: false, error: 'No encontramos tu sesion de Firebase para actualizar la foto.' };
+    }
+
+    const upload = dataUrlToProfilePhotoUpload(photoValue, session.user.id);
+    const storageRef = ref(getStorage(app), upload.path);
+    await uploadBytes(storageRef, upload.blob, {
+      contentType: upload.contentType,
+      customMetadata: {
+        ownerUid: firebaseUser.uid,
+        soyibaUserId: session.user.id,
+        soyibaUserEmail: session.user.email,
+      },
+    });
+    const nextPhotoUrl = await getDownloadURL(storageRef);
+    const updatedAt = new Date().toISOString();
+
+    await Promise.all([
+      updateProfile(firebaseUser, { photoURL: nextPhotoUrl }),
+      setDoc(
+        doc(getFirestore(app, getFirebaseAuthDatabaseId()), 'users', session.user.id),
+        {
+          photoUrl: nextPhotoUrl,
+          updatedAt,
+          updatedAtServer: serverTimestamp(),
+        },
+        { merge: true },
+      ),
+    ]);
+
+    return {
+      ok: true,
+      session: {
+        token: session.token,
+        user: {
+          ...session.user,
+          photoUrl: nextPhotoUrl,
+        },
+      },
+    };
+  } catch {
+    return { ok: false, error: 'No fue posible actualizar la foto en Firebase.' };
+  }
 }
 
 export async function updateUserPassword(session: SoyibaSession, currentPassword: string, newPassword: string): Promise<AuthResult> {
@@ -646,6 +708,50 @@ async function sha256Hex(value: string) {
   return Array.from(new Uint8Array(buffer))
     .map((byte) => byte.toString(16).padStart(2, '0'))
     .join('');
+}
+
+function dataUrlToProfilePhotoUpload(value: string, userId: string) {
+  const match = value.match(/^data:(image\/(?:jpeg|jpg|png|webp));base64,(.+)$/i);
+
+  if (!match) {
+    throw new Error('Foto invalida.');
+  }
+
+  const contentType = match[1].toLowerCase() === 'image/jpg' ? 'image/jpeg' : match[1].toLowerCase();
+  const extension = contentType === 'image/png' ? 'png' : contentType === 'image/webp' ? 'webp' : 'jpg';
+  const binary = atob(match[2]);
+  const bytes = new Uint8Array(binary.length);
+
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+
+  return {
+    blob: new Blob([bytes], { type: contentType }),
+    contentType,
+    path: `profile-photos/${sanitizeStoragePathSegment(userId)}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${extension}`,
+  };
+}
+
+function sanitizeStoragePathSegment(value: string) {
+  return value.trim().replace(/[^a-zA-Z0-9_-]+/g, '-') || 'usuario';
+}
+
+function waitForFirebaseUser(
+  auth: import('firebase/auth').Auth,
+  onAuthStateChanged: typeof import('firebase/auth').onAuthStateChanged,
+) {
+  return new Promise<import('firebase/auth').User | null>((resolve) => {
+    const timeoutId = globalThis.setTimeout(() => {
+      unsubscribe();
+      resolve(null);
+    }, 2500);
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      globalThis.clearTimeout(timeoutId);
+      unsubscribe();
+      resolve(user);
+    });
+  });
 }
 
 function isTransientAppsScriptError(error: unknown) {

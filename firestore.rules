@@ -88,6 +88,19 @@ service cloud.firestore {
         );
     }
 
+    function isSelfPhotoUpdate(userId) {
+      return signedIn()
+        && request.auth.uid == userId
+        && request.resource.data.email == resource.data.email
+        && request.resource.data.id == resource.data.id
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'photoUrl',
+          'updatedAt',
+          'updatedAtServer'
+        ])
+        && request.resource.data.photoUrl is string;
+    }
+
     match /users/{userId} {
       allow get: if signedIn() && (request.auth.uid == userId || isManager() || (isActiveMember() && isVisibleDirectoryMember()));
       allow list: if isManager() || (isActiveMember() && isVisibleDirectoryMember());
@@ -96,7 +109,7 @@ service cloud.firestore {
           isManager()
           && request.resource.data.email == resource.data.email
           && request.resource.data.id == resource.data.id
-        ) || isSelfMembershipUpdate(userId);
+        ) || isSelfMembershipUpdate(userId) || isSelfPhotoUpdate(userId);
       allow delete: if false;
     }
 

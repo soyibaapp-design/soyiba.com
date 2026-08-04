@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit --pretty false",
     "test:firebase-auth-import": "node scripts/firebase-auth-import-smoke-test.mjs",
     "migrate:firebase-auth": "node scripts/firebase-auth-migrate-users.mjs",
-    "migrate:firebase-membership-registry": "node scripts/firebase-membership-registry-migrate.mjs"
+    "migrate:firebase-membership-registry": "node scripts/firebase-membership-registry-migrate.mjs",
+    "migrate:firebase-profile-photos": "node scripts/firebase-profile-photos-migrate.mjs"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.1",
