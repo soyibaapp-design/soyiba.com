@@ -29,7 +29,7 @@ import {
 import { primaryAssets } from '../lib/assets';
 import { SoyibaMap, type SoyibaMapMarker } from './SoyibaMap';
 
-export type SideMenuScreenId = 'inicio' | 'eventos' | 'eco' | 'donaciones' | 'miembros' | 'perfil' | 'usuarios';
+export type SideMenuScreenId = 'inicio' | 'eventos' | 'eco' | 'donaciones' | 'miembros' | 'perfil' | 'usuarios' | 'health';
 
 type SideMenuProps = {
   open: boolean;

@@ -78,6 +78,16 @@ export type VerifyMembershipResult =
   | { ok: true; session: SoyibaSession; message: string }
   | { ok: false; error: string };
 
+export function warmUpAuthService() {
+  return callAppsScript<BasicAuthResponse>(
+    'Auth',
+    'health',
+    {},
+    () => ({ ok: true }),
+    { timeoutMs: 7000 },
+  ).catch(() => undefined);
+}
+
 export async function signInWithEmailPassword(email: string, password: string): Promise<AuthResult> {
   const normalizedEmail = normalizeEmail(email);
 

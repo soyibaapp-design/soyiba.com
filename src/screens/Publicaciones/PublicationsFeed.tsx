@@ -334,42 +334,35 @@ export function PublicationsFeed({
   }, [isLoading, onPublicationOpened, openPublicationId, publications]);
 
   useEffect(() => {
-    if (publicMode) {
+    if (publicMode || !activePublicationId) {
       return;
     }
 
-    const publicationIdsToRecord: string[] = [];
-    const viewKeysToRollback: string[] = [];
+    const publication = publications.find((item) => item.id === activePublicationId);
 
-    publications.forEach((publication) => {
-      const viewKey = getPublicationViewStorageKey(session, publication.id);
-
-      if (readPublicationViewStored(viewKey)) {
-        return;
-      }
-
-      storePublicationView(viewKey);
-      publicationIdsToRecord.push(publication.id);
-      viewKeysToRollback.push(viewKey);
-    });
-
-    if (publicationIdsToRecord.length === 0) {
+    if (!publication) {
       return;
     }
 
-    const publicationIdsToRecordSet = new Set(publicationIdsToRecord);
+    const viewKey = getPublicationViewStorageKey(session, publication.id);
+
+    if (readPublicationViewStored(viewKey)) {
+      return;
+    }
+
+    storePublicationView(viewKey);
     setPublications((current) =>
-      current.map((item) => (publicationIdsToRecordSet.has(item.id) ? { ...item, viewsCount: item.viewsCount + 1 } : item)),
+      current.map((item) => (item.id === publication.id ? { ...item, viewsCount: item.viewsCount + 1 } : item)),
     );
 
     const timeout = window.setTimeout(() => {
-      recordPublicationViews(session, publicationIdsToRecord).catch(() => {
-        viewKeysToRollback.forEach(removePublicationViewStored);
+      recordPublicationViews(session, [publication.id]).catch(() => {
+        removePublicationViewStored(viewKey);
       });
     }, 900);
 
     return () => window.clearTimeout(timeout);
-  }, [publicMode, publications, session]);
+  }, [activePublicationId, publicMode, publications, session]);
 
   useEffect(() => {
     if (!notice) {

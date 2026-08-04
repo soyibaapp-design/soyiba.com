@@ -1,3 +1,5 @@
+import { startTrackedClientCall } from './clientActivity';
+
 type LocalFallback<T> = () => T | Promise<T>;
 
 type AppsScriptCallOptions = {
@@ -30,62 +32,71 @@ export async function callAppsScript<T>(
   localFallback?: LocalFallback<T>,
   options: AppsScriptCallOptions = {},
 ): Promise<T> {
+  const finishTrackedCall = startTrackedClientCall(moduleName, action);
   const endpoint = getAppsScriptEndpoint(moduleName);
 
   if (!endpoint) {
-    if (localFallback) {
-      return localFallback();
-    }
+    try {
+      if (localFallback) {
+        return await localFallback();
+      }
 
-    throw new Error(`Falta configurar el endpoint de Apps Script para ${moduleName}.`);
+      throw new Error(`Falta configurar el endpoint de Apps Script para ${moduleName}.`);
+    } finally {
+      finishTrackedCall();
+    }
   }
 
-  const controller = new AbortController();
-  const timeoutId = options.timeoutMs
-    ? globalThis.setTimeout(() => controller.abort(), options.timeoutMs)
-    : undefined;
-
-  let response: Response;
-
   try {
-    response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'text/plain;charset=utf-8',
-      },
-      body: JSON.stringify({ module: moduleName, action, data }),
-      signal: controller.signal,
-    });
-  } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') {
-      throw new Error(`Apps Script tardo demasiado para ${moduleName}.`);
+    const controller = new AbortController();
+    const timeoutId = options.timeoutMs
+      ? globalThis.setTimeout(() => controller.abort(), options.timeoutMs)
+      : undefined;
+
+    let response: Response;
+
+    try {
+      response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/plain;charset=utf-8',
+        },
+        body: JSON.stringify({ module: moduleName, action, data }),
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        throw new Error(`Apps Script tardo demasiado para ${moduleName}.`);
+      }
+
+      throw error;
+    } finally {
+      if (timeoutId !== undefined) {
+        globalThis.clearTimeout(timeoutId);
+      }
     }
 
-    throw error;
+    const text = await response.text();
+    const trimmedText = text.trimStart();
+
+    if (trimmedText && !trimmedText.startsWith('{') && !trimmedText.startsWith('[')) {
+      throw new Error(`Apps Script devolvio una respuesta no JSON para ${moduleName}.`);
+    }
+
+    let parsed: T;
+
+    try {
+      parsed = trimmedText ? (JSON.parse(trimmedText) as T) : ({} as T);
+    } catch {
+      throw new Error(`Apps Script devolvio JSON invalido para ${moduleName}.`);
+    }
+
+    if (!response.ok) {
+      throw new Error(`Apps Script respondio ${response.status} para ${moduleName}.`);
+    }
+
+    return parsed;
   } finally {
-    if (timeoutId !== undefined) {
-      globalThis.clearTimeout(timeoutId);
-    }
+    finishTrackedCall();
   }
-
-  const text = await response.text();
-  const trimmedText = text.trimStart();
-
-  if (trimmedText && !trimmedText.startsWith('{') && !trimmedText.startsWith('[')) {
-    throw new Error(`Apps Script devolvio una respuesta no JSON para ${moduleName}.`);
-  }
-
-  let parsed: T;
-
-  try {
-    parsed = trimmedText ? (JSON.parse(trimmedText) as T) : ({} as T);
-  } catch {
-    throw new Error(`Apps Script devolvio JSON invalido para ${moduleName}.`);
-  }
-
-  if (!response.ok) {
-    throw new Error(`Apps Script respondio ${response.status} para ${moduleName}.`);
-  }
-
-  return parsed;
 }

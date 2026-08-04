@@ -8,6 +8,8 @@ import { PwaInstallPrompt } from './components/PwaInstallPrompt';
 import { AuthScreen } from './screens/Auth/AuthScreen';
 import { refreshCurrentSession, type SoyibaSession } from './screens/Auth/auth.service';
 import { DonacionesScreen } from './screens/Donaciones/DonacionesScreen';
+import { HealthScreen } from './screens/Health/HealthScreen';
+import { useSoyibaHealthTelemetry } from './screens/Health/health.service';
 import { InicioScreen } from './screens/Inicio/InicioScreen';
 import { MembersPage } from './screens/Miembros/MembersPage';
 import { ProfileScreen } from './screens/Perfil/ProfileScreen';
@@ -15,7 +17,7 @@ import { PublicationsFeed } from './screens/Publicaciones/PublicationsFeed';
 import type { SoyibaPublication } from './screens/Publicaciones/publicaciones.service';
 import { UsersManagementScreen } from './screens/Usuarios/UsersManagementScreen';
 
-type ScreenId = 'inicio' | 'eventos' | 'eco' | 'donaciones' | 'miembros' | 'perfil' | 'usuarios';
+type ScreenId = 'inicio' | 'eventos' | 'eco' | 'donaciones' | 'miembros' | 'perfil' | 'usuarios' | 'health';
 type AuthMode = 'login' | 'register';
 
 const SESSION_STORAGE_KEY = 'soyiba.session';
@@ -54,11 +56,14 @@ export default function App() {
   const [publicationComposerOpen, setPublicationComposerOpen] = useState(false);
   const [publicationToOpenId, setPublicationToOpenId] = useState(initialSharedTarget?.publicationId || '');
   const [authMode, setAuthMode] = useState<AuthMode | null>(null);
+  const [forcedLogoutMessage, setForcedLogoutMessage] = useState('');
   const [liveNow, setLiveNow] = useState(() => isSundayLiveWindow(new Date()));
   const [liveBadgeTestEnabled, setLiveBadgeTestEnabled] = useState(() => loadLiveBadgeTestFlag());
   const refreshSessionKeyRef = useRef('');
   const lastSessionRefreshAtRef = useRef(0);
   const showLiveBadge = liveNow || (liveBadgeTestEnabled && isLiveBadgeTestUser(session));
+
+  useSoyibaHealthTelemetry(session, handleForcedLogout);
 
   useEffect(() => {
   function handleHashChange() {
@@ -165,6 +170,11 @@ export default function App() {
     setActiveScreen('inicio');
   }
 
+  function handleForcedLogout(message: string) {
+    setForcedLogoutMessage(message);
+    handleLogout();
+  }
+
   function handleLiveBadgeTestChange(enabled: boolean) {
     setLiveBadgeTestEnabled(enabled);
     storeLiveBadgeTestFlag(enabled);
@@ -195,6 +205,7 @@ export default function App() {
       return (
         <>
           <AuthScreen onSignedIn={handleSignedIn} initialMode={authMode || undefined} />
+          {forcedLogoutMessage ? <ForcedLogoutNotice message={forcedLogoutMessage} onClose={() => setForcedLogoutMessage('')} /> : null}
           <PwaInstallPrompt />
         </>
       );
@@ -307,6 +318,7 @@ function SoyibaShell({
   const [sideMenuOpen, setSideMenuOpen] = useState(false);
   const [churchInfoOpen, setChurchInfoOpen] = useState(false);
   const [usersManagementModalOpen, setUsersManagementModalOpen] = useState(false);
+  const [healthModalOpen, setHealthModalOpen] = useState(false);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [membersModalOpen, setMembersModalOpen] = useState(false);
 
@@ -399,10 +411,18 @@ function SoyibaShell({
                   onModalOpenChange={setUsersManagementModalOpen}
                 />
               ) : null}
+              {activeScreen === 'health' ? (
+                <HealthScreen
+                  key="health"
+                  session={session}
+                  onBack={() => onNavigate?.('perfil')}
+                  onModalOpenChange={setHealthModalOpen}
+                />
+              ) : null}
             </AnimatePresence>
           </main>
 
-          {publicMode || publicationComposerOpen || usersManagementModalOpen || profileModalOpen || membersModalOpen ? null : (
+          {publicMode || publicationComposerOpen || usersManagementModalOpen || healthModalOpen || profileModalOpen || membersModalOpen ? null : (
             <BottomNav activeTab={activeScreen} items={navigation} showLiveBadge={showLiveBadge} onChange={onNavigate || (() => undefined)} />
           )}
         </div>
@@ -419,6 +439,19 @@ function SoyibaShell({
       />
       <IbaSlidesModal open={churchInfoOpen} onClose={() => setChurchInfoOpen(false)} />
     </>
+  );
+}
+
+function ForcedLogoutNotice({ message, onClose }: { message: string; onClose: () => void }) {
+  return (
+    <div className="fixed inset-x-3 top-4 z-[150] mx-auto max-w-md rounded-[16px] border border-[#FFD1CF] bg-white px-4 py-3 text-sm font-bold text-[#9F1D1D] shadow-[0_18px_42px_rgba(230,55,55,0.14)]">
+      <div className="flex items-start gap-3">
+        <span className="min-w-0 flex-1">{message}</span>
+        <button type="button" onClick={onClose} className="shrink-0 text-xs font-black text-[#E63737]">
+          Cerrar
+        </button>
+      </div>
+    </div>
   );
 }
 

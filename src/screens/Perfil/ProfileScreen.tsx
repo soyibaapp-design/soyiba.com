@@ -45,7 +45,7 @@ import {
   type SoyibaPublication,
 } from '../Publicaciones/publicaciones.service';
 
-type ScreenTarget = 'inicio' | 'eventos' | 'eco' | 'donaciones' | 'perfil' | 'usuarios';
+type ScreenTarget = 'inicio' | 'eventos' | 'eco' | 'donaciones' | 'perfil' | 'usuarios' | 'health';
 
 type ProfileScreenProps = {
   session: SoyibaSession;
@@ -350,6 +350,16 @@ export function ProfileScreen({
           tone: 'violet',
           visible: isManager(user),
           target: 'usuarios',
+        },
+        {
+          id: 'health',
+          title: 'Health de la app',
+          description: 'Sesiones, llamadas activas e IPs reportadas.',
+          buttonLabel: 'Abrir',
+          icon: Radio,
+          tone: 'green',
+          visible: isManager(user),
+          target: 'health',
         },
         {
           id: 'eco',

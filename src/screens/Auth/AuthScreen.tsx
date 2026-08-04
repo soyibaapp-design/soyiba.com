@@ -23,6 +23,7 @@ import {
   registerWithEmailPassword,
   requestPasswordReset,
   signInWithEmailPassword,
+  warmUpAuthService,
   type RegisterPayload,
   type SoyibaSession,
 } from './auth.service';
@@ -101,6 +102,10 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
   const passwordRules = useMemo(() => getPasswordRules(registerForm.password), [registerForm.password]);
   const resetPasswordRules = useMemo(() => getPasswordRules(passwordResetConfirmForm.password), [passwordResetConfirmForm.password]);
   const isRegister = mode === 'register';
+
+  useEffect(() => {
+    warmUpAuthService();
+  }, []);
 
   useEffect(() => {
     if (initialMode) {

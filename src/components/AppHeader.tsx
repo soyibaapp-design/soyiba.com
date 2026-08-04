@@ -19,6 +19,7 @@ const tabTitles: Record<string, string> = {
   miembros: 'Miembros IBA',
   perfil: 'Perfil',
   usuarios: 'Usuarios',
+  health: 'Health',
 };
 
 export function AppHeader({

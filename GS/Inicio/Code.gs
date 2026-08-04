@@ -4,8 +4,10 @@ var SOYIBA_INICIO_HEADERS = ['metric_id', 'label', 'value', 'sort_order', 'visib
 var SOYIBA_AUTH_SPREADSHEET_ID = '1Sk6f6mScrMTcXfa-psxoY4boa_1gqJmFt7anP-lpErM';
 var SOYIBA_AUTH_SHEET = 'Auth';
 var SOYIBA_MIEMBROS_IBA_SHEET = 'MiembrosIBA';
+var SOYIBA_HEALTH_SESSIONS_SHEET = 'AppHealthSessions';
 var SOYIBA_INICIO_CODE_VERSION = 'password-reset-publicaciones-list-cache-2026-07-26';
 var SOYIBA_PASSWORD_RESET_TTL_MINUTES = 60;
+var SOYIBA_HEALTH_ACTIVE_WINDOW_MS = 2 * 60 * 1000;
 var SOYIBA_AUTH_HEADERS = [
   'user_id',
   'email',
@@ -56,6 +58,29 @@ var SOYIBA_MIEMBROS_IBA_HEADERS = [
   'claimed_at',
   'claim_status',
   'claim_notes',
+  'updated_at'
+];
+var SOYIBA_HEALTH_SESSION_HEADERS = [
+  'session_id',
+  'token_hash',
+  'user_id',
+  'email',
+  'display_name',
+  'role',
+  'status',
+  'started_at',
+  'last_seen_at',
+  'ended_at',
+  'revoked_at',
+  'revoked_by_user_id',
+  'revoked_by_email',
+  'revoke_reason',
+  'ip_address',
+  'user_agent',
+  'page',
+  'active_call_count',
+  'call_summary',
+  'total_calls',
   'updated_at'
 ];
 var SOYIBA_PUBLICACIONES_SPREADSHEET_ID = SOYIBA_INICIO_SPREADSHEET_ID;
@@ -204,7 +229,11 @@ function doPost(e) {
       action === 'listUsers' ||
       action === 'listMembers' ||
       action === 'listDirectoryMembers' ||
-      action === 'updateUserAccess'
+      action === 'updateUserAccess' ||
+      action === 'healthPing' ||
+      action === 'healthDashboard' ||
+      action === 'forceLogoutSessions' ||
+      action === 'endHealthSession'
     ) {
       return soyibaInicioJson_(soyibaAuthHandle_(action, data));
     }
@@ -294,6 +323,22 @@ function soyibaAuthHandle_(action, data) {
 
   if (action === 'updateUserAccess') {
     return soyibaAuthUpdateUserAccess_(data);
+  }
+
+  if (action === 'healthPing') {
+    return soyibaAuthHealthPing_(data);
+  }
+
+  if (action === 'healthDashboard') {
+    return soyibaAuthHealthDashboard_(data);
+  }
+
+  if (action === 'forceLogoutSessions') {
+    return soyibaAuthForceLogoutSessions_(data);
+  }
+
+  if (action === 'endHealthSession') {
+    return soyibaAuthEndHealthSession_(data);
   }
 
   return { ok: false, error: 'Accion no soportada: ' + action };
@@ -1126,12 +1171,23 @@ function soyibaAuthEnsureHeaders_(sheet) {
 function soyibaAuthFindUserByEmail_(sheet, email) {
   var headers = soyibaAuthGetHeaders_(sheet);
   var emailColumn = headers.indexOf('email');
-  var values = sheet.getDataRange().getValues();
+  var lastRow = sheet.getLastRow();
 
-  for (var rowIndex = 1; rowIndex < values.length; rowIndex += 1) {
-    if (soyibaAuthNormalizeEmail_(values[rowIndex][emailColumn]) === email) {
-      return { row: rowIndex + 1, user: soyibaAuthRowToObject_(headers, values[rowIndex]) };
-    }
+  if (emailColumn < 0 || lastRow < 2) {
+    return { row: -1, user: null };
+  }
+
+  var foundCell = sheet
+    .getRange(2, emailColumn + 1, lastRow - 1, 1)
+    .createTextFinder(email)
+    .matchEntireCell(true)
+    .matchCase(false)
+    .findNext();
+
+  if (foundCell) {
+    var row = foundCell.getRow();
+    var values = sheet.getRange(row, 1, 1, Math.max(sheet.getLastColumn(), SOYIBA_AUTH_HEADERS.length)).getValues()[0];
+    return { row: row, user: soyibaAuthRowToObject_(headers, values) };
   }
 
   return { row: -1, user: null };
@@ -1620,10 +1676,11 @@ function soyibaPublicacionesHandle_(action, data) {
 }
 
 function soyibaPublicacionesList_(data) {
-  var sheet = soyibaPublicacionesGetSheet_();
-  var savedSheet = soyibaGuardadosGetSheet_();
-  var yovoySheet = soyibaYoVoyGetSheet_();
-  var asistenciasEcoSheet = soyibaAsistenciasEcoGetSheet_();
+  var spreadsheet = soyibaPublicacionesGetSpreadsheet_();
+  var sheet = soyibaPublicacionesGetSheetByName_(spreadsheet, SOYIBA_PUBLICACIONES_SHEET, SOYIBA_PUBLICACIONES_HEADERS);
+  var savedSheet = soyibaPublicacionesGetSheetByName_(spreadsheet, SOYIBA_GUARDADOS_SHEET, SOYIBA_GUARDADOS_HEADERS);
+  var yovoySheet = soyibaPublicacionesGetSheetByName_(spreadsheet, SOYIBA_YOVOY_SHEET, SOYIBA_YOVOY_HEADERS);
+  var asistenciasEcoSheet = soyibaPublicacionesGetSheetByName_(spreadsheet, SOYIBA_ASISTENCIAS_ECO_SHEET, SOYIBA_ASISTENCIAS_ECO_HEADERS);
   var values = sheet.getDataRange().getValues();
   var headers = soyibaPublicacionesGetHeaders_(sheet);
   var publisherUsersByKey = soyibaPublicacionesGetAuthUsersMap_();
@@ -2427,11 +2484,22 @@ function soyibaPublicacionesBuildResponse_(record, savedByCurrentUser, yovoyByCu
 }
 
 function soyibaPublicacionesGetSheet_() {
-  var spreadsheet = SOYIBA_PUBLICACIONES_SPREADSHEET_ID
+  return soyibaPublicacionesGetSheetByName_(
+    soyibaPublicacionesGetSpreadsheet_(),
+    SOYIBA_PUBLICACIONES_SHEET,
+    SOYIBA_PUBLICACIONES_HEADERS
+  );
+}
+
+function soyibaPublicacionesGetSpreadsheet_() {
+  return SOYIBA_PUBLICACIONES_SPREADSHEET_ID
     ? SpreadsheetApp.openById(SOYIBA_PUBLICACIONES_SPREADSHEET_ID)
     : SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = spreadsheet.getSheetByName(SOYIBA_PUBLICACIONES_SHEET) || spreadsheet.insertSheet(SOYIBA_PUBLICACIONES_SHEET);
-  soyibaPublicacionesEnsureHeaders_(sheet, SOYIBA_PUBLICACIONES_HEADERS);
+}
+
+function soyibaPublicacionesGetSheetByName_(spreadsheet, sheetName, expectedHeaders) {
+  var sheet = spreadsheet.getSheetByName(sheetName) || spreadsheet.insertSheet(sheetName);
+  soyibaPublicacionesEnsureHeaders_(sheet, expectedHeaders);
   return sheet;
 }
 

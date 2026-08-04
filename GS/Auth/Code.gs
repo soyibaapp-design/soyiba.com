@@ -1,8 +1,10 @@
 var SOYIBA_AUTH_SPREADSHEET_ID = '1Sk6f6mScrMTcXfa-psxoY4boa_1gqJmFt7anP-lpErM';
 var SOYIBA_AUTH_SHEET = 'Auth';
 var SOYIBA_MIEMBROS_IBA_SHEET = 'MiembrosIBA';
+var SOYIBA_HEALTH_SESSIONS_SHEET = 'AppHealthSessions';
 var SOYIBA_AUTH_CODE_VERSION = 'membership-email-claim-validation-2026-07-21';
 var SOYIBA_PASSWORD_RESET_TTL_MINUTES = 60;
+var SOYIBA_HEALTH_ACTIVE_WINDOW_MS = 2 * 60 * 1000;
 var SOYIBA_AUTH_HEADERS = [
   'user_id',
   'email',
@@ -53,6 +55,29 @@ var SOYIBA_MIEMBROS_IBA_HEADERS = [
   'claimed_at',
   'claim_status',
   'claim_notes',
+  'updated_at'
+];
+var SOYIBA_HEALTH_SESSION_HEADERS = [
+  'session_id',
+  'token_hash',
+  'user_id',
+  'email',
+  'display_name',
+  'role',
+  'status',
+  'started_at',
+  'last_seen_at',
+  'ended_at',
+  'revoked_at',
+  'revoked_by_user_id',
+  'revoked_by_email',
+  'revoke_reason',
+  'ip_address',
+  'user_agent',
+  'page',
+  'active_call_count',
+  'call_summary',
+  'total_calls',
   'updated_at'
 ];
 
@@ -124,6 +149,22 @@ function doPost(e) {
 
     if (action === 'updateUserAccess') {
       return soyibaAuthJson_(soyibaAuthUpdateUserAccess_(data));
+    }
+
+    if (action === 'healthPing') {
+      return soyibaAuthJson_(soyibaAuthHealthPing_(data));
+    }
+
+    if (action === 'healthDashboard') {
+      return soyibaAuthJson_(soyibaAuthHealthDashboard_(data));
+    }
+
+    if (action === 'forceLogoutSessions') {
+      return soyibaAuthJson_(soyibaAuthForceLogoutSessions_(data));
+    }
+
+    if (action === 'endHealthSession') {
+      return soyibaAuthJson_(soyibaAuthEndHealthSession_(data));
     }
 
     return soyibaAuthJson_({ ok: false, error: 'Accion no soportada: ' + action });
@@ -710,6 +751,303 @@ function soyibaAuthUpdateUserAccess_(data) {
   };
 }
 
+function soyibaAuthHealthPing_(data) {
+  var sessionId = String(data.sessionId || data.session_id || '').trim();
+
+  if (!sessionId) {
+    return { ok: false, error: 'Falta sessionId para registrar health.' };
+  }
+
+  var authSheet = soyibaAuthGetSheet_();
+  var found = soyibaAuthFindUserByIdOrEmail_(authSheet, data.userId || data.user_id, data.email);
+
+  if (found.row < 1) {
+    return { ok: false, error: 'Usuario no encontrado para health.' };
+  }
+
+  var healthSheet = soyibaHealthGetSheet_();
+  var located = soyibaHealthFindSessionById_(healthSheet, sessionId);
+
+  if (located.row > 0 && String(located.record.revoked_at || '').trim()) {
+    return {
+      ok: true,
+      sessionRevoked: true,
+      revokedAt: String(located.record.revoked_at || ''),
+      message: String(located.record.revoke_reason || 'Tu sesion fue cerrada por un administrador.')
+    };
+  }
+
+  var now = new Date().toISOString();
+  var user = found.user;
+  var token = String(data.token || '').trim();
+  var record = {
+    session_id: sessionId,
+    token_hash: token ? soyibaAuthHashPassword_(token, 'soyiba-health-token') : '',
+    user_id: String(user.user_id || data.userId || ''),
+    email: soyibaAuthNormalizeEmail_(user.email || data.email),
+    display_name: String(data.displayName || data.display_name || user.display_name || user.email || 'Usuario SOY IBA'),
+    role: String(data.role || user.rol_sistema || user.role || 'Usuario'),
+    status: 'active',
+    started_at: located.row > 0 ? String(located.record.started_at || now) : now,
+    last_seen_at: now,
+    ended_at: '',
+    revoked_at: '',
+    revoked_by_user_id: '',
+    revoked_by_email: '',
+    revoke_reason: '',
+    ip_address: String(data.ipAddress || data.ip_address || '').trim(),
+    user_agent: String(data.userAgent || data.user_agent || '').slice(0, 600),
+    page: String(data.page || '').slice(0, 220),
+    active_call_count: soyibaHealthNumber_(data.activeCallCount || data.active_call_count),
+    call_summary: String(data.callSummary || data.call_summary || '{}').slice(0, 1000),
+    total_calls: soyibaHealthNumber_(data.totalCalls || data.total_calls),
+    updated_at: now
+  };
+
+  soyibaHealthWriteRecord_(healthSheet, located.row, record);
+  return { ok: true };
+}
+
+function soyibaAuthHealthDashboard_(data) {
+  var authSheet = soyibaAuthGetSheet_();
+  var actor = soyibaAuthFindUserByIdOrEmail_(authSheet, data.actorUserId || data.userId, data.actorEmail || data.email);
+
+  if (!soyibaAuthCanManageUsers_(actor.user)) {
+    return { ok: false, error: 'No tienes permisos para ver el health de la app.' };
+  }
+
+  var healthSheet = soyibaHealthGetSheet_();
+  var values = healthSheet.getDataRange().getValues();
+  var headers = values[0] || SOYIBA_HEALTH_SESSION_HEADERS;
+  var nowMs = new Date().getTime();
+  var sessions = [];
+  var callsByUser = {};
+
+  for (var rowIndex = 1; rowIndex < values.length; rowIndex += 1) {
+    var record = soyibaAuthRowToObject_(headers, values[rowIndex]);
+
+    if (!soyibaHealthIsActive_(record, nowMs)) {
+      continue;
+    }
+
+    var session = soyibaHealthBuildSession_(record);
+    sessions.push(session);
+
+    var key = session.userId || session.email || session.name;
+    if (!callsByUser[key]) {
+      callsByUser[key] = {
+        userId: session.userId,
+        email: session.email,
+        name: session.name,
+        activeCallCount: 0,
+        sessionCount: 0
+      };
+    }
+
+    callsByUser[key].activeCallCount += session.activeCallCount;
+    callsByUser[key].sessionCount += 1;
+  }
+
+  sessions.sort(function (left, right) {
+    return new Date(right.lastSeenAt).getTime() - new Date(left.lastSeenAt).getTime();
+  });
+
+  var calls = [];
+  for (var userKey in callsByUser) {
+    if (Object.prototype.hasOwnProperty.call(callsByUser, userKey)) {
+      calls.push(callsByUser[userKey]);
+    }
+  }
+  calls.sort(function (left, right) {
+    return right.activeCallCount - left.activeCallCount || String(left.name).localeCompare(String(right.name));
+  });
+
+  return {
+    ok: true,
+    dashboard: {
+      generatedAt: new Date().toISOString(),
+      activeUsers: calls.length,
+      activeSessions: sessions.length,
+      activeCalls: sessions.reduce(function (total, item) {
+        return total + item.activeCallCount;
+      }, 0),
+      sessions: sessions,
+      callsByUser: calls
+    }
+  };
+}
+
+function soyibaAuthForceLogoutSessions_(data) {
+  var authSheet = soyibaAuthGetSheet_();
+  var actor = soyibaAuthFindUserByIdOrEmail_(authSheet, data.actorUserId || data.userId, data.actorEmail || data.email);
+
+  if (!soyibaAuthCanManageUsers_(actor.user)) {
+    return { ok: false, error: 'No tienes permisos para cerrar sesiones.' };
+  }
+
+  var sessionIds = soyibaHealthSessionIds_(data.sessionIds || data.session_ids);
+  if (!sessionIds.length) {
+    return { ok: false, error: 'Selecciona al menos una sesion.' };
+  }
+
+  var selected = {};
+  sessionIds.forEach(function (sessionId) {
+    selected[sessionId] = true;
+  });
+
+  var sheet = soyibaHealthGetSheet_();
+  var headers = soyibaHealthGetHeaders_(sheet);
+  var values = sheet.getDataRange().getValues();
+  var now = new Date().toISOString();
+  var revokedCount = 0;
+  var reason = String(data.reason || 'Cerrada desde Health SOY IBA');
+
+  for (var rowIndex = 1; rowIndex < values.length; rowIndex += 1) {
+    var record = soyibaAuthRowToObject_(headers, values[rowIndex]);
+    var sessionId = String(record.session_id || '').trim();
+
+    if (!selected[sessionId] || String(record.revoked_at || '').trim()) {
+      continue;
+    }
+
+    var row = rowIndex + 1;
+    soyibaAuthSetCell_(sheet, headers, row, 'status', 'revoked');
+    soyibaAuthSetCell_(sheet, headers, row, 'revoked_at', now);
+    soyibaAuthSetCell_(sheet, headers, row, 'revoked_by_user_id', String(actor.user.user_id || ''));
+    soyibaAuthSetCell_(sheet, headers, row, 'revoked_by_email', String(actor.user.email || data.actorEmail || ''));
+    soyibaAuthSetCell_(sheet, headers, row, 'revoke_reason', reason);
+    soyibaAuthSetCell_(sheet, headers, row, 'active_call_count', 0);
+    soyibaAuthSetCell_(sheet, headers, row, 'updated_at', now);
+    revokedCount += 1;
+  }
+
+  return { ok: true, revokedCount: revokedCount };
+}
+
+function soyibaAuthEndHealthSession_(data) {
+  var sessionId = String(data.sessionId || data.session_id || '').trim();
+  if (!sessionId) {
+    return { ok: true };
+  }
+
+  var sheet = soyibaHealthGetSheet_();
+  var located = soyibaHealthFindSessionById_(sheet, sessionId);
+
+  if (located.row < 1 || String(located.record.revoked_at || '').trim()) {
+    return { ok: true };
+  }
+
+  var headers = soyibaHealthGetHeaders_(sheet);
+  var now = new Date().toISOString();
+  soyibaAuthSetCell_(sheet, headers, located.row, 'status', 'ended');
+  soyibaAuthSetCell_(sheet, headers, located.row, 'ended_at', now);
+  soyibaAuthSetCell_(sheet, headers, located.row, 'active_call_count', 0);
+  soyibaAuthSetCell_(sheet, headers, located.row, 'updated_at', now);
+  return { ok: true };
+}
+
+function soyibaHealthBuildSession_(record) {
+  return {
+    sessionId: String(record.session_id || ''),
+    userId: String(record.user_id || ''),
+    email: soyibaAuthNormalizeEmail_(record.email),
+    name: String(record.display_name || record.email || 'Usuario SOY IBA'),
+    role: String(record.role || 'Usuario'),
+    status: String(record.status || 'active'),
+    startedAt: String(record.started_at || ''),
+    lastSeenAt: String(record.last_seen_at || ''),
+    endedAt: String(record.ended_at || ''),
+    revokedAt: String(record.revoked_at || ''),
+    revokedByEmail: String(record.revoked_by_email || ''),
+    revokeReason: String(record.revoke_reason || ''),
+    ipAddress: String(record.ip_address || ''),
+    userAgent: String(record.user_agent || ''),
+    page: String(record.page || ''),
+    activeCallCount: soyibaHealthNumber_(record.active_call_count),
+    callSummary: String(record.call_summary || '{}')
+  };
+}
+
+function soyibaHealthIsActive_(record, nowMs) {
+  var lastSeenMs = new Date(record.last_seen_at || '').getTime();
+  return !String(record.revoked_at || '').trim() &&
+    !String(record.ended_at || '').trim() &&
+    lastSeenMs &&
+    nowMs - lastSeenMs <= SOYIBA_HEALTH_ACTIVE_WINDOW_MS;
+}
+
+function soyibaHealthSessionIds_(value) {
+  if (Array.isArray(value)) {
+    return value.map(function (item) {
+      return String(item || '').trim();
+    }).filter(Boolean);
+  }
+
+  return String(value || '').split(',').map(function (item) {
+    return item.trim();
+  }).filter(Boolean);
+}
+
+function soyibaHealthNumber_(value) {
+  var number = Number(value || 0);
+  return isNaN(number) ? 0 : Math.max(0, number);
+}
+
+function soyibaHealthGetSheet_() {
+  var spreadsheet = SOYIBA_AUTH_SPREADSHEET_ID
+    ? SpreadsheetApp.openById(SOYIBA_AUTH_SPREADSHEET_ID)
+    : SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = spreadsheet.getSheetByName(SOYIBA_HEALTH_SESSIONS_SHEET) || spreadsheet.insertSheet(SOYIBA_HEALTH_SESSIONS_SHEET);
+  soyibaHealthEnsureHeaders_(sheet);
+  return sheet;
+}
+
+function soyibaHealthEnsureHeaders_(sheet) {
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(SOYIBA_HEALTH_SESSION_HEADERS);
+    return;
+  }
+
+  var headers = soyibaHealthGetHeaders_(sheet);
+  var needsRewrite = SOYIBA_HEALTH_SESSION_HEADERS.some(function (header) {
+    return headers.indexOf(header) === -1;
+  });
+
+  if (needsRewrite) {
+    sheet.getRange(1, 1, 1, SOYIBA_HEALTH_SESSION_HEADERS.length).setValues([SOYIBA_HEALTH_SESSION_HEADERS]);
+  }
+}
+
+function soyibaHealthGetHeaders_(sheet) {
+  return sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), SOYIBA_HEALTH_SESSION_HEADERS.length)).getValues()[0];
+}
+
+function soyibaHealthFindSessionById_(sheet, sessionId) {
+  var headers = soyibaHealthGetHeaders_(sheet);
+  var sessionColumn = headers.indexOf('session_id');
+  var values = sheet.getDataRange().getValues();
+
+  for (var rowIndex = 1; rowIndex < values.length; rowIndex += 1) {
+    if (String(values[rowIndex][sessionColumn] || '').trim() === sessionId) {
+      return { row: rowIndex + 1, record: soyibaAuthRowToObject_(headers, values[rowIndex]) };
+    }
+  }
+
+  return { row: -1, record: null };
+}
+
+function soyibaHealthWriteRecord_(sheet, row, record) {
+  var values = SOYIBA_HEALTH_SESSION_HEADERS.map(function (header) {
+    return record[header] === undefined ? '' : record[header];
+  });
+
+  if (row > 0) {
+    sheet.getRange(row, 1, 1, SOYIBA_HEALTH_SESSION_HEADERS.length).setValues([values]);
+  } else {
+    sheet.appendRow(values);
+  }
+}
+
 function soyibaAuthSessionFromRow_(sheet, row, token) {
   var headers = soyibaAuthGetHeaders_(sheet);
   var values = sheet.getRange(row, 1, 1, Math.max(sheet.getLastColumn(), SOYIBA_AUTH_HEADERS.length)).getValues()[0];
@@ -915,12 +1253,23 @@ function soyibaAuthEnsureHeaders_(sheet) {
 function soyibaAuthFindUserByEmail_(sheet, email) {
   var headers = soyibaAuthGetHeaders_(sheet);
   var emailColumn = headers.indexOf('email');
-  var values = sheet.getDataRange().getValues();
+  var lastRow = sheet.getLastRow();
 
-  for (var rowIndex = 1; rowIndex < values.length; rowIndex += 1) {
-    if (soyibaAuthNormalizeEmail_(values[rowIndex][emailColumn]) === email) {
-      return { row: rowIndex + 1, user: soyibaAuthRowToObject_(headers, values[rowIndex]) };
-    }
+  if (emailColumn < 0 || lastRow < 2) {
+    return { row: -1, user: null };
+  }
+
+  var foundCell = sheet
+    .getRange(2, emailColumn + 1, lastRow - 1, 1)
+    .createTextFinder(email)
+    .matchEntireCell(true)
+    .matchCase(false)
+    .findNext();
+
+  if (foundCell) {
+    var row = foundCell.getRow();
+    var values = sheet.getRange(row, 1, 1, Math.max(sheet.getLastColumn(), SOYIBA_AUTH_HEADERS.length)).getValues()[0];
+    return { row: row, user: soyibaAuthRowToObject_(headers, values) };
   }
 
   return { row: -1, user: null };
