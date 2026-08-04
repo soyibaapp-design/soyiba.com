@@ -17,6 +17,7 @@ const serviceAccountPath =
   env.FIREBASE_SERVICE_ACCOUNT_PATH;
 const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
 const tsvPath = process.env.SOYIBA_AUTH_TSV_PATH || resolve(process.cwd(), 'TSV', 'Auth.tsv');
+const firestoreDatabaseId = process.env.FIREBASE_FIRESTORE_DATABASE_ID || env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || 'soyibadb';
 
 const rows = parseTsv(tsvPath)
   .map(normalizeAuthRow)
@@ -79,7 +80,7 @@ for (const userChunk of chunks) {
 }
 
 if (!shouldSkipFirestore) {
-  const db = getFirestore();
+  const db = getFirestore(firestoreDatabaseId);
   const now = new Date().toISOString();
 
   for (const rowChunk of chunk(rows, 400)) {
@@ -113,6 +114,7 @@ console.log(
       source: tsvPath,
       authImported: successCount,
       authFailed: failureCount,
+      firestoreDatabaseId: shouldSkipFirestore ? '' : firestoreDatabaseId,
       firestoreProfilesWritten: shouldSkipFirestore ? 0 : rows.length,
       profilePhotosUploaded,
       errors,

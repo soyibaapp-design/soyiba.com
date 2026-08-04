@@ -52,13 +52,40 @@ export async function refreshFirebaseSession(currentSession: SoyibaSession): Pro
   }
 
   const [token, tokenResult] = await Promise.all([firebaseUser.getIdToken(), firebaseUser.getIdTokenResult()]);
+  const profile = await getFirebaseUserProfile(app, firebaseUser.uid);
+
   return {
     token,
     user: {
       ...currentSession.user,
-      ...buildSoyibaUserFromFirebase(firebaseUser, tokenResult.claims, currentSession.user),
+      ...buildSoyibaUserFromFirebase(firebaseUser, tokenResult.claims, { ...currentSession.user, ...profile }),
     },
   };
+}
+
+async function getFirebaseUserProfile(app: NonNullable<ReturnType<typeof getFirebaseApp>>, uid: string): Promise<FirebaseUserProfile> {
+  const databaseId = String(import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || 'soyibadb').trim() || 'soyibadb';
+
+  try {
+    return await withTimeout(async () => {
+      const { doc, getDoc, getFirestore } = await import('firebase/firestore');
+      const snapshot = await getDoc(doc(getFirestore(app, databaseId), 'users', uid));
+      return snapshot.exists() ? (snapshot.data() as FirebaseUserProfile) : {};
+    }, 2200);
+  } catch {
+    return {};
+  }
+}
+
+function withTimeout<T>(work: () => Promise<T>, timeoutMs: number) {
+  return new Promise<T>((resolve, reject) => {
+    const timeoutId = globalThis.setTimeout(() => reject(new Error('Firebase profile timeout')), timeoutMs);
+
+    work()
+      .then(resolve)
+      .catch(reject)
+      .finally(() => globalThis.clearTimeout(timeoutId));
+  });
 }
 
 function waitForCurrentFirebaseUser(
