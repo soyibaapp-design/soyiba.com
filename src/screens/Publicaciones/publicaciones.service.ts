@@ -151,8 +151,9 @@ type PublicationsResponse = {
 
 const publicationFeedCache = new Map<string, SoyibaPublication[]>();
 const PUBLICATION_FEED_STORAGE_PREFIX = 'soyiba.publications.feed.v2.';
-const PUBLICATION_FEED_STORAGE_TTL_MS = 10 * 60 * 1000;
-const PUBLICATION_FEED_RETRY_DELAYS_MS = [1200, 2600];
+const PUBLICATION_FEED_STORAGE_TTL_MS = 30 * 60 * 1000;
+const PUBLICATION_FEED_STORAGE_STALE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const PUBLICATION_FEED_RETRY_DELAYS_MS = [1200, 2600, 5200];
 
 const localPublications: SoyibaPublication[] = [
   {
@@ -504,7 +505,10 @@ export async function getPublicationFeed(session: SoyibaSession, options: Public
     return hydrateCurrentUserAuthor(clonePublications(cached), session.user);
   }
 
-  setPublicationFeedCache(session, options, publications);
+  if (publications.length > 0 || options.type) {
+    setPublicationFeedCache(session, options, publications);
+  }
+
   return publications;
 }
 
@@ -513,7 +517,7 @@ async function callPublicationList(session: SoyibaSession, options: PublicationF
 
   for (let attempt = 0; attempt <= PUBLICATION_FEED_RETRY_DELAYS_MS.length; attempt += 1) {
     try {
-      return await callAppsScript<PublicationsResponse>(
+      const response = await callAppsScript<PublicationsResponse>(
         'Publicaciones',
         'list',
         {
@@ -525,7 +529,14 @@ async function callPublicationList(session: SoyibaSession, options: PublicationF
           ok: true,
           publications: filterPublicationsByType(localPublications, options.type),
         }),
+        { timeoutMs: 16000 },
       );
+
+      if (isUnexpectedEmptyPublicationList(response, options)) {
+        throw new Error('Publicaciones respondio vacio temporalmente.');
+      }
+
+      return response;
     } catch (error) {
       lastError = error;
 
@@ -546,6 +557,14 @@ function wait(delayMs: number) {
   return new Promise((resolve) => {
     window.setTimeout(resolve, delayMs);
   });
+}
+
+function isUnexpectedEmptyPublicationList(response: PublicationsResponse, options: PublicationFeedOptions) {
+  if (!response.ok || options.type) {
+    return false;
+  }
+
+  return Array.isArray(response.publications) && response.publications.length === 0;
 }
 
 export async function createPublication(session: SoyibaSession, payload: PublicationPayload) {
@@ -1666,7 +1685,7 @@ function getPublicationFeedStorageKey(cacheKey: string) {
   return `${PUBLICATION_FEED_STORAGE_PREFIX}${cacheKey}`;
 }
 
-function readStoredPublicationFeed(cacheKey: string): SoyibaPublication[] | null {
+function readStoredPublicationFeed(cacheKey: string, allowStale = false): SoyibaPublication[] | null {
   if (typeof window === 'undefined') {
     return null;
   }
@@ -1679,10 +1698,16 @@ function readStoredPublicationFeed(cacheKey: string): SoyibaPublication[] | null
     }
 
     const parsed = JSON.parse(stored) as { timestamp?: number; publications?: unknown[] };
-    const expired = !parsed.timestamp || Date.now() - parsed.timestamp > PUBLICATION_FEED_STORAGE_TTL_MS;
+    const age = parsed.timestamp ? Date.now() - parsed.timestamp : Number.POSITIVE_INFINITY;
+    const expired = !parsed.timestamp || age > PUBLICATION_FEED_STORAGE_TTL_MS;
+    const tooStale = !parsed.timestamp || age > PUBLICATION_FEED_STORAGE_STALE_TTL_MS;
 
-    if (expired) {
+    if (tooStale) {
       window.localStorage.removeItem(getPublicationFeedStorageKey(cacheKey));
+      return null;
+    }
+
+    if (expired && !allowStale) {
       return null;
     }
 
@@ -1732,7 +1757,7 @@ function removeStoredPublicationFeeds(userKey: string) {
 
 function getCachedPublicationFeedInternal(session: SoyibaSession, options: PublicationFeedOptions) {
   const cacheKey = getPublicationFeedCacheKey(session, options);
-  const cached = publicationFeedCache.get(cacheKey) || readStoredPublicationFeed(cacheKey);
+  const cached = publicationFeedCache.get(cacheKey) || readStoredPublicationFeed(cacheKey, true);
 
   if (cached) {
     publicationFeedCache.set(cacheKey, clonePublications(cached));
@@ -1741,7 +1766,7 @@ function getCachedPublicationFeedInternal(session: SoyibaSession, options: Publi
 
   if (options.type) {
     const allCacheKey = getPublicationFeedCacheKey(session, {});
-    const allCached = publicationFeedCache.get(allCacheKey) || readStoredPublicationFeed(allCacheKey);
+    const allCached = publicationFeedCache.get(allCacheKey) || readStoredPublicationFeed(allCacheKey, true);
 
     if (allCached) {
       publicationFeedCache.set(allCacheKey, clonePublications(allCached));

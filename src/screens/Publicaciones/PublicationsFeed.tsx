@@ -176,6 +176,7 @@ export function PublicationsFeed({
   const [publications, setPublications] = useState<SoyibaPublication[]>(() => cachedPublications || []);
   const [isLoading, setIsLoading] = useState(() => !cachedPublications);
   const [error, setError] = useState('');
+  const [reloadKey, setReloadKey] = useState(0);
   const [composerOpen, setComposerOpen] = useState(false);
   const [editingPublication, setEditingPublication] = useState<SoyibaPublication | null>(null);
   const [savingPublication, setSavingPublication] = useState(false);
@@ -312,6 +313,12 @@ export function PublicationsFeed({
       })
       .catch((loadError) => {
         if (isMounted) {
+          const fallback = getCachedPublicationFeed(session, filterType ? { type: filterType } : {});
+
+          if (fallback?.length) {
+            setPublications(fallback);
+          }
+
           setError(loadError instanceof Error ? loadError.message : 'No fue posible cargar las publicaciones.');
         }
       })
@@ -324,7 +331,7 @@ export function PublicationsFeed({
     return () => {
       isMounted = false;
     };
-  }, [filterType, session]);
+  }, [filterType, reloadKey, session]);
 
   useEffect(() => {
     if (variant !== 'eco') {
@@ -777,7 +784,7 @@ export function PublicationsFeed({
         <div className="rounded-[14px] border border-[#BFD0EA] bg-[#EAF2FF] px-4 py-3 text-xs font-black text-[#0B1F5B]">{notice}</div>
       ) : null}
 
-      {variant === 'feed' && !isLoading ? (
+      {variant === 'feed' && !isLoading && (!error || publications.length > 0) ? (
         <div className="space-y-5">
           <div data-publication-view-id={homeTransmission?.id || undefined}>
             <HomeTransmissionCard
@@ -845,7 +852,27 @@ export function PublicationsFeed({
         </div>
       ) : null}
 
-      {!isLoading && !visiblePublications.length ? (
+      {!isLoading && error && !publications.length ? (
+        <div className="rounded-[18px] border border-[#D7E1F1] bg-white p-5 text-center shadow-[0_14px_32px_rgba(15,23,42,0.05)]">
+          <RefreshCw className="mx-auto h-9 w-9 text-[#145CFF]" />
+          <p className="mt-3 text-sm font-black text-[#0B1F5B]">No se pudieron cargar las publicaciones.</p>
+          <p className="mx-auto mt-1 max-w-xs text-xs font-semibold leading-5 text-[#637295]">La conexion con el servidor esta intermitente. Puedes reintentar sin cerrar sesion.</p>
+          <button
+            type="button"
+            onClick={() => {
+              setError('');
+              setIsLoading(true);
+              setReloadKey((current) => current + 1);
+            }}
+            className="mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-full bg-[#145CFF] px-4 text-xs font-black text-white shadow-[0_12px_24px_rgba(20,92,255,0.22)]"
+          >
+            <RefreshCw size={15} />
+            Reintentar
+          </button>
+        </div>
+      ) : null}
+
+      {!isLoading && !error && !visiblePublications.length ? (
         <div className="rounded-[18px] border border-dashed border-[#B8C9E7] bg-white p-5 text-center shadow-[0_14px_32px_rgba(15,23,42,0.05)]">
           <FileText className="mx-auto h-9 w-9 text-[#145CFF]" />
           <p className="mt-3 text-sm font-black text-[#0B1F5B]">Aún no hay {feedTitle.toLowerCase()}.</p>
