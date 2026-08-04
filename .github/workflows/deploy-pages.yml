@@ -40,7 +40,7 @@ jobs:
         env:
           GITHUB_PAGES: 'true'
           VITE_APPS_SCRIPT_URL: ${{ vars.VITE_APPS_SCRIPT_URL }}
-          VITE_APPS_SCRIPT_AUTH_URL: https://script.google.com/macros/s/AKfycbxZRtiIATQ0lwaHjlBqq5wt2CMAMQxqMlSwfXFA85rtzAUm6qH22zhdxyq_ASB8OCE/exec
+          VITE_APPS_SCRIPT_AUTH_URL: https://script.google.com/macros/s/AKfycbwcKquMHgYZfchr4sTbnfbFXTMCknW-pPAbT4brSPyMZzxjya_I6EALb5uDhGSk7nc/exec
           VITE_APPS_SCRIPT_INICIO_URL: ${{ vars.VITE_APPS_SCRIPT_INICIO_URL }}
           VITE_APPS_SCRIPT_PUBLICACIONES_URL: ${{ vars.VITE_APPS_SCRIPT_PUBLICACIONES_URL }}
           VITE_APPS_SCRIPT_DONACIONES_URL: ${{ vars.VITE_APPS_SCRIPT_DONACIONES_URL }}

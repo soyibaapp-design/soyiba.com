@@ -145,10 +145,6 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
     setError('');
     setStatusMessage('');
     setIsSubmitting(true);
-    const slowLoginNotice = window.setTimeout(() => {
-      setStatusMessage('El servidor esta tardando un poco. Seguimos intentando...');
-    }, 6000);
-
     try {
       const result = await signInWithEmailPassword(loginForm.email, loginForm.password);
 
@@ -161,7 +157,6 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : 'No fue posible iniciar sesión.');
     } finally {
-      window.clearTimeout(slowLoginNotice);
       setIsSubmitting(false);
     }
   }

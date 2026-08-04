@@ -62,9 +62,9 @@ type AuthResponse = {
 };
 
 const AUTH_LOGIN_RETRY_DELAYS_MS: number[] = [];
-const AUTH_LOGIN_TIMEOUT_MS = 60000;
+const AUTH_LOGIN_TIMEOUT_MS = 15000;
 const AUTH_LOGIN_TRANSIENT_ERROR =
-  'El servidor de inicio de sesión está tardando. Intenta nuevamente en unos segundos.';
+  'No fue posible iniciar sesión. Intenta nuevamente.';
 
 type AuthResult =
   | { ok: true; session: SoyibaSession }
