@@ -61,8 +61,8 @@ type AuthResponse = {
   error?: string;
 };
 
-const AUTH_LOGIN_RETRY_DELAYS_MS = [800];
-const AUTH_LOGIN_TIMEOUT_MS = 18000;
+const AUTH_LOGIN_RETRY_DELAYS_MS: number[] = [];
+const AUTH_LOGIN_TIMEOUT_MS = 60000;
 const AUTH_LOGIN_TRANSIENT_ERROR =
   'El servidor de inicio de sesión está tardando. Intenta nuevamente en unos segundos.';
 
