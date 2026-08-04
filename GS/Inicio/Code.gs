@@ -1569,6 +1569,17 @@ function soyibaAuthFindUserByEmail_(sheet, email) {
     return { row: -1, user: null };
   }
 
+  var cachedRow = soyibaAuthGetCachedEmailRow_(email);
+
+  if (cachedRow > 1 && cachedRow <= lastRow) {
+    var cachedValues = sheet.getRange(cachedRow, 1, 1, Math.max(sheet.getLastColumn(), SOYIBA_AUTH_HEADERS.length)).getValues()[0];
+    var cachedUser = soyibaAuthRowToObject_(headers, cachedValues);
+
+    if (soyibaAuthNormalizeEmail_(cachedUser.email) === email) {
+      return { row: cachedRow, user: cachedUser };
+    }
+  }
+
   var foundCell = sheet
     .getRange(2, emailColumn + 1, lastRow - 1, 1)
     .createTextFinder(email)
@@ -1579,10 +1590,31 @@ function soyibaAuthFindUserByEmail_(sheet, email) {
   if (foundCell) {
     var row = foundCell.getRow();
     var values = sheet.getRange(row, 1, 1, Math.max(sheet.getLastColumn(), SOYIBA_AUTH_HEADERS.length)).getValues()[0];
+    soyibaAuthPutCachedEmailRow_(email, row);
     return { row: row, user: soyibaAuthRowToObject_(headers, values) };
   }
 
   return { row: -1, user: null };
+}
+
+function soyibaAuthGetCachedEmailRow_(email) {
+  try {
+    var value = CacheService.getScriptCache().get(soyibaAuthEmailRowCacheKey_(email));
+    return value ? Number(value) : -1;
+  } catch (error) {
+    return -1;
+  }
+}
+
+function soyibaAuthPutCachedEmailRow_(email, row) {
+  try {
+    CacheService.getScriptCache().put(soyibaAuthEmailRowCacheKey_(email), String(row), 21600);
+  } catch (error) {
+  }
+}
+
+function soyibaAuthEmailRowCacheKey_(email) {
+  return 'auth-email-row:' + soyibaAuthNormalizeEmail_(email);
 }
 
 function soyibaAuthFindUserByIdOrEmail_(sheet, userId, email) {
@@ -1598,6 +1630,10 @@ function soyibaAuthFindUserByIdOrEmail_(sheet, userId, email) {
     var rowEmail = soyibaAuthNormalizeEmail_(values[rowIndex][emailColumn]);
 
     if ((normalizedId && rowId === normalizedId) || (normalizedEmail && rowEmail === normalizedEmail)) {
+      if (normalizedEmail && rowEmail === normalizedEmail) {
+        soyibaAuthPutCachedEmailRow_(normalizedEmail, rowIndex + 1);
+      }
+
       return { row: rowIndex + 1, user: soyibaAuthRowToObject_(headers, values[rowIndex]) };
     }
   }
