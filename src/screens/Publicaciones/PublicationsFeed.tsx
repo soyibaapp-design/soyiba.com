@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type InputHTMLAttributes, type TouchEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type InputHTMLAttributes, type TouchEvent } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
   BadgeCheck,
@@ -111,6 +111,7 @@ type ImagePreview = {
   src: string;
   sources?: string[];
   title: string;
+  publicationId?: string;
 };
 
 type PublicationFormState = {
@@ -190,8 +191,10 @@ export function PublicationsFeed({
   const [locationStatus, setLocationStatus] = useState<'idle' | 'requesting' | 'ready' | 'blocked' | 'unsupported'>('idle');
   const [notice, setNotice] = useState('');
   const [homeStoryStartIndex, setHomeStoryStartIndex] = useState<number | null>(null);
+  const feedRootRef = useRef<HTMLElement | null>(null);
   const lastComposerSignal = useRef(0);
   const lastOpenPublicationId = useRef('');
+  const viewTimersRef = useRef(new Map<string, number>());
   const permittedTypes = useMemo(() => getPermittedPublicationTypes(session.user), [session.user]);
   const composerTypes = useMemo(
     () => (filterType && permittedTypes.includes(filterType) ? [filterType] : permittedTypes),
@@ -226,6 +229,38 @@ export function PublicationsFeed({
     () => publications.find((publication) => publication.id === activePublicationId) || null,
     [activePublicationId, publications],
   );
+
+  const markPublicationViewed = useCallback((publicationId: string) => {
+    if (publicMode || !publicationId) {
+      return;
+    }
+
+    const publication = publications.find((item) => item.id === publicationId);
+
+    if (!publication) {
+      return;
+    }
+
+    const viewKey = getPublicationViewStorageKey(session, publication.id);
+
+    if (readPublicationViewStored(viewKey)) {
+      return;
+    }
+
+    storePublicationView(viewKey);
+    setPublications((current) =>
+      current.map((item) => (item.id === publication.id ? { ...item, viewsCount: item.viewsCount + 1 } : item)),
+    );
+
+    recordPublicationViews(session, [publication.id]).catch(() => {
+      removePublicationViewStored(viewKey);
+    });
+  }, [publicMode, publications, session]);
+
+  const handleOpenImage = useCallback((publicationId: string, preview: ImagePreview) => {
+    markPublicationViewed(publicationId);
+    setImagePreview({ ...preview, publicationId });
+  }, [markPublicationViewed]);
 
   useEffect(() => {
     let isMounted = true;
@@ -334,35 +369,60 @@ export function PublicationsFeed({
   }, [isLoading, onPublicationOpened, openPublicationId, publications]);
 
   useEffect(() => {
-    if (publicMode || !activePublicationId) {
+    markPublicationViewed(activePublicationId);
+  }, [activePublicationId, markPublicationViewed]);
+
+  useEffect(() => {
+    const root = feedRootRef.current;
+
+    if (publicMode || !root || typeof IntersectionObserver === 'undefined') {
       return;
     }
 
-    const publication = publications.find((item) => item.id === activePublicationId);
+    const timers = viewTimersRef.current;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          const publicationId = (entry.target as HTMLElement).dataset.publicationViewId || '';
 
-    if (!publication) {
-      return;
-    }
+          if (!publicationId) {
+            return;
+          }
 
-    const viewKey = getPublicationViewStorageKey(session, publication.id);
+          if (!entry.isIntersecting || entry.intersectionRatio < 0.6) {
+            const timer = timers.get(publicationId);
 
-    if (readPublicationViewStored(viewKey)) {
-      return;
-    }
+            if (timer) {
+              window.clearTimeout(timer);
+              timers.delete(publicationId);
+            }
 
-    storePublicationView(viewKey);
-    setPublications((current) =>
-      current.map((item) => (item.id === publication.id ? { ...item, viewsCount: item.viewsCount + 1 } : item)),
+            return;
+          }
+
+          if (timers.has(publicationId) || readPublicationViewStored(getPublicationViewStorageKey(session, publicationId))) {
+            return;
+          }
+
+          const timer = window.setTimeout(() => {
+            timers.delete(publicationId);
+            markPublicationViewed(publicationId);
+          }, 2000);
+
+          timers.set(publicationId, timer);
+        });
+      },
+      { threshold: [0, 0.6] },
     );
 
-    const timeout = window.setTimeout(() => {
-      recordPublicationViews(session, [publication.id]).catch(() => {
-        removePublicationViewStored(viewKey);
-      });
-    }, 900);
+    root.querySelectorAll<HTMLElement>('[data-publication-view-id]').forEach((element) => observer.observe(element));
 
-    return () => window.clearTimeout(timeout);
-  }, [activePublicationId, publicMode, publications, session]);
+    return () => {
+      observer.disconnect();
+      timers.forEach((timer) => window.clearTimeout(timer));
+      timers.clear();
+    };
+  }, [markPublicationViewed, publicMode, session, visiblePublications]);
 
   useEffect(() => {
     if (!notice) {
@@ -640,7 +700,7 @@ export function PublicationsFeed({
   }
 
   return (
-    <section className="space-y-3">
+    <section ref={feedRootRef} className="space-y-3">
       <div className="flex items-center justify-between gap-3">
         {variant === 'eventos' ? (
           <EventsHeader
@@ -684,46 +744,52 @@ export function PublicationsFeed({
 
       {variant === 'feed' && !isLoading ? (
         <div className="space-y-5">
-          <HomeTransmissionCard
-            publication={homeTransmission}
-            publicMode={publicMode}
-            showLiveBadge={showLiveBadge}
-            menuOpen={Boolean(homeTransmission && activeMenuId === homeTransmission.id)}
-            canManage={Boolean(homeTransmission && !publicMode && canManagePublication(session.user, homeTransmission))}
-            onMenuToggle={() => {
-              if (!homeTransmission) {
-                return;
-              }
+          <div data-publication-view-id={homeTransmission?.id || undefined}>
+            <HomeTransmissionCard
+              publication={homeTransmission}
+              publicMode={publicMode}
+              showLiveBadge={showLiveBadge}
+              menuOpen={Boolean(homeTransmission && activeMenuId === homeTransmission.id)}
+              canManage={Boolean(homeTransmission && !publicMode && canManagePublication(session.user, homeTransmission))}
+              onMenuToggle={() => {
+                if (!homeTransmission) {
+                  return;
+                }
 
-              setActiveMenuId((current) => (current === homeTransmission.id ? '' : homeTransmission.id));
-            }}
-            onShare={() => {
-              if (homeTransmission) {
-                handleShare(homeTransmission);
-              }
-            }}
-            onEdit={() => {
-              if (homeTransmission) {
-                openEditComposer(homeTransmission);
-              }
-            }}
-            onDelete={() => {
-              if (homeTransmission) {
-                handleDeletePublication(homeTransmission);
-              }
-            }}
-            onToggleSave={() => {
-              if (homeTransmission) {
-                handleToggleSave(homeTransmission);
-              }
-            }}
-            onOpenDetails={() => {
-              if (homeTransmission) {
-                setActivePublicationId(homeTransmission.id);
-              }
-            }}
-            onOpenImage={(preview) => setImagePreview(preview)}
-          />
+                setActiveMenuId((current) => (current === homeTransmission.id ? '' : homeTransmission.id));
+              }}
+              onShare={() => {
+                if (homeTransmission) {
+                  handleShare(homeTransmission);
+                }
+              }}
+              onEdit={() => {
+                if (homeTransmission) {
+                  openEditComposer(homeTransmission);
+                }
+              }}
+              onDelete={() => {
+                if (homeTransmission) {
+                  handleDeletePublication(homeTransmission);
+                }
+              }}
+              onToggleSave={() => {
+                if (homeTransmission) {
+                  handleToggleSave(homeTransmission);
+                }
+              }}
+              onOpenDetails={() => {
+                if (homeTransmission) {
+                  setActivePublicationId(homeTransmission.id);
+                }
+              }}
+              onOpenImage={(preview) => {
+                if (homeTransmission) {
+                  handleOpenImage(homeTransmission.id, preview);
+                }
+              }}
+            />
+          </div>
           <HomeEventsStrip events={homeEvents} onOpenStory={setHomeStoryStartIndex} onOpenAllEvents={onOpenEventsFromHome} />
         </div>
       ) : null}
@@ -754,53 +820,56 @@ export function PublicationsFeed({
       <div className={cx('space-y-4', variant === 'eventos' && 'space-y-3')}>
         {visiblePublications.map((publication) =>
           variant === 'eventos' ? (
-            <EventListCard
-              key={publication.id}
-              publication={publication}
-              goingBusy={goingBusyId === publication.id}
-              menuOpen={activeMenuId === publication.id}
-              canManage={!publicMode && canManagePublication(session.user, publication)}
-              publicMode={publicMode}
-              onMenuToggle={() => setActiveMenuId((current) => (current === publication.id ? '' : publication.id))}
-              onOpen={() => setActivePublicationId(publication.id)}
-              onShare={() => handleShare(publication)}
-              onEdit={() => openEditComposer(publication)}
-              onDelete={() => handleDeletePublication(publication)}
-              onToggleGoing={() => handleToggleGoing(publication)}
-              onAuthRequired={onAuthRequired}
-            />
+            <div key={publication.id} data-publication-view-id={publication.id}>
+              <EventListCard
+                publication={publication}
+                goingBusy={goingBusyId === publication.id}
+                menuOpen={activeMenuId === publication.id}
+                canManage={!publicMode && canManagePublication(session.user, publication)}
+                publicMode={publicMode}
+                onMenuToggle={() => setActiveMenuId((current) => (current === publication.id ? '' : publication.id))}
+                onOpen={() => setActivePublicationId(publication.id)}
+                onShare={() => handleShare(publication)}
+                onEdit={() => openEditComposer(publication)}
+                onDelete={() => handleDeletePublication(publication)}
+                onToggleGoing={() => handleToggleGoing(publication)}
+                onAuthRequired={onAuthRequired}
+              />
+            </div>
           ) : variant === 'eco' ? (
-            <EcoGroupCard
-              key={publication.id}
-              publication={publication}
-              distanceKm={getEcoDistanceKm(publication, userLocation)}
-              menuOpen={activeMenuId === publication.id}
-              canManage={!publicMode && canManagePublication(session.user, publication)}
-              publicMode={publicMode}
-              onMenuToggle={() => setActiveMenuId((current) => (current === publication.id ? '' : publication.id))}
-              onOpen={() => setActivePublicationId(publication.id)}
-              onShare={() => handleShare(publication)}
-              onEdit={() => openEditComposer(publication)}
-              onDelete={() => handleDeletePublication(publication)}
-            />
+            <div key={publication.id} data-publication-view-id={publication.id}>
+              <EcoGroupCard
+                publication={publication}
+                distanceKm={getEcoDistanceKm(publication, userLocation)}
+                menuOpen={activeMenuId === publication.id}
+                canManage={!publicMode && canManagePublication(session.user, publication)}
+                publicMode={publicMode}
+                onMenuToggle={() => setActiveMenuId((current) => (current === publication.id ? '' : publication.id))}
+                onOpen={() => setActivePublicationId(publication.id)}
+                onShare={() => handleShare(publication)}
+                onEdit={() => openEditComposer(publication)}
+                onDelete={() => handleDeletePublication(publication)}
+              />
+            </div>
           ) : (
-            <PublicationCard
-              key={publication.id}
-              publication={publication}
-              menuOpen={activeMenuId === publication.id}
-              canManage={!publicMode && canManagePublication(session.user, publication)}
-              publicMode={publicMode}
-              onMenuToggle={() => setActiveMenuId((current) => (current === publication.id ? '' : publication.id))}
-              onShare={() => handleShare(publication)}
-              onEdit={() => openEditComposer(publication)}
-              onDelete={() => handleDeletePublication(publication)}
-              onToggleSave={() => handleToggleSave(publication)}
-              onOpenEvent={publication.type === 'Evento' && onOpenEventFromHome ? () => onOpenEventFromHome(publication.id) : undefined}
-              onOpenEco={publication.type === 'Grupo ECO' && onOpenEcoFromHome ? () => onOpenEcoFromHome(publication.id) : undefined}
-              onOpenDetails={() => setActivePublicationId(publication.id)}
-              onAuthRequired={onAuthRequired}
-              onOpenImage={(preview) => setImagePreview(preview)}
-            />
+            <div key={publication.id} data-publication-view-id={publication.id}>
+              <PublicationCard
+                publication={publication}
+                menuOpen={activeMenuId === publication.id}
+                canManage={!publicMode && canManagePublication(session.user, publication)}
+                publicMode={publicMode}
+                onMenuToggle={() => setActiveMenuId((current) => (current === publication.id ? '' : publication.id))}
+                onShare={() => handleShare(publication)}
+                onEdit={() => openEditComposer(publication)}
+                onDelete={() => handleDeletePublication(publication)}
+                onToggleSave={() => handleToggleSave(publication)}
+                onOpenEvent={publication.type === 'Evento' && onOpenEventFromHome ? () => onOpenEventFromHome(publication.id) : undefined}
+                onOpenEco={publication.type === 'Grupo ECO' && onOpenEcoFromHome ? () => onOpenEcoFromHome(publication.id) : undefined}
+                onOpenDetails={() => setActivePublicationId(publication.id)}
+                onAuthRequired={onAuthRequired}
+                onOpenImage={(preview) => handleOpenImage(publication.id, preview)}
+              />
+            </div>
           ),
         )}
       </div>
@@ -851,7 +920,7 @@ export function PublicationsFeed({
               onShare={() => handleShare(activeDetailPublication)}
               onToggleAttendance={() => handleToggleEcoAttendance(activeDetailPublication)}
               onAuthRequired={onAuthRequired}
-              onOpenImage={(preview) => setImagePreview(preview)}
+              onOpenImage={(preview) => handleOpenImage(activeDetailPublication.id, preview)}
             />
           ) : (
             <PublicationDetailsModal
@@ -863,7 +932,7 @@ export function PublicationsFeed({
               onToggleSave={() => handleToggleSave(activeDetailPublication)}
               onToggleGoing={() => handleToggleGoing(activeDetailPublication)}
               onAuthRequired={onAuthRequired}
-              onOpenImage={(preview) => setImagePreview(preview)}
+              onOpenImage={(preview) => handleOpenImage(activeDetailPublication.id, preview)}
             />
           )
         ) : null}
