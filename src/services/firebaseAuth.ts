@@ -131,6 +131,8 @@ function buildSoyibaUserFromFirebase(
     lastName,
     phone: stringValue(profile.phone || claims.phone),
     cc: stringValue(profile.cc),
+    ccHash: stringValue(profile.ccHash),
+    ccLast4: stringValue(profile.ccLast4),
     role: rolSistema,
     rolSistema,
     tipoUsuario,

@@ -1,4 +1,5 @@
 import { callAppsScript } from '../../services/appsScriptClient';
+import { getFirebaseApp } from '../../services/firebase';
 import { isFirebaseAuthEnabled, refreshFirebaseSession, signInWithFirebaseEmailPassword } from '../../services/firebaseAuth';
 
 export type SoyibaUser = {
@@ -10,6 +11,8 @@ export type SoyibaUser = {
   lastName?: string;
   phone?: string;
   cc?: string;
+  ccHash?: string;
+  ccLast4?: string;
   miembroValidadoAt?: string;
   miembroValidadoPor?: string;
   miembroValidacionEstado?: string;
@@ -370,6 +373,10 @@ export async function verifyMembershipByCc(session: SoyibaSession, cc: string): 
     return { ok: false, error: 'Ingresa tu CC sin puntos ni comas.' };
   }
 
+  if (isFirebaseAuthEnabled()) {
+    return verifyMembershipByCcWithFirebase(session, normalizedCc);
+  }
+
   const response = await callAppsScript<AuthResponse>(
     'Auth',
     'verifyMembershipByCc',
@@ -392,6 +399,150 @@ export async function verifyMembershipByCc(session: SoyibaSession, cc: string): 
     session: result.session,
     message: response.message || 'Tu CC fue validada. Ahora eres miembro SOY IBA.',
   };
+}
+
+async function verifyMembershipByCcWithFirebase(session: SoyibaSession, normalizedCc: string): Promise<VerifyMembershipResult> {
+  const app = getFirebaseApp();
+
+  if (!app) {
+    return { ok: false, error: 'Firebase no esta configurado.' };
+  }
+
+  try {
+    const { doc, getFirestore, runTransaction, serverTimestamp } = await import('firebase/firestore');
+    const db = getFirestore(app, getFirebaseAuthDatabaseId());
+    const ccHash = await sha256Hex(normalizedCc);
+    const emailHash = await sha256Hex(normalizeEmail(session.user.email));
+    const registryRef = doc(db, 'memberRegistry', ccHash);
+    const userRef = doc(db, 'users', session.user.id);
+    const updatedAt = new Date().toISOString();
+
+    const result = await runTransaction(db, async (transaction) => {
+      const registrySnapshot = await transaction.get(registryRef);
+
+      if (!registrySnapshot.exists()) {
+        return { ok: false as const, error: 'No encontramos esa CC en el listado de miembros IBA.' };
+      }
+
+      const registry = registrySnapshot.data() as {
+        active?: unknown;
+        estado?: unknown;
+        emailHash?: unknown;
+        claimedUserId?: unknown;
+      };
+
+      if (!toBoolean(registry.active) || normalizePlainText(registry.estado || 'Activo') === 'inactivo') {
+        return { ok: false as const, error: 'Tu registro existe en MiembrosIBA, pero aparece inactivo.' };
+      }
+
+      const claimedUserId = normalizeText(registry.claimedUserId);
+
+      if (claimedUserId && claimedUserId !== session.user.id) {
+        return { ok: false as const, error: 'Esta CC ya fue reclamada por otra cuenta.' };
+      }
+
+      const emailMatches = normalizeText(registry.emailHash) && normalizeText(registry.emailHash) === emailHash;
+      const claimStatus = emailMatches ? 'validado' : 'pendiente_revision';
+      const claimNotes = emailMatches
+        ? 'Validado automaticamente por correo coincidente.'
+        : 'El correo del registro de MiembrosIBA no coincide con el correo de la cuenta o no esta definido.';
+
+      transaction.set(
+        registryRef,
+        {
+          claimedUserId: session.user.id,
+          claimedEmailHash: emailHash,
+          claimedAt: updatedAt,
+          claimStatus,
+          claimNotes,
+          updatedAt,
+          updatedAtServer: serverTimestamp(),
+        },
+        { merge: true },
+      );
+
+      const baseUserPatch = {
+        ccHash,
+        ccLast4: normalizedCc.slice(-4),
+        miembroValidadoAt: emailMatches ? updatedAt : '',
+        miembroValidadoPor: emailMatches ? 'memberRegistry.emailHash' : '',
+        miembroValidacionEstado: claimStatus,
+        miembroValidacionNotas: emailMatches ? '' : claimNotes,
+        updatedAt,
+        updatedAtServer: serverTimestamp(),
+      };
+
+      transaction.set(
+        userRef,
+        emailMatches
+          ? {
+              ...baseUserPatch,
+              role: 'Miembro',
+              tipoUsuario: 'Miembro',
+              tituloUsuario: 'Miembro',
+              rolSistema: 'Miembro',
+              estadoUsuario: 'Activo',
+              status: 'active',
+              active: true,
+              visibleDirectorio: true,
+            }
+          : baseUserPatch,
+        { merge: true },
+      );
+
+      return {
+        ok: true as const,
+        emailMatches,
+        claimStatus,
+        claimNotes,
+      };
+    });
+
+    if (!result.ok) {
+      return result;
+    }
+
+    const nextUser: SoyibaUser = result.emailMatches
+      ? {
+          ...session.user,
+          cc: normalizedCc,
+          ccHash,
+          ccLast4: normalizedCc.slice(-4),
+          role: 'Miembro',
+          tipoUsuario: 'Miembro',
+          tituloUsuario: 'Miembro',
+          rolSistema: 'Miembro',
+          estadoUsuario: 'Activo',
+          active: true,
+          miembroValidadoAt: updatedAt,
+          miembroValidadoPor: 'memberRegistry.emailHash',
+          miembroValidacionEstado: 'validado',
+          miembroValidacionNotas: '',
+        }
+      : {
+          ...session.user,
+          cc: normalizedCc,
+          ccHash,
+          ccLast4: normalizedCc.slice(-4),
+          miembroValidadoAt: '',
+          miembroValidadoPor: '',
+          miembroValidacionEstado: result.claimStatus,
+          miembroValidacionNotas: result.claimNotes,
+        };
+
+    return {
+      ok: true,
+      session: {
+        token: session.token,
+        user: nextUser,
+      },
+      message: result.emailMatches
+        ? 'Tu CC fue validada. Ahora eres miembro SOY IBA.'
+        : 'Recibimos tu solicitud de membresia. Queda pendiente de revision por un administrador.',
+    };
+  } catch {
+    return { ok: false, error: 'No fue posible validar tu CC en Firebase. Revisa las reglas de Firestore.' };
+  }
 }
 
 export async function requestPasswordReset(email: string, appUrl: string): Promise<BasicAuthResult> {
@@ -472,6 +623,29 @@ function normalizeEmail(value: unknown) {
 
 function normalizeCc(value: unknown) {
   return normalizeText(value).replace(/\D/g, '');
+}
+
+function normalizePlainText(value: unknown) {
+  return normalizeText(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+}
+
+function toBoolean(value: unknown) {
+  if (typeof value === 'boolean') return value;
+  return ['true', '1', 'si', 'sí', 'yes', 'activo', 'active'].includes(normalizePlainText(value));
+}
+
+function getFirebaseAuthDatabaseId() {
+  return String(import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || 'soyibadb').trim() || 'soyibadb';
+}
+
+async function sha256Hex(value: string) {
+  const buffer = await globalThis.crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(buffer))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
 }
 
 function isTransientAppsScriptError(error: unknown) {

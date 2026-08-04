@@ -31,13 +31,108 @@ service cloud.firestore {
         && resource.data.visibleDirectorio == true;
     }
 
+    function membershipClaimAfter() {
+      return getAfter(/databases/$(database)/documents/memberRegistry/$(request.resource.data.ccHash)).data;
+    }
+
+    function isSelfMembershipUpdate(userId) {
+      return signedIn()
+        && request.auth.uid == userId
+        && request.resource.data.email == resource.data.email
+        && request.resource.data.id == resource.data.id
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'role',
+          'tipoUsuario',
+          'tituloUsuario',
+          'rolSistema',
+          'estadoUsuario',
+          'status',
+          'active',
+          'ccHash',
+          'ccLast4',
+          'miembroValidadoAt',
+          'miembroValidadoPor',
+          'miembroValidacionEstado',
+          'miembroValidacionNotas',
+          'visibleDirectorio',
+          'updatedAt',
+          'updatedAtServer'
+        ])
+        && request.resource.data.ccHash is string
+        && membershipClaimAfter().active == true
+        && membershipClaimAfter().claimedUserId == request.auth.uid
+        && membershipClaimAfter().claimedEmailHash == currentUserProfile().emailHash
+        && membershipClaimAfter().claimStatus == request.resource.data.miembroValidacionEstado
+        && (
+          (
+            request.resource.data.miembroValidacionEstado == 'validado'
+            && request.resource.data.role == 'Miembro'
+            && request.resource.data.tipoUsuario == 'Miembro'
+            && request.resource.data.tituloUsuario == 'Miembro'
+            && request.resource.data.rolSistema == 'Miembro'
+            && request.resource.data.estadoUsuario == 'Activo'
+            && request.resource.data.status == 'active'
+            && request.resource.data.active == true
+            && request.resource.data.visibleDirectorio == true
+          )
+          || (
+            request.resource.data.miembroValidacionEstado == 'pendiente_revision'
+            && request.resource.data.role == resource.data.role
+            && request.resource.data.tipoUsuario == resource.data.tipoUsuario
+            && request.resource.data.tituloUsuario == resource.data.tituloUsuario
+            && request.resource.data.rolSistema == resource.data.rolSistema
+            && request.resource.data.estadoUsuario == resource.data.estadoUsuario
+            && request.resource.data.status == resource.data.status
+            && request.resource.data.active == resource.data.active
+          )
+        );
+    }
+
     match /users/{userId} {
       allow get: if signedIn() && (request.auth.uid == userId || isManager() || (isActiveMember() && isVisibleDirectoryMember()));
       allow list: if isManager() || (isActiveMember() && isVisibleDirectoryMember());
       allow create: if false;
-      allow update: if isManager()
-        && request.resource.data.email == resource.data.email
-        && request.resource.data.id == resource.data.id;
+      allow update: if (
+          isManager()
+          && request.resource.data.email == resource.data.email
+          && request.resource.data.id == resource.data.id
+        ) || isSelfMembershipUpdate(userId);
+      allow delete: if false;
+    }
+
+    match /memberRegistry/{ccHash} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if false;
+      allow update: if signedIn()
+        && resource.data.active == true
+        && request.resource.data.ccHash == resource.data.ccHash
+        && request.resource.data.emailHash == resource.data.emailHash
+        && request.resource.data.estado == resource.data.estado
+        && request.resource.data.active == resource.data.active
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'claimedUserId',
+          'claimedEmailHash',
+          'claimedAt',
+          'claimStatus',
+          'claimNotes',
+          'updatedAt',
+          'updatedAtServer'
+        ])
+        && (!('claimedUserId' in resource.data) || resource.data.claimedUserId == '' || resource.data.claimedUserId == request.auth.uid)
+        && request.resource.data.claimedUserId == request.auth.uid
+        && request.resource.data.claimedEmailHash == currentUserProfile().emailHash
+        && (
+          (
+            resource.data.emailHash != ''
+            && resource.data.emailHash == request.resource.data.claimedEmailHash
+            && request.resource.data.claimStatus == 'validado'
+          )
+          || (
+            (resource.data.emailHash == '' || resource.data.emailHash != request.resource.data.claimedEmailHash)
+            && request.resource.data.claimStatus == 'pendiente_revision'
+          )
+        );
       allow delete: if false;
     }
   }
