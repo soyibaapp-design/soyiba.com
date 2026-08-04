@@ -1,0 +1,30 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function currentUserProfile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isManager() {
+      return signedIn()
+        && currentUserProfile().active == true
+        && currentUserProfile().estadoUsuario == 'Activo'
+        && currentUserProfile().rolSistema in ['Admin', 'Moderador'];
+    }
+
+    match /users/{userId} {
+      allow get: if signedIn() && (request.auth.uid == userId || isManager());
+      allow list: if isManager();
+      allow create: if false;
+      allow update: if isManager()
+        && request.resource.data.email == resource.data.email
+        && request.resource.data.id == resource.data.id;
+      allow delete: if false;
+    }
+  }
+}

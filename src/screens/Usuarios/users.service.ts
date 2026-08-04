@@ -1,4 +1,6 @@
 import { callAppsScript } from '../../services/appsScriptClient';
+import { getFirebaseApp } from '../../services/firebase';
+import { isFirebaseAuthEnabled } from '../../services/firebaseAuth';
 import type { SoyibaSession, SoyibaUser } from '../Auth/auth.service';
 
 const LOCAL_USERS_STORAGE_KEY = 'soyiba.localManagedUsers';
@@ -36,6 +38,10 @@ type UpdateManagedUserResponse = {
 };
 
 export async function getManagedUsers(session: SoyibaSession): Promise<ManagedUser[]> {
+  if (isFirebaseAuthEnabled()) {
+    return getFirebaseManagedUsers();
+  }
+
   const response = await callAppsScript<ManagedUsersResponse>(
     'Auth',
     'listUsers',
@@ -63,6 +69,11 @@ export async function updateManagedUser(
   payload: ManagedUserAccessPayload,
 ): Promise<ManagedUser> {
   const normalizedPayload = normalizeAccessPayload(payload);
+
+  if (isFirebaseAuthEnabled()) {
+    return updateFirebaseManagedUser(session, targetUser, normalizedPayload);
+  }
+
   const response = await callAppsScript<UpdateManagedUserResponse>(
     'Auth',
     'updateUserAccess',
@@ -91,6 +102,85 @@ export async function updateManagedUser(
   }
 
   return normalizeManagedUser(response.user);
+}
+
+async function getFirebaseManagedUsers(): Promise<ManagedUser[]> {
+  const app = getFirebaseApp();
+
+  if (!app) {
+    throw new Error('Firebase no esta configurado.');
+  }
+
+  try {
+    const { collection, getDocs, getFirestore } = await import('firebase/firestore');
+    const databaseId = getFirebaseUsersDatabaseId();
+    const snapshot = await getDocs(collection(getFirestore(app, databaseId), 'users'));
+    return snapshot.docs
+      .map((item) => normalizeManagedUser({ id: item.id, ...item.data() }))
+      .sort((left, right) => getDisplaySortValue(left).localeCompare(getDisplaySortValue(right), 'es'));
+  } catch {
+    throw new Error('No fue posible cargar usuarios desde Firebase. Revisa las reglas de Firestore.');
+  }
+}
+
+async function updateFirebaseManagedUser(
+  session: SoyibaSession,
+  targetUser: ManagedUser,
+  payload: ManagedUserAccessPayload,
+): Promise<ManagedUser> {
+  const app = getFirebaseApp();
+
+  if (!app) {
+    throw new Error('Firebase no esta configurado.');
+  }
+
+  const updatedAt = new Date().toISOString();
+  const nextUser = normalizeManagedUser({
+    ...targetUser,
+    ...payload,
+    role: payload.rolSistema,
+    rolSistema: payload.rolSistema,
+    tituloUsuario: payload.tituloUsuario,
+    status: payload.active ? 'active' : 'inactive',
+    updatedAt,
+  });
+
+  try {
+    const { doc, getFirestore, serverTimestamp, setDoc } = await import('firebase/firestore');
+    await setDoc(
+      doc(getFirestore(app, getFirebaseUsersDatabaseId()), 'users', nextUser.id),
+      {
+        role: nextUser.rolSistema,
+        rolSistema: nextUser.rolSistema,
+        tipoUsuario: nextUser.tipoUsuario,
+        tituloUsuario: nextUser.tituloUsuario,
+        estadoUsuario: nextUser.estadoUsuario,
+        active: nextUser.active,
+        status: nextUser.status,
+        publicador: nextUser.publicador,
+        publicadorEco: nextUser.publicadorEco,
+        publicadorEvento: nextUser.publicadorEvento,
+        verificado: nextUser.verificado,
+        updatedAt,
+        updatedByUserId: session.user.id,
+        updatedByEmail: session.user.email,
+        updatedAtServer: serverTimestamp(),
+      },
+      { merge: true },
+    );
+  } catch {
+    throw new Error('No fue posible actualizar el usuario en Firebase. Revisa las reglas de Firestore.');
+  }
+
+  return nextUser;
+}
+
+function getFirebaseUsersDatabaseId() {
+  return String(import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || 'soyibadb').trim() || 'soyibadb';
+}
+
+function getDisplaySortValue(user: ManagedUser) {
+  return `${user.name || ''} ${user.email || ''}`.trim().toLowerCase();
 }
 
 function normalizeAccessPayload(payload: ManagedUserAccessPayload): ManagedUserAccessPayload {
