@@ -386,6 +386,10 @@ export async function updateUserPassword(session: SoyibaSession, currentPassword
     return { ok: false, error: 'Ingresa la contraseña actual y la nueva contraseña.' };
   }
 
+  if (isFirebaseAuthEnabled()) {
+    return updateUserPasswordWithFirebase(session, currentPassword, newPassword);
+  }
+
   const response = await callAppsScript<AuthResponse>(
     'Auth',
     'changePassword',
@@ -404,6 +408,37 @@ export async function updateUserPassword(session: SoyibaSession, currentPassword
   );
 
   return preserveLocalOnlyUserFields(normalizeAuthResponse(response, 'No fue posible actualizar la contraseña.'), session);
+}
+
+async function updateUserPasswordWithFirebase(session: SoyibaSession, currentPassword: string, newPassword: string): Promise<AuthResult> {
+  const app = getFirebaseApp();
+
+  if (!app) {
+    return { ok: false, error: 'Firebase no esta configurado.' };
+  }
+
+  try {
+    const { EmailAuthProvider, getAuth, onAuthStateChanged, reauthenticateWithCredential, updatePassword } = await import('firebase/auth');
+    const auth = getAuth(app);
+    const firebaseUser = auth.currentUser || (await waitForFirebaseUser(auth, onAuthStateChanged));
+
+    if (!firebaseUser || firebaseUser.uid !== session.user.id || !firebaseUser.email) {
+      return { ok: false, error: 'No encontramos tu sesion de Firebase para actualizar la contrasena.' };
+    }
+
+    await reauthenticateWithCredential(firebaseUser, EmailAuthProvider.credential(firebaseUser.email, currentPassword));
+    await updatePassword(firebaseUser, newPassword);
+
+    return {
+      ok: true,
+      session: {
+        token: await firebaseUser.getIdToken(true),
+        user: session.user,
+      },
+    };
+  } catch (error) {
+    return { ok: false, error: getFirebasePasswordError(error, 'No fue posible actualizar la contrasena en Firebase.') };
+  }
 }
 
 export async function refreshCurrentSession(session: SoyibaSession): Promise<AuthResult> {
@@ -615,6 +650,10 @@ export async function requestPasswordReset(email: string, appUrl: string): Promi
     return { ok: false, error: 'Ingresa tu correo electrónico.' };
   }
 
+  if (isFirebaseAuthEnabled()) {
+    return requestFirebasePasswordReset(normalizedEmail, normalizedAppUrl);
+  }
+
   const response = await callAppsScript<BasicAuthResponse>(
     'Auth',
     'requestPasswordReset',
@@ -631,6 +670,14 @@ export async function requestPasswordReset(email: string, appUrl: string): Promi
 export async function completePasswordReset(email: string, token: string, newPassword: string): Promise<BasicAuthResult> {
   const normalizedEmail = normalizeEmail(email);
   const normalizedToken = normalizeText(token);
+
+  if (isFirebaseAuthEnabled()) {
+    if (!normalizedToken || !newPassword) {
+      return { ok: false, error: 'El enlace de recuperacion de Firebase no esta completo.' };
+    }
+
+    return completeFirebasePasswordReset(normalizedToken, newPassword);
+  }
 
   if (!normalizedEmail || !normalizedToken || !newPassword) {
     return { ok: false, error: 'El enlace de recuperación no está completo.' };
@@ -651,6 +698,62 @@ export async function completePasswordReset(email: string, token: string, newPas
   );
 
   return normalizeBasicAuthResponse(response, 'No fue posible restablecer la contraseña.');
+}
+
+export async function getPasswordResetEmailFromFirebaseCode(token: string) {
+  const normalizedToken = normalizeText(token);
+  const app = getFirebaseApp();
+
+  if (!normalizedToken || !app || !isFirebaseAuthEnabled()) {
+    return '';
+  }
+
+  try {
+    const { getAuth, verifyPasswordResetCode } = await import('firebase/auth');
+    return normalizeEmail(await verifyPasswordResetCode(getAuth(app), normalizedToken));
+  } catch {
+    return '';
+  }
+}
+
+async function requestFirebasePasswordReset(email: string, appUrl: string): Promise<BasicAuthResult> {
+  const app = getFirebaseApp();
+
+  if (!app) {
+    return { ok: false, error: 'Firebase no esta configurado.' };
+  }
+
+  try {
+    const { getAuth, sendPasswordResetEmail } = await import('firebase/auth');
+    await sendPasswordResetEmail(getAuth(app), email, appUrl ? { url: appUrl } : undefined);
+
+    return {
+      ok: true,
+      message: 'Si el correo esta registrado, Firebase enviara un enlace para restablecer tu contrasena.',
+    };
+  } catch (error) {
+    return { ok: false, error: getFirebasePasswordError(error, 'No fue posible enviar el correo de recuperacion en Firebase.') };
+  }
+}
+
+async function completeFirebasePasswordReset(token: string, newPassword: string): Promise<BasicAuthResult> {
+  const app = getFirebaseApp();
+
+  if (!app) {
+    return { ok: false, error: 'Firebase no esta configurado.' };
+  }
+
+  try {
+    const { confirmPasswordReset, getAuth } = await import('firebase/auth');
+    await confirmPasswordReset(getAuth(app), token, newPassword);
+
+    return {
+      ok: true,
+      message: 'Tu contrasena fue actualizada en Firebase. Ya puedes iniciar sesion.',
+    };
+  } catch (error) {
+    return { ok: false, error: getFirebasePasswordError(error, 'No fue posible restablecer la contrasena en Firebase.') };
+  }
 }
 
 function normalizeAuthResponse(response: AuthResponse, fallbackError: string): AuthResult {
@@ -752,6 +855,36 @@ function waitForFirebaseUser(
       resolve(user);
     });
   });
+}
+
+function getFirebasePasswordError(error: unknown, fallback: string) {
+  const code = typeof error === 'object' && error && 'code' in error ? String((error as { code?: unknown }).code || '') : '';
+
+  if (/auth\/wrong-password|auth\/invalid-credential|auth\/invalid-login-credentials/i.test(code)) {
+    return 'La contrasena actual no es correcta.';
+  }
+
+  if (/auth\/weak-password/i.test(code)) {
+    return 'La nueva contrasena es muy debil.';
+  }
+
+  if (/auth\/requires-recent-login/i.test(code)) {
+    return 'Por seguridad, cierra sesion, vuelve a iniciar y cambia la contrasena nuevamente.';
+  }
+
+  if (/auth\/expired-action-code/i.test(code)) {
+    return 'El enlace de recuperacion expiro. Solicita uno nuevo.';
+  }
+
+  if (/auth\/invalid-action-code/i.test(code)) {
+    return 'El enlace de recuperacion no es valido o ya fue usado. Solicita uno nuevo.';
+  }
+
+  if (/auth\/user-not-found/i.test(code)) {
+    return 'No encontramos una cuenta de Firebase con ese correo.';
+  }
+
+  return fallback;
 }
 
 function isTransientAppsScriptError(error: unknown) {

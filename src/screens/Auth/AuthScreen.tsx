@@ -20,6 +20,7 @@ import loginHero from '../../../PrimaryAssets/Login.jpg';
 import iglesiaFooterLogo from '../../../PrimaryAssets/logo-iglesia-letras.png';
 import {
   completePasswordReset,
+  getPasswordResetEmailFromFirebaseCode,
   registerWithEmailPassword,
   requestPasswordReset,
   signInWithEmailPassword,
@@ -103,6 +104,24 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
   const isRegister = mode === 'register';
 
   useEffect(() => {
+    if (mode !== 'reset' || !passwordResetConfirmForm.token || passwordResetConfirmForm.email) {
+      return;
+    }
+
+    let cancelled = false;
+
+    getPasswordResetEmailFromFirebaseCode(passwordResetConfirmForm.token).then((email) => {
+      if (!cancelled && email) {
+        setPasswordResetConfirmForm((current) => ({ ...current, email }));
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [mode, passwordResetConfirmForm.email, passwordResetConfirmForm.token]);
+
+  useEffect(() => {
     if (initialMode) {
       setMode(initialMode);
       setError('');
@@ -132,7 +151,7 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
     setMode(nextMode);
     setError('');
     setStatusMessage('');
-    window.history.replaceState(null, '', getHashForMode(nextMode));
+    window.history.replaceState(null, '', getUrlForMode(nextMode));
   }
 
   function openForgotPassword() {
@@ -247,7 +266,7 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
         setLoginForm((current) => ({ ...current, email: passwordResetConfirmForm.email, password: '' }));
         setPasswordResetConfirmForm(emptyPasswordResetConfirmForm);
         setMode('login');
-        window.history.replaceState(null, '', '#login');
+        window.history.replaceState(null, '', getUrlForMode('login'));
         setStatusMessage(result.message);
       } else {
         setError(result.error);
@@ -611,8 +630,9 @@ function getInitialMode(): AuthMode {
   }
 
   const hash = window.location.hash.toLowerCase();
+  const searchParams = new URLSearchParams(window.location.search);
 
-  if (hash.includes('restablecer')) {
+  if (hash.includes('restablecer') || searchParams.get('mode') === 'resetPassword' || searchParams.has('oobCode')) {
     return 'reset';
   }
 
@@ -755,6 +775,14 @@ function getHashForMode(mode: AuthMode) {
   return '#login';
 }
 
+function getUrlForMode(mode: AuthMode) {
+  if (typeof window === 'undefined') {
+    return getHashForMode(mode);
+  }
+
+  return `${window.location.pathname}${getHashForMode(mode)}`;
+}
+
 function getPasswordResetAppUrl() {
   if (typeof window === 'undefined') {
     return '';
@@ -768,6 +796,19 @@ function getPasswordResetStateFromHash(): PasswordResetConfirmState | null {
     return null;
   }
 
+  const searchParams = new URLSearchParams(window.location.search);
+  const firebaseToken = searchParams.get('oobCode') || '';
+  const firebaseMode = searchParams.get('mode') || '';
+
+  if (firebaseToken && (!firebaseMode || firebaseMode === 'resetPassword')) {
+    return {
+      email: searchParams.get('email') || '',
+      token: firebaseToken,
+      password: '',
+      confirmPassword: '',
+    };
+  }
+
   const hash = window.location.hash || '';
   const queryStart = hash.indexOf('?');
 
@@ -777,9 +818,9 @@ function getPasswordResetStateFromHash(): PasswordResetConfirmState | null {
 
   const params = new URLSearchParams(hash.slice(queryStart + 1));
   const email = params.get('email') || '';
-  const token = params.get('token') || '';
+  const token = params.get('token') || params.get('oobCode') || '';
 
-  if (!email || !token) {
+  if (!token) {
     return null;
   }
 
