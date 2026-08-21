@@ -202,6 +202,16 @@ export async function registerWithEmailPassword(payload: RegisterPayload): Promi
     return { ok: false, error: 'Completa todos los campos para crear tu cuenta.' };
   }
 
+  if (isFirebaseAuthEnabled()) {
+    return registerWithFirebaseEmailPassword({
+      firstName,
+      lastName,
+      email: normalizedEmail,
+      phone,
+      password: payload.password,
+    });
+  }
+
   const response = await callAppsScript<AuthResponse>(
     'Auth',
     'register',
@@ -245,6 +255,67 @@ export async function registerWithEmailPassword(payload: RegisterPayload): Promi
   );
 
   return normalizeAuthResponse(response, 'No fue posible crear la cuenta.');
+}
+
+async function registerWithFirebaseEmailPassword(payload: RegisterPayload): Promise<AuthResult> {
+  const app = getFirebaseApp();
+
+  if (!app) {
+    return { ok: false, error: 'Firebase no esta configurado.' };
+  }
+
+  try {
+    const [{ createUserWithEmailAndPassword, getAuth, updateProfile }, { doc, getFirestore, serverTimestamp, setDoc }] = await Promise.all([
+      import('firebase/auth'),
+      import('firebase/firestore'),
+    ]);
+    const auth = getAuth(app);
+    const credential = await createUserWithEmailAndPassword(auth, payload.email, payload.password);
+    const displayName = [payload.firstName, payload.lastName].filter(Boolean).join(' ').trim();
+    const now = new Date().toISOString();
+    const user: SoyibaUser = {
+      id: credential.user.uid,
+      email: payload.email,
+      name: displayName || payload.email,
+      firstName: payload.firstName,
+      lastName: payload.lastName,
+      phone: payload.phone,
+      role: 'Usuario',
+      rolSistema: 'Usuario',
+      tipoUsuario: 'Asistente',
+      tituloUsuario: 'Asistente',
+      estadoUsuario: 'Activo',
+      publicador: false,
+      publicadorEco: false,
+      publicadorEvento: false,
+      verificado: false,
+      active: true,
+    };
+
+    await updateProfile(credential.user, { displayName });
+    await setDoc(doc(getFirestore(app, getFirebaseAuthDatabaseId()), 'users', credential.user.uid), {
+      ...user,
+      emailHash: await sha256Hex(payload.email),
+      status: 'active',
+      aceptoPoliticaDatos: true,
+      fechaAceptacionPolitica: now,
+      createdAt: now,
+      updatedAt: now,
+      createdAtServer: serverTimestamp(),
+      updatedAtServer: serverTimestamp(),
+      migratedFrom: 'firebase-register',
+    });
+
+    return {
+      ok: true,
+      session: {
+        token: await credential.user.getIdToken(true),
+        user,
+      },
+    };
+  } catch (error) {
+    return { ok: false, error: getFirebaseRegisterError(error) };
+  }
 }
 
 export async function updateUserProfile(session: SoyibaSession, payload: UpdateProfilePayload): Promise<AuthResult> {
@@ -885,6 +956,28 @@ function getFirebasePasswordError(error: unknown, fallback: string) {
   }
 
   return fallback;
+}
+
+function getFirebaseRegisterError(error: unknown) {
+  const code = typeof error === 'object' && error && 'code' in error ? String((error as { code?: unknown }).code || '') : '';
+
+  if (/auth\/email-already-in-use/i.test(code)) {
+    return 'Ya existe una cuenta con ese correo. Inicia sesion o recupera la contrasena.';
+  }
+
+  if (/auth\/invalid-email/i.test(code)) {
+    return 'El correo no es valido.';
+  }
+
+  if (/auth\/weak-password/i.test(code)) {
+    return 'La contrasena es muy debil.';
+  }
+
+  if (/permission-denied|missing or insufficient permissions/i.test(String(error instanceof Error ? error.message : error || ''))) {
+    return 'La cuenta fue creada en Firebase Auth, pero Firestore bloqueo el perfil. Revisa las reglas de Firestore.';
+  }
+
+  return 'No fue posible crear la cuenta en Firebase.';
 }
 
 function isTransientAppsScriptError(error: unknown) {

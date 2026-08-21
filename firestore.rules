@@ -101,10 +101,56 @@ service cloud.firestore {
         && request.resource.data.photoUrl is string;
     }
 
+    function isSelfInitialUserCreate(userId) {
+      return signedIn()
+        && request.auth.uid == userId
+        && request.resource.data.id == userId
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.role == 'Usuario'
+        && request.resource.data.rolSistema == 'Usuario'
+        && request.resource.data.tipoUsuario == 'Asistente'
+        && request.resource.data.tituloUsuario == 'Asistente'
+        && request.resource.data.estadoUsuario == 'Activo'
+        && request.resource.data.status == 'active'
+        && request.resource.data.active == true
+        && request.resource.data.publicador == false
+        && request.resource.data.publicadorEco == false
+        && request.resource.data.publicadorEvento == false
+        && request.resource.data.verificado == false
+        && request.resource.data.emailHash is string
+        && request.resource.data.keys().hasOnly([
+          'id',
+          'email',
+          'name',
+          'firstName',
+          'lastName',
+          'phone',
+          'role',
+          'rolSistema',
+          'tipoUsuario',
+          'tituloUsuario',
+          'estadoUsuario',
+          'status',
+          'active',
+          'publicador',
+          'publicadorEco',
+          'publicadorEvento',
+          'verificado',
+          'emailHash',
+          'aceptoPoliticaDatos',
+          'fechaAceptacionPolitica',
+          'createdAt',
+          'updatedAt',
+          'createdAtServer',
+          'updatedAtServer',
+          'migratedFrom'
+        ]);
+    }
+
     match /users/{userId} {
       allow get: if signedIn() && (request.auth.uid == userId || isManager() || (isActiveMember() && isVisibleDirectoryMember()));
       allow list: if isManager() || (isActiveMember() && isVisibleDirectoryMember());
-      allow create: if false;
+      allow create: if isSelfInitialUserCreate(userId);
       allow update: if (
           isManager()
           && request.resource.data.email == resource.data.email

@@ -2,14 +2,15 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { cert, getApps, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
-import { getFirestore } from 'firebase-admin/firestore';
+import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import { getStorage } from 'firebase-admin/storage';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 const args = new Set(process.argv.slice(2));
 const shouldRun = args.has('--confirm');
 const shouldSkipFirestore = args.has('--skip-firestore');
 const shouldUploadProfilePhotos = args.has('--upload-profile-photos');
+const shouldOnlyImportMissingAuth = args.has('--only-missing-auth') || args.has('--sync-missing-auth');
 const env = loadEnvFile(resolve(process.cwd(), '.env'));
 const serviceAccountPath =
   process.env.FIREBASE_SERVICE_ACCOUNT_PATH ||
@@ -23,17 +24,21 @@ const rows = parseTsv(tsvPath)
   .map(normalizeAuthRow)
   .filter((row) => row.email && row.passwordHash && row.salt);
 
-const users = rows.map((row) => ({
-  uid: row.id,
-  email: row.email,
-  emailVerified: true,
-  displayName: row.name,
-  photoURL: isValidHttpUrl(row.photoUrl) ? row.photoUrl : undefined,
-  passwordHash: Buffer.from(row.passwordHash, 'hex'),
-  passwordSalt: Buffer.from(`${row.salt}:`, 'utf8'),
-  disabled: !row.active,
-  customClaims: buildClaims(row),
-}));
+const users = rows.map((row) => toFirebaseImportUser(row));
+
+function toFirebaseImportUser(row) {
+  return {
+    uid: row.id,
+    email: row.email,
+    emailVerified: true,
+    displayName: row.name,
+    photoURL: isValidHttpUrl(row.photoUrl) ? row.photoUrl : undefined,
+    passwordHash: Buffer.from(row.passwordHash, 'hex'),
+    passwordSalt: Buffer.from(`${row.salt}:`, 'utf8'),
+    disabled: !row.active,
+    customClaims: buildClaims(row),
+  };
+}
 
 if (!shouldRun) {
   console.log(
@@ -56,7 +61,21 @@ if (!shouldRun) {
 initializeFirebaseAdmin();
 
 const auth = getAuth();
-const chunks = chunk(users, 1000);
+let usersToImport = users;
+let rowsForFirestore = rows;
+let existingAuthUsers = 0;
+let missingAuthUsers = users.length;
+
+if (shouldOnlyImportMissingAuth) {
+  const resolvedRows = await resolveFirebaseAuthRows(auth, rows);
+  rowsForFirestore = resolvedRows.map(({ row, uid }) => ({ ...row, id: uid }));
+  const missingRows = resolvedRows.filter(({ exists }) => !exists).map(({ row }) => row);
+  usersToImport = missingRows.map(toFirebaseImportUser);
+  existingAuthUsers = resolvedRows.length - missingRows.length;
+  missingAuthUsers = missingRows.length;
+}
+
+const chunks = chunk(usersToImport, 1000);
 let successCount = 0;
 let failureCount = 0;
 const errors = [];
@@ -83,19 +102,11 @@ if (!shouldSkipFirestore) {
   const db = getFirestore(firestoreDatabaseId);
   const now = new Date().toISOString();
 
-  for (const rowChunk of chunk(rows, 400)) {
+  for (const rowChunk of chunk(rowsForFirestore, 400)) {
     const batch = db.batch();
 
     for (const row of rowChunk) {
-      batch.set(
-        db.collection('users').doc(row.id),
-        {
-          ...row,
-          migratedFrom: 'google-sheets-auth',
-          migratedAt: now,
-        },
-        { merge: true },
-      );
+      batch.set(db.collection('users').doc(row.id), toFirestoreUserProfile(row, now), { merge: true });
     }
 
     await batch.commit();
@@ -114,8 +125,10 @@ console.log(
       source: tsvPath,
       authImported: successCount,
       authFailed: failureCount,
+      authExistingSkipped: existingAuthUsers,
+      authMissingBeforeImport: missingAuthUsers,
       firestoreDatabaseId: shouldSkipFirestore ? '' : firestoreDatabaseId,
-      firestoreProfilesWritten: shouldSkipFirestore ? 0 : rows.length,
+      firestoreProfilesWritten: shouldSkipFirestore ? 0 : rowsForFirestore.length,
       profilePhotosUploaded,
       errors,
     },
@@ -142,6 +155,46 @@ function initializeFirebaseAdmin() {
   throw new Error(
     'Missing service account. Set FIREBASE_SERVICE_ACCOUNT_PATH, GOOGLE_APPLICATION_CREDENTIALS, or FIREBASE_SERVICE_ACCOUNT_JSON.',
   );
+}
+
+async function resolveFirebaseAuthRows(auth, userRows) {
+  const resolvedRows = [];
+
+  for (const row of userRows) {
+    const resolved = await resolveFirebaseAuthRow(auth, row);
+    resolvedRows.push(resolved);
+  }
+
+  return resolvedRows;
+}
+
+async function resolveFirebaseAuthRow(auth, row) {
+  try {
+    const user = await auth.getUser(row.id);
+    return { row, uid: user.uid, exists: true };
+  } catch {
+    // Continue by email; some accounts can exist in Firebase with a generated uid.
+  }
+
+  try {
+    const user = await auth.getUserByEmail(row.email);
+    return { row, uid: user.uid, exists: true };
+  } catch {
+    return { row, uid: row.id, exists: false };
+  }
+}
+
+function toFirestoreUserProfile(row, migratedAt) {
+  const { passwordHash, salt, ...profile } = row;
+
+  return {
+    ...profile,
+    emailHash: row.emailHash,
+    passwordHash: FieldValue.delete(),
+    salt: FieldValue.delete(),
+    migratedFrom: 'google-sheets-auth',
+    migratedAt,
+  };
 }
 
 function parseTsv(path) {
@@ -178,6 +231,7 @@ function normalizeAuthRow(row) {
   return {
     id: stringValue(row.user_id || row.id || email),
     email,
+    emailHash: email ? sha256Hex(email) : '',
     passwordHash: stringValue(row.password_hash || row.passwordHash),
     salt: stringValue(row.salt),
     name,
@@ -246,6 +300,10 @@ function stringValue(value) {
 function toBoolean(value) {
   if (typeof value === 'boolean') return value;
   return ['true', '1', 'si', 'sí', 'yes', 'activo', 'active'].includes(String(value ?? '').trim().toLowerCase());
+}
+
+function sha256Hex(value) {
+  return createHash('sha256').update(String(value), 'utf8').digest('hex');
 }
 
 async function uploadProfilePhotosAndUpdateUsers(userRows) {
