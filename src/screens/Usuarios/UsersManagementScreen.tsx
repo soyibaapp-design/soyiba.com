@@ -62,7 +62,7 @@ const permissionOptions: Array<{ id: PermissionKey; label: string; icon: LucideI
   { id: 'publicador', label: 'Publicaciones', icon: Megaphone, tone: 'bg-[#EAF2FF] text-[#145CFF]' },
   { id: 'publicadorEco', label: 'Grupos ECO', icon: UsersRound, tone: 'bg-[#F4ECFF] text-[#6D35FF]' },
   { id: 'publicadorEvento', label: 'Eventos', icon: CheckCircle2, tone: 'bg-[#E2F8EC] text-[#047857]' },
-  { id: 'minorValidator', label: 'Validación de menores', icon: ShieldCheck, tone: 'bg-[#FFF1DC] text-[#D46D00]', description: 'Puede validar representantes legales' },
+  { id: 'minorValidator', label: 'Validación de menores', icon: ShieldCheck, tone: 'bg-[#FFF1DC] text-[#D46D00]', description: 'Puede validar padres o madres' },
 ];
 
 export function UsersManagementScreen({ session, onBack, onSessionUpdated, onModalOpenChange }: UsersManagementScreenProps) {
@@ -420,7 +420,7 @@ function MinorValidationPanel({
       >
         <div className="min-w-0">
           <h2 className="text-base font-black text-[#0B1F5B]">Validación de menores</h2>
-          <p className="mt-0.5 text-[11px] font-bold leading-4 text-[#637295]">Representante legal, revisión IBA y activación final.</p>
+          <p className="mt-0.5 text-[11px] font-bold leading-4 text-[#637295]">Padre o madre, revisión IBA y activación final.</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <span className="rounded-full bg-[#FFF1DC] px-3 py-1 text-[10px] font-black text-[#D46D00]">{pendingIba.length} por revisar</span>
@@ -462,16 +462,16 @@ function MinorValidationPanel({
                       <MinorStatusBadge status={request.status} />
                     </div>
                     <div className="mt-3 grid gap-2 text-[11px] font-bold text-[#52637C] sm:grid-cols-2">
-                      <span>Representante: {request.guardianName || 'Sin nombre'}</span>
+                      <span>Padre/madre: {request.guardianName || 'Sin nombre'}</span>
                       <span>Correo: {request.guardianEmail || 'Sin correo'}</span>
                       <span>Celular menor: {request.userPhone || 'Sin celular'}</span>
                       <span className="flex min-w-0 items-center gap-1.5">
-                        <span className="min-w-0 break-words">Celular representante: {request.guardianPhone || 'Sin celular'}</span>
+                        <span className="min-w-0 break-words">Celular padre/madre: {request.guardianPhone || 'Sin celular'}</span>
                         {request.guardianPhone ? (
                           <button
                             type="button"
                             onClick={() => handleCopyGuardianPhone(request)}
-                            aria-label={`Copiar celular del representante de ${request.userName || request.userEmail}`}
+                            aria-label={`Copiar celular del padre o madre de ${request.userName || request.userEmail}`}
                             className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-white text-[#145CFF] ring-1 ring-[#B8C9E7] transition hover:bg-[#EAF2FF]"
                           >
                             {copiedPhoneRequestId === request.id ? <CheckCircle2 size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
@@ -479,8 +479,8 @@ function MinorValidationPanel({
                         ) : null}
                       </span>
                     </div>
-                    {copiedPhoneRequestId === request.id ? <p className="mt-2 text-[11px] font-black text-[#047857]">Celular del representante copiado.</p> : null}
-                    {request.guardianApprovedAt ? <p className="mt-2 text-[11px] font-black text-emerald-700">Representante aprobó: {formatDateTime(request.guardianApprovedAt)}</p> : null}
+                    {copiedPhoneRequestId === request.id ? <p className="mt-2 text-[11px] font-black text-[#047857]">Celular del padre o madre copiado.</p> : null}
+                    {request.guardianApprovedAt ? <p className="mt-2 text-[11px] font-black text-emerald-700">Padre/madre aprobó: {formatDateTime(request.guardianApprovedAt)}</p> : null}
                     {request.validatedAt ? <p className="mt-2 text-[11px] font-black text-[#52637C]">Revisado por {request.validatedByEmail || 'IBA'}: {formatDateTime(request.validatedAt)}</p> : null}
                     {request.rejectionReason ? <p className="mt-2 text-[11px] font-bold text-rose-700">Motivo: {request.rejectionReason}</p> : null}
                     {canReview ? (
@@ -546,7 +546,7 @@ async function copyTextToClipboard(text: string) {
 
 function MinorStatusBadge({ status }: { status: MinorValidationRequest['status'] }) {
   const labelByStatus: Record<MinorValidationRequest['status'], string> = {
-    guardian_pending: 'Pendiente representante',
+    guardian_pending: 'Pendiente padre/madre',
     iba_pending: 'Pendiente IBA',
     approved: 'Aprobado',
     rejected: 'Rechazado',

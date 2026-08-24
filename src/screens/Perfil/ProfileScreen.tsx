@@ -112,6 +112,10 @@ function isMemberUser(user: SoyibaUser) {
   return userType === 'miembro';
 }
 
+function isMinorUser(user: SoyibaUser) {
+  return user.registroMenorEdad === true || isTrue((user as SoyibaUser & { registro_menor_edad?: unknown }).registro_menor_edad);
+}
+
 function normalizePlainText(value: unknown) {
   return String(value || '')
     .trim()
@@ -348,7 +352,7 @@ export function ProfileScreen({
         {
           id: 'users',
           title: isManager(user) ? 'Gestión de usuarios' : 'Validación de menores',
-          description: isManager(user) ? 'Roles, estados, tipos y permisos.' : 'Revisar autorizaciones de representantes legales.',
+          description: isManager(user) ? 'Roles, estados, tipos y permisos.' : 'Revisar autorizaciones de padres o madres.',
           buttonLabel: 'Abrir',
           icon: UsersRound,
           tone: 'violet',
@@ -745,6 +749,7 @@ type EditPanel = 'personal' | 'privacy' | 'security';
 
 function EditProfileModal({ session, onClose, onSessionUpdated, onSaved }: EditProfileModalProps) {
   const user = session.user;
+  const isMinor = isMinorUser(user);
   const [openPanel, setOpenPanel] = useState<EditPanel>('personal');
   const [profileForm, setProfileForm] = useState<UpdateProfilePayload>(() => getInitialProfileForm(user));
   const [membershipCc, setMembershipCc] = useState(() => getFieldValue(user.cc));
@@ -763,7 +768,25 @@ function EditProfileModal({ session, onClose, onSessionUpdated, onSaved }: EditP
   const rules = getPasswordRules(passwordForm.newPassword);
 
   function updateProfileField<K extends keyof UpdateProfilePayload>(field: K, value: UpdateProfilePayload[K]) {
-    setProfileForm((current) => ({ ...current, [field]: value }));
+    setProfileForm((current) => {
+      const next = { ...current, [field]: value };
+
+      if (field === 'visibleDirectorio' && value === false) {
+        next.mostrarTelefono = false;
+        next.permitirWhatsapp = false;
+      }
+
+      if (field === 'mostrarTelefono' && value === false) {
+        next.permitirWhatsapp = false;
+      }
+
+      if (isMinor) {
+        next.mostrarTelefono = false;
+        next.permitirWhatsapp = false;
+      }
+
+      return next;
+    });
   }
 
   function updatePasswordField(field: keyof PasswordFormState, value: string) {
@@ -970,6 +993,11 @@ function EditProfileModal({ session, onClose, onSessionUpdated, onSaved }: EditP
                     Estas preferencias se aplicarán cuando tu perfil sea validado como miembro.
                   </p>
                 ) : null}
+                {isMinor ? (
+                  <p className="rounded-[10px] border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-bold leading-4 text-amber-700">
+                    Por protección de menores, en el directorio solo se mostrará tu nombre y foto. No se publicará tu celular ni el botón de WhatsApp.
+                  </p>
+                ) : null}
                 <PrivacyToggle
                   label="Aparecer en el directorio de miembros"
                   description="Si está desactivado, tu perfil no se mostrará en Miembros IBA."
@@ -986,16 +1014,16 @@ function EditProfileModal({ session, onClose, onSessionUpdated, onSaved }: EditP
                 <PrivacyToggle
                   label="Mostrar mi teléfono"
                   description="Permite que tu número sea usado para contacto dentro del directorio."
-                  checked={profileForm.mostrarTelefono}
+                  checked={isMinor ? false : profileForm.mostrarTelefono}
                   onChange={(checked) => updateProfileField('mostrarTelefono', checked)}
-                  disabled={!profileForm.visibleDirectorio}
+                  disabled={isMinor || !profileForm.visibleDirectorio}
                 />
                 <PrivacyToggle
                   label="Permitir contacto por WhatsApp"
                   description="Muestra el botón de WhatsApp solo si también permites mostrar tu teléfono."
-                  checked={profileForm.permitirWhatsapp}
+                  checked={isMinor ? false : profileForm.permitirWhatsapp}
                   onChange={(checked) => updateProfileField('permitirWhatsapp', checked)}
-                  disabled={!profileForm.visibleDirectorio || !profileForm.mostrarTelefono}
+                  disabled={isMinor || !profileForm.visibleDirectorio || !profileForm.mostrarTelefono}
                 />
               </div>
             ) : null}
@@ -1168,6 +1196,7 @@ function PrivacyToggle({
 
 function getInitialProfileForm(user: SoyibaUser): UpdateProfilePayload {
   const nameParts = getDisplayName(user).split(/\s+/).filter(Boolean);
+  const isMinor = isMinorUser(user);
 
   return {
     firstName: getFieldValue(user.firstName || nameParts[0]),
@@ -1176,8 +1205,8 @@ function getInitialProfileForm(user: SoyibaUser): UpdateProfilePayload {
     phone: getFieldValue(user.phone),
     tiempoIba: getFieldValue(user.tiempoIba),
     visibleDirectorio: getBooleanField(user.visibleDirectorio, true),
-    mostrarTelefono: getBooleanField(user.mostrarTelefono, false),
-    permitirWhatsapp: getBooleanField(user.permitirWhatsapp, false),
+    mostrarTelefono: isMinor ? false : getBooleanField(user.mostrarTelefono, false),
+    permitirWhatsapp: isMinor ? false : getBooleanField(user.permitirWhatsapp, false),
     mostrarFoto: getBooleanField(user.mostrarFoto, true),
   };
 }

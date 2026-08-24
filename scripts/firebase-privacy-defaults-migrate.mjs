@@ -1,3 +1,6 @@
+
+import { pathToFileURL } from 'node:url';
+
 const args = new Set(process.argv.slice(2));
 const shouldRun = args.has('--confirm');
 const projectId = process.env.FIREBASE_PROJECT_ID || 'soyiba';
@@ -13,6 +16,7 @@ const summary = {
   usersScanned: users.length,
   usersToUpdate: 0,
   userAlreadyAligned: 0,
+  minorContactToRestrict: 0,
   memberDirectoryToUpsert: 0,
   userUpdatesCommitted: 0,
   memberDirectoryUpsertsCommitted: 0,
@@ -22,13 +26,27 @@ const summary = {
 for (const document of users) {
   const user = decodeDocument(document);
   const id = document.name.split('/').pop();
-  const needsUserUpdate = user.visibleDirectorio !== true || user.mostrarFoto !== true;
-  const eligibleForDirectory = isDirectoryEligibleUser({ ...user, visibleDirectorio: true, mostrarFoto: true });
+  const isMinor = isMinorUser(user);
+  const nextUser = {
+    ...user,
+    id,
+    visibleDirectorio: true,
+    mostrarFoto: true,
+    mostrarTelefono: isMinor ? false : user.mostrarTelefono,
+    permitirWhatsapp: isMinor ? false : user.permitirWhatsapp,
+  };
+  const needsMinorContactRestriction = isMinor && (user.mostrarTelefono !== false || user.permitirWhatsapp !== false);
+  const needsUserUpdate = user.visibleDirectorio !== true || user.mostrarFoto !== true || needsMinorContactRestriction;
+  const eligibleForDirectory = isDirectoryEligibleUser(nextUser);
 
   if (needsUserUpdate) {
     summary.usersToUpdate += 1;
   } else {
     summary.userAlreadyAligned += 1;
+  }
+
+  if (needsMinorContactRestriction) {
+    summary.minorContactToRestrict += 1;
   }
 
   if (eligibleForDirectory) {
@@ -42,6 +60,9 @@ for (const document of users) {
       name: getDisplayName(user),
       visibleDirectorioBefore: user.visibleDirectorio,
       mostrarFotoBefore: user.mostrarFoto,
+      mostrarTelefonoBefore: user.mostrarTelefono,
+      permitirWhatsappBefore: user.permitirWhatsapp,
+      registroMenorEdad: isMinor,
       memberDirectory: eligibleForDirectory ? 'upsert' : 'skip',
     });
   }
@@ -53,13 +74,19 @@ for (const document of users) {
   await patchDocument(`users/${id}`, {
     visibleDirectorio: true,
     mostrarFoto: true,
+    ...(isMinor
+      ? {
+          mostrarTelefono: false,
+          permitirWhatsapp: false,
+        }
+      : {}),
     updatedAt: now,
     updatedAtServer: now,
   });
   summary.userUpdatesCommitted += 1;
 
   if (eligibleForDirectory) {
-    await patchDocument(`membersDirectory/${id}`, buildMemberDirectoryDoc({ ...user, id, visibleDirectorio: true, mostrarFoto: true }, now));
+    await patchDocument(`membersDirectory/${id}`, buildMemberDirectoryDoc(nextUser, now));
     summary.memberDirectoryUpsertsCommitted += 1;
   }
 }
@@ -141,8 +168,9 @@ async function patchDocument(path, values) {
 }
 
 function buildMemberDirectoryDoc(user, updatedAt) {
-  const mostrarTelefono = booleanValue(user.mostrarTelefono);
-  const permitirWhatsapp = booleanValue(user.permitirWhatsapp);
+  const isMinor = isMinorUser(user);
+  const mostrarTelefono = isMinor ? false : booleanValue(user.mostrarTelefono);
+  const permitirWhatsapp = isMinor ? false : booleanValue(user.permitirWhatsapp);
 
   return {
     id: user.id,
@@ -174,6 +202,10 @@ function buildMemberDirectoryDoc(user, updatedAt) {
 
 function isDirectoryEligibleUser(user) {
   return isActiveUser(user) && normalizeText(user.tipoUsuario) === 'miembro' && user.visibleDirectorio === true;
+}
+
+function isMinorUser(user) {
+  return booleanValue(user.registroMenorEdad ?? user.registro_menor_edad);
 }
 
 function isActiveUser(user) {
@@ -242,4 +274,3 @@ function normalizeText(value) {
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase();
 }
-import { pathToFileURL } from 'node:url';

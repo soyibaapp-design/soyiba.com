@@ -215,7 +215,14 @@ service cloud.firestore {
         && request.resource.data.visibleDirectorio is bool
         && request.resource.data.mostrarTelefono is bool
         && request.resource.data.permitirWhatsapp is bool
-        && request.resource.data.mostrarFoto is bool;
+        && request.resource.data.mostrarFoto is bool
+        && (
+          request.resource.data.get('registroMenorEdad', false) != true
+          || (
+            request.resource.data.mostrarTelefono == false
+            && request.resource.data.permitirWhatsapp == false
+          )
+        );
     }
 
     function isSelfInitialUserCreate(userId) {
@@ -237,7 +244,7 @@ service cloud.firestore {
           )
           || (
             request.resource.data.registroMenorEdad == true
-            && request.resource.data.estadoUsuario == 'Pendiente representante'
+            && request.resource.data.estadoUsuario in ['Pendiente representante', 'Pendiente padre/madre']
             && request.resource.data.status == 'minor_pending_guardian'
             && request.resource.data.active == false
             && request.resource.data.autorizacionAcudiente == true
@@ -382,6 +389,14 @@ service cloud.firestore {
         && request.resource.data.mostrarTelefono is bool
         && request.resource.data.permitirWhatsapp is bool
         && request.resource.data.mostrarFoto is bool
+        && (
+          currentUserProfileValue('registroMenorEdad', request.auth.token.get('registroMenorEdad', false)) != true
+          || (
+            request.resource.data.telefono == ''
+            && request.resource.data.mostrarTelefono == false
+            && request.resource.data.permitirWhatsapp == false
+          )
+        )
         && request.resource.data.keys().hasOnly([
           'id',
           'nombre',

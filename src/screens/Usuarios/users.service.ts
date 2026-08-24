@@ -398,7 +398,7 @@ async function fetchGuardianApprovalStatus(requestId: string) {
   );
 
   if (!response.ok) {
-    throw new Error(response.error || 'No fue posible consultar el estado del representante.');
+    throw new Error(response.error || 'No fue posible consultar el estado del padre o madre.');
   }
 
   return {

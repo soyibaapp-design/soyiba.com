@@ -100,6 +100,7 @@ const AUTH_LOGIN_TIMEOUT_MS = 15000;
 const AUTH_LOGIN_TRANSIENT_ERROR =
   'No fue posible iniciar sesión. Intenta nuevamente.';
 const PRIVACY_POLICY_VERSION = '2026-08-24';
+const MIN_REGISTRATION_AGE = 12;
 
 type AuthResult =
   | { ok: true; session: SoyibaSession }
@@ -271,15 +272,15 @@ export async function registerWithEmailPassword(payload: RegisterPayload): Promi
   const ageGroup = isMinor ? 'minor' : 'adult';
 
   if (isMinor && !payload.guardianConsent) {
-    return { ok: false, error: 'Para menores de edad se requiere autorización del representante legal.' };
+    return { ok: false, error: 'Para menores de edad se requiere autorización del padre o madre.' };
   }
 
   if (isMinor && (!guardianName || !guardianEmail || !guardianPhone)) {
-    return { ok: false, error: 'Para menores de edad ingresa nombre, correo y celular del representante legal.' };
+    return { ok: false, error: 'Para menores de edad ingresa nombre, correo y celular del padre o madre.' };
   }
 
   if (isMinor && guardianEmail === normalizedEmail) {
-    return { ok: false, error: 'El correo del representante legal debe ser diferente al correo de la cuenta del menor.' };
+    return { ok: false, error: 'El correo del padre o madre debe ser diferente al correo de la cuenta del menor.' };
   }
 
   if (isFirebaseAuthEnabled()) {
@@ -369,7 +370,7 @@ export async function registerWithEmailPassword(payload: RegisterPayload): Promi
     return {
       ok: false,
       pending: true,
-      message: response.message || 'Registro recibido. Enviamos un correo al representante legal para continuar la validación.',
+      message: response.message || 'Registro recibido. Enviamos un correo al padre o madre para continuar la validación.',
       error: response.message || 'Registro pendiente de validación.',
     };
   }
@@ -413,7 +414,7 @@ async function registerWithFirebaseEmailPassword(payload: RegisterPayload): Prom
       rolSistema: 'Usuario',
       tipoUsuario: 'Asistente',
       tituloUsuario: 'Asistente',
-      estadoUsuario: isMinor ? 'Pendiente representante' : 'Activo',
+      estadoUsuario: isMinor ? 'Pendiente padre/madre' : 'Activo',
       publicador: false,
       publicadorEco: false,
       publicadorEvento: false,
@@ -509,7 +510,7 @@ async function registerWithFirebaseEmailPassword(payload: RegisterPayload): Prom
       return {
         ok: false,
         pending: true,
-        message: 'Registro recibido. Enviamos un correo al representante legal; cuando apruebe, IBA revisará y activará la cuenta.',
+        message: 'Registro recibido. Enviamos un correo al padre o madre; cuando apruebe, IBA revisará y activará la cuenta.',
         error: 'Registro pendiente de validación.',
       };
     }
@@ -611,7 +612,7 @@ async function requestGuardianApprovalEmail(payload: GuardianApprovalEmailPayloa
   );
 
   if (!response.ok) {
-    throw new Error(response.error || 'No fue posible enviar el correo al representante legal.');
+    throw new Error(response.error || 'No fue posible enviar el correo al padre o madre.');
   }
 }
 
@@ -627,6 +628,8 @@ export async function updateUserProfile(session: SoyibaSession, payload: UpdateP
     return { ok: false, error: 'Nombre, apellido y celular son requeridos.' };
   }
 
+  const privacyPayload = getProfilePrivacyPayload(session.user, payload);
+
   if (isFirebaseAuthEnabled()) {
     return updateUserProfileWithFirebase(session, {
       firstName,
@@ -634,10 +637,7 @@ export async function updateUserProfile(session: SoyibaSession, payload: UpdateP
       email: normalizedEmail,
       phone,
       tiempoIba,
-      visibleDirectorio: Boolean(payload.visibleDirectorio),
-      mostrarTelefono: Boolean(payload.mostrarTelefono),
-      permitirWhatsapp: Boolean(payload.permitirWhatsapp),
-      mostrarFoto: Boolean(payload.mostrarFoto),
+      ...privacyPayload,
     });
   }
 
@@ -653,10 +653,7 @@ export async function updateUserProfile(session: SoyibaSession, payload: UpdateP
       phone,
       tiempoIba,
       displayName,
-      visibleDirectorio: Boolean(payload.visibleDirectorio),
-      mostrarTelefono: Boolean(payload.mostrarTelefono),
-      permitirWhatsapp: Boolean(payload.permitirWhatsapp),
-      mostrarFoto: Boolean(payload.mostrarFoto),
+      ...privacyPayload,
     },
     () => ({
       ok: true,
@@ -669,10 +666,7 @@ export async function updateUserProfile(session: SoyibaSession, payload: UpdateP
         lastName,
         phone,
         tiempoIba,
-        visibleDirectorio: Boolean(payload.visibleDirectorio),
-        mostrarTelefono: Boolean(payload.mostrarTelefono),
-        permitirWhatsapp: Boolean(payload.permitirWhatsapp),
-        mostrarFoto: Boolean(payload.mostrarFoto),
+        ...privacyPayload,
       },
     }),
   );
@@ -742,10 +736,7 @@ async function updateUserProfileWithFirebase(session: SoyibaSession, payload: Up
       lastName: payload.lastName,
       phone: payload.phone,
       tiempoIba: payload.tiempoIba,
-      visibleDirectorio: Boolean(payload.visibleDirectorio),
-      mostrarTelefono: Boolean(payload.mostrarTelefono),
-      permitirWhatsapp: Boolean(payload.permitirWhatsapp),
-      mostrarFoto: Boolean(payload.mostrarFoto),
+      ...getProfilePrivacyPayload(session.user, payload),
     };
 
     await Promise.all([
@@ -758,10 +749,7 @@ async function updateUserProfileWithFirebase(session: SoyibaSession, payload: Up
           lastName: payload.lastName,
           phone: payload.phone,
           tiempoIba: payload.tiempoIba,
-          visibleDirectorio: Boolean(payload.visibleDirectorio),
-          mostrarTelefono: Boolean(payload.mostrarTelefono),
-          permitirWhatsapp: Boolean(payload.permitirWhatsapp),
-          mostrarFoto: Boolean(payload.mostrarFoto),
+          ...getProfilePrivacyPayload(session.user, payload),
           updatedAt,
           updatedAtServer: serverTimestamp(),
         },
@@ -1322,14 +1310,30 @@ function getPendingMinorSignInMessage(user: SoyibaUser) {
   const minorStatus = normalizePlainText(user.minorValidationStatus || user.status || '');
 
   if (minorStatus.includes('guardian')) {
-    return 'Tu cuenta está pendiente de aprobación por tu representante legal.';
+    return 'Tu cuenta está pendiente de aprobación por tu padre o madre.';
   }
 
   if (minorStatus.includes('iba')) {
-    return 'Tu representante ya aprobó. La cuenta está pendiente de revisión por IBA.';
+    return 'Tu padre o madre ya aprobó. La cuenta está pendiente de revisión por IBA.';
   }
 
   return '';
+}
+
+function getProfilePrivacyPayload(user: SoyibaUser, payload: Pick<UpdateProfilePayload, 'visibleDirectorio' | 'mostrarTelefono' | 'permitirWhatsapp' | 'mostrarFoto'>) {
+  const isMinor = isMinorUser(user);
+  const mostrarTelefono = isMinor ? false : Boolean(payload.mostrarTelefono);
+
+  return {
+    visibleDirectorio: Boolean(payload.visibleDirectorio),
+    mostrarTelefono,
+    permitirWhatsapp: isMinor ? false : Boolean(payload.permitirWhatsapp && mostrarTelefono),
+    mostrarFoto: Boolean(payload.mostrarFoto),
+  };
+}
+
+function isMinorUser(user: SoyibaUser) {
+  return user.registroMenorEdad === true || toBoolean((user as SoyibaUser & { registro_menor_edad?: unknown }).registro_menor_edad);
 }
 
 function normalizeBirthDate(value: unknown) {
@@ -1368,6 +1372,10 @@ function getBirthDateAgeInfo(value: string): { ok: true; age: number } | { ok: f
 
   if (age > 120) {
     return { ok: false, error: 'Revisa la fecha de nacimiento ingresada.' };
+  }
+
+  if (age < MIN_REGISTRATION_AGE) {
+    return { ok: false, error: `La edad mínima para registrarse en SOY IBA es de ${MIN_REGISTRATION_AGE} años.` };
   }
 
   return { ok: true, age };
@@ -1580,8 +1588,9 @@ async function syncFirebaseMemberDirectoryDoc(app: NonNullable<ReturnType<typeof
     return;
   }
 
-  const mostrarTelefono = Boolean(user.mostrarTelefono);
-  const permitirWhatsapp = Boolean(user.permitirWhatsapp);
+  const isMinor = isMinorUser(user);
+  const mostrarTelefono = isMinor ? false : Boolean(user.mostrarTelefono);
+  const permitirWhatsapp = isMinor ? false : Boolean(user.permitirWhatsapp && mostrarTelefono);
   const mostrarFoto = user.mostrarFoto === undefined ? true : Boolean(user.mostrarFoto);
 
   await setDoc(directoryRef, {

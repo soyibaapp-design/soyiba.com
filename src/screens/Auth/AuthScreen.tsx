@@ -37,6 +37,7 @@ type AuthScreenProps = {
 
 type LoginRegisterMode = 'login' | 'register';
 type AuthMode = LoginRegisterMode | 'forgot' | 'reset' | 'approve-minor';
+type BirthDateAgeGroup = 'adult' | 'minor' | 'too-young';
 type LegalModalId = 'privacy' | 'terms' | null;
 type PendingAccountModalState = {
   title: string;
@@ -48,7 +49,8 @@ type LoginFormState = {
   password: string;
 };
 
-type RegisterFormState = RegisterPayload & {
+type RegisterFormState = Omit<RegisterPayload, 'ageGroup'> & {
+  ageGroup: BirthDateAgeGroup;
   confirmPassword: string;
 };
 
@@ -99,6 +101,8 @@ const emptyPasswordResetConfirmForm: PasswordResetConfirmState = {
   confirmPassword: '',
 };
 
+const MIN_REGISTRATION_AGE = 12;
+
 export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
   const [mode, setMode] = useState<AuthMode>(() => initialMode || getInitialMode());
   const [loginForm, setLoginForm] = useState<LoginFormState>(emptyLoginForm);
@@ -123,7 +127,7 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
   const resetPasswordRules = useMemo(() => getPasswordRules(passwordResetConfirmForm.password), [passwordResetConfirmForm.password]);
   const registerAgeGroup = useMemo(() => getAgeGroupFromBirthDate(registerForm.fechaNacimiento), [registerForm.fechaNacimiento]);
   const minorApprovalState = useMemo(() => (mode === 'approve-minor' ? getMinorApprovalStateFromHash() : null), [mode]);
-  const maxBirthDate = useMemo(() => getTodayDateInputValue(), []);
+  const maxBirthDate = useMemo(() => getMaxRegistrationBirthDateValue(), []);
   const isRegister = mode === 'register';
   const canSubmitMinorApproval = minorApprovalAcceptedDataPolicy && minorApprovalAcceptedPrivacyPolicy;
 
@@ -244,19 +248,24 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
 
     if (registerAgeGroup === 'minor') {
       if (!registerForm.guardianName.trim() || !registerForm.guardianEmail.trim() || !registerForm.guardianPhone.trim()) {
-        setError('Ingresa nombre, correo y celular del representante legal.');
+        setError('Ingresa nombre, correo y celular del padre o madre.');
         return;
       }
 
       if (registerForm.guardianEmail.trim().toLowerCase() === registerForm.email.trim().toLowerCase()) {
-        setError('El correo del representante legal debe ser diferente al correo de la cuenta del menor.');
+        setError('El correo del padre o madre debe ser diferente al correo de la cuenta del menor.');
         return;
       }
 
       if (!registerForm.guardianConsent) {
-        setError('Para menores de edad se requiere autorización del representante legal.');
+        setError('Para menores de edad se requiere autorización del padre o madre.');
         return;
       }
+    }
+
+    if (registerAgeGroup === 'too-young') {
+      setError(`La edad mínima para registrarse en SOY IBA es de ${MIN_REGISTRATION_AGE} años.`);
+      return;
     }
 
     setIsSubmitting(true);
@@ -800,42 +809,44 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
                 <legend className="px-1 text-[11px] font-black text-[#06245c]">Edad y autorización</legend>
                 <div className="grid gap-2">
                   {registerAgeGroup ? (
-                    <AgeStatus label={registerAgeGroup === 'minor' ? 'Menor de edad' : 'Mayor de edad'} minor={registerAgeGroup === 'minor'} />
+                    <AgeStatus ageGroup={registerAgeGroup} />
                   ) : (
-                    <p className="text-[11px] font-semibold leading-4 text-[#52637C]">Ingresa tu fecha de nacimiento para calcular si eres mayor o menor de edad.</p>
+                    <p className="text-[11px] font-semibold leading-4 text-[#52637C]">
+                      Ingresa tu fecha de nacimiento para validar si puedes registrarte y si requiere proceso de menores.
+                    </p>
                   )}
                 </div>
                 {registerAgeGroup === 'minor' ? (
                   <div className="mt-3 space-y-2.5">
                     <AuthField
                       id="register-guardian-name"
-                      label="Nombre del representante"
+                      label="Nombre del padre o madre"
                       icon={UserRound}
                       autoComplete="name"
-                      placeholder="Nombre del representante legal"
+                      placeholder="Nombre del padre o madre"
                       value={registerForm.guardianName}
                       onChange={(value) => setRegisterForm((current) => ({ ...current, guardianName: value }))}
                     />
                     <div className="grid gap-2.5 sm:grid-cols-2">
                       <AuthField
                         id="register-guardian-email"
-                        label="Correo del representante"
+                        label="Correo del padre o madre"
                         icon={Mail}
                         type="email"
                         autoComplete="email"
                         inputMode="email"
-                        placeholder="Correo del representante"
+                        placeholder="Correo del padre o madre"
                         value={registerForm.guardianEmail}
                         onChange={(value) => setRegisterForm((current) => ({ ...current, guardianEmail: value }))}
                       />
                       <AuthField
                         id="register-guardian-phone"
-                        label="Celular del representante"
+                        label="Celular del padre o madre"
                         icon={Smartphone}
                         type="tel"
                         autoComplete="tel"
                         inputMode="tel"
-                        placeholder="Celular del representante"
+                        placeholder="Celular del padre o madre"
                         value={registerForm.guardianPhone}
                         onChange={(value) => setRegisterForm((current) => ({ ...current, guardianPhone: value }))}
                       />
@@ -847,7 +858,7 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
                         onChange={(event) => setRegisterForm((current) => ({ ...current, guardianConsent: event.target.checked }))}
                         className="mt-0.5 h-4 w-4 shrink-0 rounded border-2 border-slate-300 text-[#1459d4] accent-[#1459d4]"
                       />
-                      <span>Confirmo que cuento con autorización de mi representante legal para iniciar el registro y solicitar su aprobación por correo.</span>
+                      <span>Confirmo que cuento con autorización de mi padre o madre para iniciar el registro y solicitar su aprobación por correo.</span>
                     </label>
                   </div>
                 ) : null}
@@ -1011,17 +1022,32 @@ function PasswordRule({ label, isMet }: { label: string; isMet: boolean }) {
   );
 }
 
-function AgeStatus({ label, minor }: { label: string; minor: boolean }) {
-  const Icon = minor ? Circle : CheckCircle2;
+function AgeStatus({ ageGroup }: { ageGroup: BirthDateAgeGroup }) {
+  const isMinor = ageGroup === 'minor';
+  const isTooYoung = ageGroup === 'too-young';
+  const Icon = isMinor || isTooYoung ? Circle : CheckCircle2;
+  const label = isTooYoung ? 'Edad no permitida para registro' : isMinor ? 'Menor de edad' : 'Mayor de edad';
+  const description = isTooYoung
+    ? `La edad mínima para registrarse en SOY IBA es de ${MIN_REGISTRATION_AGE} años.`
+    : isMinor
+      ? 'Se deben completar los datos del padre o madre para realizar el proceso de gestión de menores y activar la cuenta posterior a la validación.'
+      : 'Puedes continuar el registro sin proceso de menores.';
 
   return (
     <div
-      className={`flex min-h-10 items-center gap-2 rounded-lg border px-3 text-left text-[11px] font-black ${
-        minor ? 'border-[#F3C36B] bg-[#FFF7E8] text-[#7A4B00]' : 'border-[#1459d4] bg-[#EAF2FF] text-[#06245c]'
+      className={`flex min-h-10 items-start gap-2 rounded-lg border px-3 py-2 text-left text-[11px] ${
+        isMinor
+          ? 'border-[#F3C36B] bg-[#FFF7E8] text-[#7A4B00]'
+          : isTooYoung
+            ? 'border-red-200 bg-red-50 text-red-700'
+            : 'border-[#1459d4] bg-[#EAF2FF] text-[#06245c]'
       }`}
     >
-      <Icon size={14} className="shrink-0 text-[#1459d4]" />
-      <span>{label}</span>
+      <Icon size={14} className="mt-0.5 shrink-0 text-[#1459d4]" />
+      <span className="min-w-0">
+        <span className="block font-black">{label}</span>
+        <span className="mt-1 block font-semibold leading-4">{description}</span>
+      </span>
     </div>
   );
 }
@@ -1254,7 +1280,7 @@ const legalContent = {
       {
         title: 'Menores de edad',
         body:
-          'El registro de menores requiere autorización de su representante legal y se manejará bajo el interés superior del menor, evitando publicar información no necesaria.',
+          'El registro de menores requiere autorización del padre o madre y se manejará bajo el interés superior del menor, evitando publicar información no necesaria.',
       },
       {
         title: 'Derechos',
@@ -1320,7 +1346,7 @@ function getPasswordRules(password: string) {
   ];
 }
 
-function getAgeGroupFromBirthDate(value: string): 'adult' | 'minor' | null {
+function getAgeGroupFromBirthDate(value: string): BirthDateAgeGroup | null {
   const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
 
   if (!match) {
@@ -1354,13 +1380,18 @@ function getAgeGroupFromBirthDate(value: string): 'adult' | 'minor' | null {
     return null;
   }
 
+  if (age < MIN_REGISTRATION_AGE) {
+    return 'too-young';
+  }
+
   return age < 18 ? 'minor' : 'adult';
 }
 
-function getTodayDateInputValue() {
+function getMaxRegistrationBirthDateValue() {
   const today = new Date();
-  const year = today.getFullYear();
-  const month = String(today.getMonth() + 1).padStart(2, '0');
-  const day = String(today.getDate()).padStart(2, '0');
+  const maxBirthDate = new Date(today.getFullYear() - MIN_REGISTRATION_AGE, today.getMonth(), today.getDate());
+  const year = maxBirthDate.getFullYear();
+  const month = String(maxBirthDate.getMonth() + 1).padStart(2, '0');
+  const day = String(maxBirthDate.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 }

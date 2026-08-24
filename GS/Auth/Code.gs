@@ -3,9 +3,10 @@ var SOYIBA_AUTH_SHEET = 'Auth';
 var SOYIBA_MINOR_VALIDATION_SHEET = 'MinorValidationRequests';
 var SOYIBA_MIEMBROS_IBA_SHEET = 'MiembrosIBA';
 var SOYIBA_HEALTH_SESSIONS_SHEET = 'AppHealthSessions';
-var SOYIBA_AUTH_CODE_VERSION = 'privacy-directory-defaults-2026-08-24';
+var SOYIBA_AUTH_CODE_VERSION = 'minor-parent-privacy-2026-08-24';
 var SOYIBA_PASSWORD_RESET_TTL_MINUTES = 60;
 var SOYIBA_HEALTH_ACTIVE_WINDOW_MS = 2 * 60 * 1000;
+var SOYIBA_MIN_REGISTRATION_AGE = 12;
 var SOYIBA_AUTH_HEADERS = [
   'user_id',
   'email',
@@ -269,12 +270,16 @@ function soyibaAuthRegister_(data) {
     return { ok: false, error: 'Fecha de nacimiento requerida.' };
   }
 
+  if (soyibaAuthAgeFromBirthDate_(fechaNacimiento) < SOYIBA_MIN_REGISTRATION_AGE) {
+    return { ok: false, error: 'La edad minima para registrarse en SOY IBA es de ' + SOYIBA_MIN_REGISTRATION_AGE + ' anos.' };
+  }
+
   if (registroMenorEdad && !autorizacionAcudiente) {
-    return { ok: false, error: 'Para menores de edad se requiere autorizacion del representante legal.' };
+    return { ok: false, error: 'Para menores de edad se requiere autorizacion del padre o madre.' };
   }
 
   if (registroMenorEdad && (!guardianName || !guardianEmail || !guardianPhone)) {
-    return { ok: false, error: 'Datos del representante legal requeridos.' };
+    return { ok: false, error: 'Datos del padre o madre requeridos.' };
   }
 
   if (password.length < 8) {
@@ -311,7 +316,7 @@ function soyibaAuthRegister_(data) {
     tipoUsuario,
     tituloUsuario,
     rolSistema,
-    registroMenorEdad ? 'Pendiente representante' : estadoUsuario,
+    registroMenorEdad ? 'Pendiente padre/madre' : estadoUsuario,
     false,
     false,
     false,
@@ -355,7 +360,7 @@ function soyibaAuthRegister_(data) {
     return {
       ok: false,
       pending: true,
-      message: 'Registro recibido. Enviamos un correo al representante legal; cuando apruebe, IBA revisara y activara la cuenta.',
+      message: 'Registro recibido. Enviamos un correo al padre o madre; cuando apruebe, IBA revisara y activara la cuenta.',
       requestId: requestId
     };
   }
@@ -562,6 +567,12 @@ function soyibaAuthUpdateProfile_(data) {
   var mostrarTelefono = soyibaAuthIsTrue_(data.mostrarTelefono !== undefined ? data.mostrarTelefono : data.mostrar_telefono);
   var permitirWhatsapp = soyibaAuthIsTrue_(data.permitirWhatsapp !== undefined ? data.permitirWhatsapp : data.permitir_whatsapp);
   var mostrarFoto = data.mostrarFoto === undefined && data.mostrar_foto === undefined ? true : soyibaAuthIsTrue_(data.mostrarFoto !== undefined ? data.mostrarFoto : data.mostrar_foto);
+  var registroMenorEdad = soyibaAuthIsTrue_(found.user.registro_menor_edad);
+
+  if (registroMenorEdad) {
+    mostrarTelefono = false;
+    permitirWhatsapp = false;
+  }
 
   if (!email || !firstName || !lastName || !phone) {
     return { ok: false, error: 'Nombre, apellido y celular son requeridos.' };
@@ -1955,6 +1966,16 @@ function soyibaAuthIsMinorFromBirthDate_(value) {
     return false;
   }
 
+  return soyibaAuthAgeFromBirthDate_(text) < 18;
+}
+
+function soyibaAuthAgeFromBirthDate_(value) {
+  var text = soyibaAuthNormalizeBirthDate_(value);
+
+  if (!text) {
+    return 0;
+  }
+
   var parts = text.split('-');
   var year = Number(parts[0]);
   var month = Number(parts[1]);
@@ -1968,7 +1989,7 @@ function soyibaAuthIsMinorFromBirthDate_(value) {
     age -= 1;
   }
 
-  return age < 18;
+  return age;
 }
 
 function soyibaAuthNormalizeCc_(value) {
@@ -2107,7 +2128,7 @@ function soyibaAuthBuildMinorApprovalLink_(requestId, token, appUrl, approvalBas
   var serviceUrl = soyibaAuthNormalizeWebAppUrl_(approvalBaseUrl) || soyibaAuthNormalizeWebAppUrl_(ScriptApp.getService().getUrl());
 
   if (!serviceUrl) {
-    throw new Error('Falta desplegar el Web App de Apps Script para generar el enlace del representante.');
+    throw new Error('Falta desplegar el Web App de Apps Script para generar el enlace del padre o madre.');
   }
 
   return serviceUrl + '?action=approveMinor&requestId=' + encodeURIComponent(requestId) + '&token=' + encodeURIComponent(token);
@@ -2163,7 +2184,7 @@ function soyibaAuthBuildPasswordResetEmailHtml_(user, resetLink) {
 }
 
 function soyibaAuthBuildMinorApprovalEmailHtml_(guardianName, userName, approvalLink) {
-  var safeGuardian = soyibaAuthEscapeHtml_(guardianName || 'representante');
+  var safeGuardian = soyibaAuthEscapeHtml_(guardianName || 'padre o madre');
   var safeUser = soyibaAuthEscapeHtml_(userName || 'el menor');
   var safeLink = soyibaAuthEscapeHtml_(approvalLink);
 
