@@ -5,6 +5,7 @@ import {
   BadgeCheck,
   CheckCircle2,
   ChevronDown,
+  Copy,
   Edit3,
   LoaderCircle,
   Mail,
@@ -394,6 +395,20 @@ function MinorValidationPanel({
   onReview: (request: MinorValidationRequest, decision: 'approved' | 'rejected') => void;
 }) {
   const pendingIba = requests.filter((request) => request.status === 'iba_pending');
+  const [copiedPhoneRequestId, setCopiedPhoneRequestId] = useState('');
+
+  async function handleCopyGuardianPhone(request: MinorValidationRequest) {
+    if (!request.guardianPhone) {
+      return;
+    }
+
+    const copied = await copyTextToClipboard(request.guardianPhone);
+
+    if (copied) {
+      setCopiedPhoneRequestId(request.id);
+      window.setTimeout(() => setCopiedPhoneRequestId((current) => (current === request.id ? '' : current)), 1800);
+    }
+  }
 
   return (
     <section className="space-y-3 rounded-[18px] border border-[#DCE6F5] bg-white p-3 shadow-[0_14px_32px_rgba(15,23,42,0.06)]">
@@ -450,8 +465,21 @@ function MinorValidationPanel({
                       <span>Representante: {request.guardianName || 'Sin nombre'}</span>
                       <span>Correo: {request.guardianEmail || 'Sin correo'}</span>
                       <span>Celular menor: {request.userPhone || 'Sin celular'}</span>
-                      <span>Celular representante: {request.guardianPhone || 'Sin celular'}</span>
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        <span className="min-w-0 break-words">Celular representante: {request.guardianPhone || 'Sin celular'}</span>
+                        {request.guardianPhone ? (
+                          <button
+                            type="button"
+                            onClick={() => handleCopyGuardianPhone(request)}
+                            aria-label={`Copiar celular del representante de ${request.userName || request.userEmail}`}
+                            className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-white text-[#145CFF] ring-1 ring-[#B8C9E7] transition hover:bg-[#EAF2FF]"
+                          >
+                            {copiedPhoneRequestId === request.id ? <CheckCircle2 size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
+                          </button>
+                        ) : null}
+                      </span>
                     </div>
+                    {copiedPhoneRequestId === request.id ? <p className="mt-2 text-[11px] font-black text-[#047857]">Celular del representante copiado.</p> : null}
                     {request.guardianApprovedAt ? <p className="mt-2 text-[11px] font-black text-emerald-700">Representante aprobó: {formatDateTime(request.guardianApprovedAt)}</p> : null}
                     {request.validatedAt ? <p className="mt-2 text-[11px] font-black text-[#52637C]">Revisado por {request.validatedByEmail || 'IBA'}: {formatDateTime(request.validatedAt)}</p> : null}
                     {request.rejectionReason ? <p className="mt-2 text-[11px] font-bold text-rose-700">Motivo: {request.rejectionReason}</p> : null}
@@ -485,6 +513,35 @@ function MinorValidationPanel({
       ) : null}
     </section>
   );
+}
+
+async function copyTextToClipboard(text: string) {
+  if (navigator.clipboard && window.isSecureContext) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return true;
+    } catch {
+      // Se intenta el fallback para navegadores embebidos o permisos restringidos.
+    }
+  }
+
+  try {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.setAttribute('readonly', '');
+    textarea.style.position = 'fixed';
+    textarea.style.left = '-9999px';
+    textarea.style.top = '0';
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    textarea.setSelectionRange(0, text.length);
+    const copied = document.execCommand('copy');
+    document.body.removeChild(textarea);
+    return copied;
+  } catch {
+    return false;
+  }
 }
 
 function MinorStatusBadge({ status }: { status: MinorValidationRequest['status'] }) {
