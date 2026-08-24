@@ -322,15 +322,17 @@ service cloud.firestore {
         );
     }
 
+    function isManagerUserAccessUpdate(userId) {
+      return isManager()
+        && request.resource.data.get('email', '') == resource.data.get('email', '')
+        && request.resource.data.get('id', userId) == resource.data.get('id', userId);
+    }
+
     match /users/{userId} {
       allow get: if signedIn() && (request.auth.uid == userId || isManager() || (canValidateMinors() && resource.data.registroMenorEdad == true));
       allow list: if isManager();
       allow create: if isSelfInitialUserCreate(userId);
-      allow update: if (
-          isManager()
-          && request.resource.data.email == resource.data.email
-          && request.resource.data.id == resource.data.id
-        ) || canValidateMinorUserActivation(userId) || isSelfMembershipUpdate(userId) || isSelfPhotoUpdate(userId) || isSelfProfileUpdate(userId);
+      allow update: if isManagerUserAccessUpdate(userId) || canValidateMinorUserActivation(userId) || isSelfMembershipUpdate(userId) || isSelfPhotoUpdate(userId) || isSelfProfileUpdate(userId);
       allow delete: if signedIn()
         && request.auth.uid == userId
         && resource.data.registroMenorEdad == true
