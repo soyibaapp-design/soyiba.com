@@ -362,6 +362,10 @@ export async function registerWithEmailPassword(payload: RegisterPayload): Promi
 async function registerWithFirebaseEmailPassword(payload: RegisterPayload): Promise<AuthResult> {
   const app = getFirebaseApp();
   let registerStage = 'firebase-auth';
+  let createdUserId = '';
+  let createdMinorValidationRequestId = '';
+  let createdUserProfile = false;
+  let createdMinorValidationRequest = false;
 
   if (!app) {
     return { ok: false, error: 'Firebase no esta configurado.' };
@@ -374,6 +378,7 @@ async function registerWithFirebaseEmailPassword(payload: RegisterPayload): Prom
     ]);
     const auth = getAuth(app);
     const credential = await createUserWithEmailAndPassword(auth, payload.email, payload.password);
+    createdUserId = credential.user.uid;
     const displayName = [payload.firstName, payload.lastName].filter(Boolean).join(' ').trim();
     const now = new Date().toISOString();
     const isMinor = payload.ageGroup === 'minor';
@@ -445,6 +450,7 @@ async function registerWithFirebaseEmailPassword(payload: RegisterPayload): Prom
       updatedAtServer: serverTimestamp(),
       migratedFrom: 'firebase-register',
     });
+    createdUserProfile = true;
 
     if (isMinor) {
       registerStage = 'minor-validation-request';
@@ -464,6 +470,8 @@ async function registerWithFirebaseEmailPassword(payload: RegisterPayload): Prom
         createdAtServer: serverTimestamp(),
         updatedAtServer: serverTimestamp(),
       });
+      createdMinorValidationRequestId = requestId;
+      createdMinorValidationRequest = true;
 
       registerStage = 'guardian-email';
       await requestGuardianApprovalEmail({
@@ -496,6 +504,12 @@ async function registerWithFirebaseEmailPassword(payload: RegisterPayload): Prom
       },
     };
   } catch (error) {
+    await cleanupCreatedFirebaseRegisterDocs({
+      userId: createdUserId,
+      requestId: createdMinorValidationRequestId,
+      createdUserProfile,
+      createdMinorValidationRequest,
+    }).catch(() => undefined);
     await cleanupCurrentFirebaseRegisterUser().catch(() => undefined);
 
     if (error instanceof Error && /permission-denied|missing or insufficient permissions/i.test(error.message)) {
@@ -504,6 +518,38 @@ async function registerWithFirebaseEmailPassword(payload: RegisterPayload): Prom
 
     return { ok: false, error: getFirebaseRegisterError(error) };
   }
+}
+
+async function cleanupCreatedFirebaseRegisterDocs({
+  userId,
+  requestId,
+  createdUserProfile,
+  createdMinorValidationRequest,
+}: {
+  userId: string;
+  requestId: string;
+  createdUserProfile: boolean;
+  createdMinorValidationRequest: boolean;
+}) {
+  const app = getFirebaseApp();
+
+  if (!app || !userId) {
+    return;
+  }
+
+  const { deleteDoc, doc, getFirestore } = await import('firebase/firestore');
+  const db = getFirestore(app, getFirebaseAuthDatabaseId());
+  const deletions: Array<Promise<void>> = [];
+
+  if (createdMinorValidationRequest && requestId) {
+    deletions.push(deleteDoc(doc(db, 'minorValidationRequests', requestId)));
+  }
+
+  if (createdUserProfile) {
+    deletions.push(deleteDoc(doc(db, 'users', userId)));
+  }
+
+  await Promise.allSettled(deletions);
 }
 
 async function cleanupCurrentFirebaseRegisterUser() {
@@ -1377,6 +1423,7 @@ function getFirebasePasswordError(error: unknown, fallback: string) {
 
 function getFirebaseRegisterError(error: unknown) {
   const code = typeof error === 'object' && error && 'code' in error ? String((error as { code?: unknown }).code || '') : '';
+  const message = String(error instanceof Error ? error.message : error || '');
 
   if (/auth\/email-already-in-use/i.test(code)) {
     return 'Ya existe una cuenta con ese correo. Inicia sesion o recupera la contrasena.';
@@ -1390,7 +1437,15 @@ function getFirebaseRegisterError(error: unknown) {
     return 'La contrasena es muy debil.';
   }
 
-  if (/permission-denied|missing or insufficient permissions/i.test(String(error instanceof Error ? error.message : error || ''))) {
+  if (/accion no soportada|acción no soportada|createMinorValidationRequest/i.test(message)) {
+    return 'La cuenta no quedó activa porque el Apps Script publicado todavía no tiene la validación de menores. Despliega GS/Auth/Code.gs y vuelve a intentar.';
+  }
+
+  if (/Apps Script|correo al representante legal|correo al padre|correo al acudiente/i.test(message)) {
+    return message;
+  }
+
+  if (/permission-denied|missing or insufficient permissions/i.test(message)) {
     return 'La cuenta fue creada en Firebase Auth, pero Firestore bloqueo el perfil. Revisa las reglas de Firestore.';
   }
 

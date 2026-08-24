@@ -291,7 +291,11 @@ service cloud.firestore {
           && request.resource.data.email == resource.data.email
           && request.resource.data.id == resource.data.id
         ) || canValidateMinorUserActivation(userId) || isSelfMembershipUpdate(userId) || isSelfPhotoUpdate(userId) || isSelfProfileUpdate(userId);
-      allow delete: if false;
+      allow delete: if signedIn()
+        && request.auth.uid == userId
+        && resource.data.registroMenorEdad == true
+        && resource.data.active == false
+        && resource.data.status == 'minor_pending_guardian';
     }
 
     match /membersDirectory/{memberId} {
@@ -397,7 +401,9 @@ service cloud.firestore {
           'updatedAt',
           'updatedAtServer'
         ]);
-      allow delete: if false;
+      allow delete: if signedIn()
+        && resource.data.userId == request.auth.uid
+        && resource.data.status == 'guardian_pending';
     }
   }
 }
