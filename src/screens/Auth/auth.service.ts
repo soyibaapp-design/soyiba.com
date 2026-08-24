@@ -260,6 +260,10 @@ export async function registerWithEmailPassword(payload: RegisterPayload): Promi
     return { ok: false, error: 'Para menores de edad ingresa nombre, correo y celular del representante legal.' };
   }
 
+  if (isMinor && guardianEmail === normalizedEmail) {
+    return { ok: false, error: 'El correo del representante legal debe ser diferente al correo de la cuenta del menor.' };
+  }
+
   if (isFirebaseAuthEnabled()) {
     return registerWithFirebaseEmailPassword({
       firstName,
@@ -492,11 +496,28 @@ async function registerWithFirebaseEmailPassword(payload: RegisterPayload): Prom
       },
     };
   } catch (error) {
+    await cleanupCurrentFirebaseRegisterUser().catch(() => undefined);
+
     if (error instanceof Error && /permission-denied|missing or insufficient permissions/i.test(error.message)) {
       return { ok: false, error: getFirebaseRegisterPermissionError(registerStage) };
     }
 
     return { ok: false, error: getFirebaseRegisterError(error) };
+  }
+}
+
+async function cleanupCurrentFirebaseRegisterUser() {
+  const app = getFirebaseApp();
+
+  if (!app) {
+    return;
+  }
+
+  const { deleteUser, getAuth } = await import('firebase/auth');
+  const user = getAuth(app).currentUser;
+
+  if (user) {
+    await deleteUser(user);
   }
 }
 

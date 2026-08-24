@@ -220,6 +220,11 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
         return;
       }
 
+      if (registerForm.guardianEmail.trim().toLowerCase() === registerForm.email.trim().toLowerCase()) {
+        setError('El correo del representante legal debe ser diferente al correo de la cuenta del menor.');
+        return;
+      }
+
       if (!registerForm.guardianConsent) {
         setError('Para menores de edad se requiere autorización del representante legal.');
         return;
