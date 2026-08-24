@@ -154,7 +154,7 @@ type PublicationsResponse = {
 };
 
 const publicationFeedCache = new Map<string, SoyibaPublication[]>();
-const PUBLICATION_FEED_STORAGE_PREFIX = 'soyiba.publications.feed.v4.';
+const PUBLICATION_FEED_STORAGE_PREFIX = 'soyiba.publications.feed.v5.';
 const PUBLICATION_FEED_STORAGE_TTL_MS = 30 * 60 * 1000;
 const PUBLICATION_FEED_STORAGE_STALE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const PUBLICATION_FEED_RETRY_DELAYS_MS = [1200, 2600, 5200];
@@ -1311,23 +1311,39 @@ function hydrateCurrentUserAuthor(publications: SoyibaPublication[], user: Soyib
 
 async function hydratePublicationAuthors(publications: SoyibaPublication[], user: SoyibaUser) {
   const currentUserHydrated = hydrateCurrentUserAuthor(publications, user);
-  const directoryProfiles = await getFirebaseDirectoryAuthorProfiles().catch(() => []);
+  const [userProfiles, directoryProfiles] = await Promise.all([
+    getFirebaseUserAuthorProfiles(currentUserHydrated).catch(() => []),
+    getFirebaseDirectoryAuthorProfiles().catch(() => []),
+  ]);
+  const authorProfiles = [...directoryProfiles, ...userProfiles];
 
-  if (!directoryProfiles.length) {
+  if (!authorProfiles.length) {
     return currentUserHydrated;
   }
 
-  const profilesById = new Map(directoryProfiles.filter((profile) => profile.id).map((profile) => [profile.id, profile]));
+  const profilesById = new Map(authorProfiles.filter((profile) => profile.id).map((profile) => [profile.id, profile]));
   const profilesByName = new Map<string, DirectoryAuthorProfile | null>();
 
-  for (const profile of directoryProfiles) {
+  for (const profile of authorProfiles) {
     const nameKey = normalizeAuthorName(profile.name);
 
     if (!nameKey) {
       continue;
     }
 
-    profilesByName.set(nameKey, profilesByName.has(nameKey) ? null : profile);
+    if (!profilesByName.has(nameKey)) {
+      profilesByName.set(nameKey, profile);
+      continue;
+    }
+
+    const existingProfile = profilesByName.get(nameKey);
+
+    if (existingProfile && existingProfile.id && profile.id && existingProfile.id === profile.id) {
+      profilesByName.set(nameKey, profile);
+      continue;
+    }
+
+    profilesByName.set(nameKey, null);
   }
 
   return currentUserHydrated.map((publication) => {
@@ -1357,6 +1373,48 @@ type DirectoryAuthorProfile = {
   photoUrl: string;
   verified?: boolean;
 };
+
+async function getFirebaseUserAuthorProfiles(publications: SoyibaPublication[]): Promise<DirectoryAuthorProfile[]> {
+  if (!isFirebaseAuthEnabled()) {
+    return [];
+  }
+
+  const app = getFirebaseApp();
+
+  if (!app) {
+    return [];
+  }
+
+  const authorIds = Array.from(new Set(publications.map((publication) => stringFrom(publication.author.id)).filter(Boolean)));
+
+  if (!authorIds.length) {
+    return [];
+  }
+
+  const { doc, getDoc, getFirestore } = await import('firebase/firestore');
+  const db = getFirestore(app, getFirebasePublicationsDatabaseId());
+  const results = await Promise.allSettled(authorIds.map((authorId) => getDoc(doc(db, 'users', authorId))));
+
+  return results.flatMap((result) => {
+    if (result.status !== 'fulfilled' || !result.value.exists()) {
+      return [];
+    }
+
+    const record = result.value.data() as Record<string, unknown>;
+    const firstName = stringFrom(record.firstName);
+    const lastName = stringFrom(record.lastName);
+    const name = stringFrom(record.name) || [firstName, lastName].filter(Boolean).join(' ').trim();
+
+    return [
+      {
+        id: stringFrom(record.id || result.value.id),
+        name,
+        photoUrl: stringFrom(valueFrom(record.photoUrl, record.photo_url, record.fotoUrl, record.foto_url)),
+        verified: record.verificado === undefined ? undefined : isTrue(record.verificado),
+      },
+    ];
+  });
+}
 
 async function getFirebaseDirectoryAuthorProfiles(): Promise<DirectoryAuthorProfile[]> {
   if (!isFirebaseAuthEnabled()) {
