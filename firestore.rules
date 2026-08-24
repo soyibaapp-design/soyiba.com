@@ -10,32 +10,64 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
+    function hasCurrentUserProfile() {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function currentUserProfileValue(field, fallback) {
+      return hasCurrentUserProfile() ? currentUserProfile().get(field, fallback) : fallback;
+    }
+
+    function currentUserActiveValue() {
+      return currentUserProfileValue('active', request.auth.token.get('active', false));
+    }
+
+    function currentUserStatusValue() {
+      return currentUserProfileValue('status', request.auth.token.get('status', ''));
+    }
+
     function currentUserIsActive() {
-      return currentUserProfile().get('active', false) == true
-        || currentUserProfile().get('active', '') == 'true'
-        || currentUserProfile().get('active', '') == 'TRUE'
-        || currentUserProfile().get('active', '') == '1'
-        || currentUserProfile().get('active', '') == 'active'
-        || currentUserProfile().get('active', '') == 'Activo'
-        || currentUserProfile().get('status', '') == 'active';
+      return currentUserActiveValue() == true
+        || currentUserActiveValue() == 'true'
+        || currentUserActiveValue() == 'TRUE'
+        || currentUserActiveValue() == '1'
+        || currentUserActiveValue() == 'active'
+        || currentUserActiveValue() == 'Activo'
+        || currentUserStatusValue() == 'active'
+        || currentUserStatusValue() == 'Activo';
     }
 
     function currentUserStatusIsActive() {
       return currentUserEstadoUsuario() == 'Activo'
         || currentUserEstadoUsuario() == 'active'
-        || currentUserProfile().get('status', '') == 'active';
+        || currentUserEstadoUsuario() == 'ACTIVO'
+        || currentUserStatusValue() == 'active'
+        || currentUserStatusValue() == 'Activo'
+        || currentUserActiveValue() == true;
     }
 
     function currentUserEstadoUsuario() {
-      return currentUserProfile().get('estadoUsuario', currentUserProfile().get('estado_usuario', ''));
+      return currentUserProfileValue(
+        'estadoUsuario',
+        currentUserProfileValue('estado_usuario', request.auth.token.get('estadoUsuario', request.auth.token.get('estado_usuario', '')))
+      );
     }
 
     function currentUserRolSistema() {
-      return currentUserProfile().get('rolSistema', currentUserProfile().get('rol_sistema', currentUserProfile().get('role', '')));
+      return currentUserProfileValue(
+        'rolSistema',
+        currentUserProfileValue(
+          'rol_sistema',
+          currentUserProfileValue('role', request.auth.token.get('rolSistema', request.auth.token.get('rol_sistema', request.auth.token.get('role', ''))))
+        )
+      );
     }
 
     function currentUserTipoUsuario() {
-      return currentUserProfile().get('tipoUsuario', currentUserProfile().get('tipo_usuario', ''));
+      return currentUserProfileValue(
+        'tipoUsuario',
+        currentUserProfileValue('tipo_usuario', request.auth.token.get('tipoUsuario', request.auth.token.get('tipo_usuario', '')))
+      );
     }
 
     function currentUserIsManagerRole() {
@@ -44,10 +76,12 @@ service cloud.firestore {
 
     function currentUserCanValidateMinorsRole() {
       return currentUserIsManagerRole()
-        || currentUserProfile().get('minorValidator', false) == true
-        || currentUserProfile().get('minorValidator', '') == 'true'
-        || currentUserProfile().get('minor_validator', false) == true
-        || currentUserProfile().get('minor_validator', '') == 'true';
+        || currentUserProfileValue('minorValidator', request.auth.token.get('minorValidator', false)) == true
+        || currentUserProfileValue('minorValidator', request.auth.token.get('minorValidator', '')) == 'true'
+        || currentUserProfileValue('minorValidator', request.auth.token.get('minorValidator', '')) == '1'
+        || currentUserProfileValue('minor_validator', request.auth.token.get('minor_validator', false)) == true
+        || currentUserProfileValue('minor_validator', request.auth.token.get('minor_validator', '')) == 'true'
+        || currentUserProfileValue('minor_validator', request.auth.token.get('minor_validator', '')) == '1';
     }
 
     function isManager() {
@@ -69,13 +103,6 @@ service cloud.firestore {
         && currentUserIsActive()
         && currentUserStatusIsActive()
         && currentUserCanValidateMinorsRole();
-    }
-
-    function isVisibleDirectoryMember() {
-      return resource.data.active == true
-        && resource.data.estadoUsuario == 'Activo'
-        && resource.data.tipoUsuario == 'Miembro'
-        && resource.data.visibleDirectorio == true;
     }
 
     function membershipClaimAfter() {
@@ -346,9 +373,9 @@ service cloud.firestore {
         && resource.data.visibleDirectorio == true;
       allow create, update: if signedIn()
         && request.auth.uid == memberId
-        && currentUserProfile().active == true
-        && currentUserProfile().estadoUsuario == 'Activo'
-        && currentUserProfile().tipoUsuario == 'Miembro'
+        && currentUserIsActive()
+        && currentUserStatusIsActive()
+        && currentUserTipoUsuario() in ['Miembro', 'miembro']
         && request.resource.data.id == memberId
         && request.resource.data.tipoUsuario == 'Miembro'
         && request.resource.data.visibleDirectorio is bool
@@ -382,10 +409,10 @@ service cloud.firestore {
           'updatedAtServer'
         ])
         && (!request.resource.data.visibleDirectorio || (
-          request.resource.data.rolSistema == currentUserProfile().rolSistema
-          && request.resource.data.tituloUsuario == currentUserProfile().tituloUsuario
-          && request.resource.data.estado == currentUserProfile().estadoUsuario
-          && request.resource.data.verificado == currentUserProfile().verificado
+          request.resource.data.rolSistema == currentUserRolSistema()
+          && request.resource.data.tituloUsuario == currentUserProfileValue('tituloUsuario', currentUserProfileValue('titulo_usuario', request.auth.token.get('tituloUsuario', request.auth.token.get('titulo_usuario', ''))))
+          && request.resource.data.estado == currentUserEstadoUsuario()
+          && request.resource.data.verificado == currentUserProfileValue('verificado', request.auth.token.get('verificado', false))
         ));
       allow delete: if signedIn() && request.auth.uid == memberId;
     }
