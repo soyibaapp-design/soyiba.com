@@ -10,25 +10,65 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
+    function currentUserIsActive() {
+      return currentUserProfile().get('active', false) == true
+        || currentUserProfile().get('active', '') == 'true'
+        || currentUserProfile().get('active', '') == 'TRUE'
+        || currentUserProfile().get('active', '') == '1'
+        || currentUserProfile().get('active', '') == 'active'
+        || currentUserProfile().get('active', '') == 'Activo'
+        || currentUserProfile().get('status', '') == 'active';
+    }
+
+    function currentUserStatusIsActive() {
+      return currentUserEstadoUsuario() == 'Activo'
+        || currentUserEstadoUsuario() == 'active'
+        || currentUserProfile().get('status', '') == 'active';
+    }
+
+    function currentUserEstadoUsuario() {
+      return currentUserProfile().get('estadoUsuario', currentUserProfile().get('estado_usuario', ''));
+    }
+
+    function currentUserRolSistema() {
+      return currentUserProfile().get('rolSistema', currentUserProfile().get('rol_sistema', currentUserProfile().get('role', '')));
+    }
+
+    function currentUserTipoUsuario() {
+      return currentUserProfile().get('tipoUsuario', currentUserProfile().get('tipo_usuario', ''));
+    }
+
+    function currentUserIsManagerRole() {
+      return currentUserRolSistema() in ['Admin', 'Moderador', 'admin', 'moderador'];
+    }
+
+    function currentUserCanValidateMinorsRole() {
+      return currentUserIsManagerRole()
+        || currentUserProfile().get('minorValidator', false) == true
+        || currentUserProfile().get('minorValidator', '') == 'true'
+        || currentUserProfile().get('minor_validator', false) == true
+        || currentUserProfile().get('minor_validator', '') == 'true';
+    }
+
     function isManager() {
       return signedIn()
-        && currentUserProfile().active == true
-        && currentUserProfile().estadoUsuario == 'Activo'
-        && currentUserProfile().rolSistema in ['Admin', 'Moderador'];
+        && currentUserIsActive()
+        && currentUserStatusIsActive()
+        && currentUserIsManagerRole();
     }
 
     function isActiveMember() {
       return signedIn()
-        && currentUserProfile().active == true
-        && currentUserProfile().estadoUsuario == 'Activo'
-        && currentUserProfile().tipoUsuario == 'Miembro';
+        && currentUserIsActive()
+        && currentUserStatusIsActive()
+        && currentUserTipoUsuario() in ['Miembro', 'miembro'];
     }
 
     function canValidateMinors() {
       return signedIn()
-        && currentUserProfile().active == true
-        && currentUserProfile().estadoUsuario == 'Activo'
-        && (currentUserProfile().rolSistema in ['Admin', 'Moderador'] || currentUserProfile().get('minorValidator', false) == true);
+        && currentUserIsActive()
+        && currentUserStatusIsActive()
+        && currentUserCanValidateMinorsRole();
     }
 
     function isVisibleDirectoryMember() {
