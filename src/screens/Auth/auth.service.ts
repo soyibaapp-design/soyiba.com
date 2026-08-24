@@ -135,6 +135,13 @@ export async function signInWithEmailPassword(email: string, password: string): 
       const session = await signInWithFirebaseEmailPassword(normalizedEmail, password);
 
       if (!isUserAllowedToSignIn(session.user)) {
+        const pendingMessage = getPendingMinorSignInMessage(session.user);
+        await signOutCurrentFirebaseUser().catch(() => undefined);
+
+        if (pendingMessage) {
+          return { ok: false, pending: true, message: pendingMessage, error: pendingMessage };
+        }
+
         return { ok: false, error: getInactiveUserMessage(session.user) };
       }
 
@@ -163,6 +170,17 @@ export async function signInWithEmailPassword(email: string, password: string): 
   }
 
   return result;
+}
+
+async function signOutCurrentFirebaseUser() {
+  const app = getFirebaseApp();
+
+  if (!app) {
+    return;
+  }
+
+  const { getAuth, signOut } = await import('firebase/auth');
+  await signOut(getAuth(app));
 }
 
 function recordLoginInBackground(session: SoyibaSession) {
@@ -1262,6 +1280,22 @@ function isUserAllowedToSignIn(user: SoyibaUser) {
 }
 
 function getInactiveUserMessage(user: SoyibaUser) {
+  const pendingMinorMessage = getPendingMinorSignInMessage(user);
+
+  if (pendingMinorMessage) {
+    return pendingMinorMessage;
+  }
+
+  const minorStatus = normalizePlainText(user.minorValidationStatus || user.status || '');
+
+  if (minorStatus.includes('reject')) {
+    return 'La validación del menor fue rechazada. Contacta a IBA para más información.';
+  }
+
+  return 'Tu cuenta aún no está activa.';
+}
+
+function getPendingMinorSignInMessage(user: SoyibaUser) {
   const minorStatus = normalizePlainText(user.minorValidationStatus || user.status || '');
 
   if (minorStatus.includes('guardian')) {
@@ -1272,11 +1306,7 @@ function getInactiveUserMessage(user: SoyibaUser) {
     return 'Tu representante ya aprobó. La cuenta está pendiente de revisión por IBA.';
   }
 
-  if (minorStatus.includes('reject')) {
-    return 'La validación del menor fue rechazada. Contacta a IBA para más información.';
-  }
-
-  return 'Tu cuenta aún no está activa.';
+  return '';
 }
 
 function normalizeBirthDate(value: unknown) {

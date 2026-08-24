@@ -37,6 +37,10 @@ type AuthScreenProps = {
 type LoginRegisterMode = 'login' | 'register';
 type AuthMode = LoginRegisterMode | 'forgot' | 'reset';
 type LegalModalId = 'privacy' | 'terms' | null;
+type PendingAccountModalState = {
+  title: string;
+  message: string;
+} | null;
 
 type LoginFormState = {
   email: string;
@@ -98,7 +102,7 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [error, setError] = useState('');
   const [statusMessage, setStatusMessage] = useState('');
-  const [pendingRegistrationMessage, setPendingRegistrationMessage] = useState('');
+  const [pendingAccountModal, setPendingAccountModal] = useState<PendingAccountModalState>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [showRegisterPassword, setShowRegisterPassword] = useState(false);
@@ -144,6 +148,7 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
       setMode(nextMode);
       setError('');
       setStatusMessage('');
+      setPendingAccountModal(null);
 
       if (nextMode === 'reset') {
         const resetState = getPasswordResetStateFromHash();
@@ -161,6 +166,7 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
     setMode(nextMode);
     setError('');
     setStatusMessage('');
+    setPendingAccountModal(null);
     window.history.replaceState(null, '', getUrlForMode(nextMode));
   }
 
@@ -173,6 +179,7 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
     event.preventDefault();
     setError('');
     setStatusMessage('');
+    setPendingAccountModal(null);
     setIsSubmitting(true);
     try {
       const result = await signInWithEmailPassword(loginForm.email, loginForm.password);
@@ -180,6 +187,11 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
       if (result.ok) {
         setStatusMessage('');
         onSignedIn(result.session);
+      } else if (result.pending) {
+        setPendingAccountModal({
+          title: 'Cuenta pendiente de aprobación',
+          message: result.message || result.error,
+        });
       } else {
         setError(result.error);
       }
@@ -194,6 +206,7 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
     event.preventDefault();
     setError('');
     setStatusMessage('');
+    setPendingAccountModal(null);
 
     if (registerForm.password !== registerForm.confirmPassword) {
       setError('Las contraseñas no coinciden.');
@@ -244,7 +257,10 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
       if (result.ok) {
         onSignedIn(result.session);
       } else if (result.pending) {
-        setPendingRegistrationMessage(result.message || result.error);
+        setPendingAccountModal({
+          title: 'Registro recibido',
+          message: result.message || result.error,
+        });
         setStatusMessage('');
         setRegisterForm(emptyRegisterForm);
         setAcceptedTerms(false);
@@ -739,7 +755,7 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
             </form>
           )}
         </motion.section>
-        <PendingRegistrationModal message={pendingRegistrationMessage} onClose={() => setPendingRegistrationMessage('')} />
+        <PendingAccountModal modal={pendingAccountModal} onClose={() => setPendingAccountModal(null)} />
         <LegalModal activeModal={activeLegalModal} onClose={() => setActiveLegalModal(null)} />
       </div>
     </main>
@@ -902,22 +918,22 @@ function AuthStatus({ message }: { message: string }) {
   return <p className="mt-2.5 rounded-xl bg-blue-50 px-3 py-2 text-xs font-semibold text-[#115bd8]">{message}</p>;
 }
 
-function PendingRegistrationModal({ message, onClose }: { message: string; onClose: () => void }) {
-  if (!message) {
+function PendingAccountModal({ modal, onClose }: { modal: PendingAccountModalState; onClose: () => void }) {
+  if (!modal) {
     return null;
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#061c4a]/70 px-4 py-6 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="pending-registration-title">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#061c4a]/70 px-4 py-6 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="pending-account-title">
       <section className="w-full max-w-sm overflow-hidden rounded-2xl bg-white text-center shadow-2xl shadow-slate-950/30">
         <div className="px-6 pb-5 pt-6">
           <span className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#EAF2FF] text-[#1459d4] ring-8 ring-[#F5F8FF]">
             <Mail size={24} strokeWidth={2.2} aria-hidden="true" />
           </span>
-          <h2 id="pending-registration-title" className="mt-4 text-lg font-extrabold leading-tight text-[#06245c]">
-            Registro recibido
+          <h2 id="pending-account-title" className="mt-4 text-lg font-extrabold leading-tight text-[#06245c]">
+            {modal.title}
           </h2>
-          <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">{message}</p>
+          <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">{modal.message}</p>
         </div>
         <footer className="border-t border-slate-200 px-5 py-4">
           <button
