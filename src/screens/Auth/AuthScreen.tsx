@@ -98,6 +98,7 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [error, setError] = useState('');
   const [statusMessage, setStatusMessage] = useState('');
+  const [pendingRegistrationMessage, setPendingRegistrationMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [showRegisterPassword, setShowRegisterPassword] = useState(false);
@@ -243,7 +244,8 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
       if (result.ok) {
         onSignedIn(result.session);
       } else if (result.pending) {
-        setStatusMessage(result.message || result.error);
+        setPendingRegistrationMessage(result.message || result.error);
+        setStatusMessage('');
         setRegisterForm(emptyRegisterForm);
         setAcceptedTerms(false);
       } else {
@@ -737,6 +739,7 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
             </form>
           )}
         </motion.section>
+        <PendingRegistrationModal message={pendingRegistrationMessage} onClose={() => setPendingRegistrationMessage('')} />
         <LegalModal activeModal={activeLegalModal} onClose={() => setActiveLegalModal(null)} />
       </div>
     </main>
@@ -897,6 +900,37 @@ function AuthStatus({ message }: { message: string }) {
   }
 
   return <p className="mt-2.5 rounded-xl bg-blue-50 px-3 py-2 text-xs font-semibold text-[#115bd8]">{message}</p>;
+}
+
+function PendingRegistrationModal({ message, onClose }: { message: string; onClose: () => void }) {
+  if (!message) {
+    return null;
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#061c4a]/70 px-4 py-6 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="pending-registration-title">
+      <section className="w-full max-w-sm overflow-hidden rounded-2xl bg-white text-center shadow-2xl shadow-slate-950/30">
+        <div className="px-6 pb-5 pt-6">
+          <span className="mx-auto grid h-14 w-14 place-items-center rounded-full bg-[#EAF2FF] text-[#1459d4] ring-8 ring-[#F5F8FF]">
+            <Mail size={24} strokeWidth={2.2} aria-hidden="true" />
+          </span>
+          <h2 id="pending-registration-title" className="mt-4 text-lg font-extrabold leading-tight text-[#06245c]">
+            Registro recibido
+          </h2>
+          <p className="mt-2 text-sm font-semibold leading-6 text-slate-600">{message}</p>
+        </div>
+        <footer className="border-t border-slate-200 px-5 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-11 w-full rounded-xl bg-[#062b70] text-sm font-bold text-white transition hover:bg-[#041f55]"
+          >
+            Entendido
+          </button>
+        </footer>
+      </section>
+    </div>
+  );
 }
 
 function getHashForMode(mode: AuthMode) {
