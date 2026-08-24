@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   BadgeCheck,
   CheckCircle2,
+  ChevronDown,
   Edit3,
   LoaderCircle,
   Mail,
@@ -73,6 +74,7 @@ export function UsersManagementScreen({ session, onBack, onSessionUpdated, onMod
   const [minorRequestsLoading, setMinorRequestsLoading] = useState(true);
   const [minorRequestsError, setMinorRequestsError] = useState('');
   const [minorReviewBusyId, setMinorReviewBusyId] = useState('');
+  const [minorValidationOpen, setMinorValidationOpen] = useState(false);
   const [savedMessage, setSavedMessage] = useState('');
   const canManage = isManager(session.user);
   const canValidateMinors = canManage || isMinorValidator(session.user);
@@ -295,13 +297,15 @@ export function UsersManagementScreen({ session, onBack, onSessionUpdated, onMod
         <SummaryTile label="Permisos" value={summary.publishers} icon={Megaphone} tone="bg-[#FFF1DC] text-[#D46D00]" />
       </section> : null}
 
-      <MinorValidationPanel
-        requests={minorRequests}
-        loading={minorRequestsLoading}
-        error={minorRequestsError}
-        busyId={minorReviewBusyId}
-        onReview={handleReviewMinorRequest}
-      />
+        <MinorValidationPanel
+          requests={minorRequests}
+          loading={minorRequestsLoading}
+          error={minorRequestsError}
+          busyId={minorReviewBusyId}
+          open={minorValidationOpen}
+          onOpenChange={setMinorValidationOpen}
+          onReview={handleReviewMinorRequest}
+        />
 
       {canManage ? (
         <>
@@ -377,90 +381,108 @@ function MinorValidationPanel({
   loading,
   error,
   busyId,
+  open,
+  onOpenChange,
   onReview,
 }: {
   requests: MinorValidationRequest[];
   loading: boolean;
   error: string;
   busyId: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   onReview: (request: MinorValidationRequest, decision: 'approved' | 'rejected') => void;
 }) {
   const pendingIba = requests.filter((request) => request.status === 'iba_pending');
 
   return (
     <section className="space-y-3 rounded-[18px] border border-[#DCE6F5] bg-white p-3 shadow-[0_14px_32px_rgba(15,23,42,0.06)]">
-      <div className="flex items-center justify-between gap-3">
+      <button
+        type="button"
+        onClick={() => onOpenChange(!open)}
+        aria-expanded={open}
+        className="flex w-full items-center justify-between gap-3 text-left"
+      >
         <div className="min-w-0">
           <h2 className="text-base font-black text-[#0B1F5B]">Validación de menores</h2>
           <p className="mt-0.5 text-[11px] font-bold leading-4 text-[#637295]">Representante legal, revisión IBA y activación final.</p>
         </div>
-        <span className="shrink-0 rounded-full bg-[#FFF1DC] px-3 py-1 text-[10px] font-black text-[#D46D00]">{pendingIba.length} por revisar</span>
-      </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <span className="rounded-full bg-[#FFF1DC] px-3 py-1 text-[10px] font-black text-[#D46D00]">{pendingIba.length} por revisar</span>
+          <span className="grid h-8 w-8 place-items-center rounded-full bg-[#EAF2FF] text-[#145CFF]">
+            <ChevronDown size={17} className={`transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden="true" />
+          </span>
+        </div>
+      </button>
 
-      {error ? <p className="rounded-[12px] border border-rose-100 bg-rose-50 px-3 py-2 text-[11px] font-bold leading-4 text-rose-700">{error}</p> : null}
+      {open ? (
+        <div className="space-y-3">
+          {error ? <p className="rounded-[12px] border border-rose-100 bg-rose-50 px-3 py-2 text-[11px] font-bold leading-4 text-rose-700">{error}</p> : null}
 
-      {loading ? (
-        <div className="flex h-24 items-center justify-center rounded-[14px] border border-[#DCE6F5] bg-[#F8FBFF] text-[#145CFF]">
-          <LoaderCircle size={22} className="animate-spin" />
+          {loading ? (
+            <div className="flex h-24 items-center justify-center rounded-[14px] border border-[#DCE6F5] bg-[#F8FBFF] text-[#145CFF]">
+              <LoaderCircle size={22} className="animate-spin" />
+            </div>
+          ) : null}
+
+          {!loading && !requests.length ? (
+            <article className="rounded-[14px] border border-dashed border-[#B8C9E7] bg-[#F8FBFF] p-4 text-center">
+              <p className="text-sm font-black text-[#0B1F5B]">No hay solicitudes de menores.</p>
+            </article>
+          ) : null}
+
+          {!loading
+            ? requests.map((request) => {
+                const canReview = request.status === 'iba_pending';
+                const busy = busyId === request.id;
+
+                return (
+                  <article key={request.id} className="rounded-[14px] border border-[#E7EDF8] bg-[#F8FBFF] p-3">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <h3 className="break-words text-sm font-black text-[#0B1F5B]">{request.userName || request.userEmail}</h3>
+                        <p className="mt-0.5 text-[11px] font-bold text-[#64748B]">{request.userEmail}</p>
+                        <p className="mt-1 text-[11px] font-bold text-[#52637C]">Nacimiento: {request.fechaNacimiento || 'Sin fecha'}</p>
+                      </div>
+                      <MinorStatusBadge status={request.status} />
+                    </div>
+                    <div className="mt-3 grid gap-2 text-[11px] font-bold text-[#52637C] sm:grid-cols-2">
+                      <span>Representante: {request.guardianName || 'Sin nombre'}</span>
+                      <span>Correo: {request.guardianEmail || 'Sin correo'}</span>
+                      <span>Celular menor: {request.userPhone || 'Sin celular'}</span>
+                      <span>Celular representante: {request.guardianPhone || 'Sin celular'}</span>
+                    </div>
+                    {request.guardianApprovedAt ? <p className="mt-2 text-[11px] font-black text-emerald-700">Representante aprobó: {formatDateTime(request.guardianApprovedAt)}</p> : null}
+                    {request.validatedAt ? <p className="mt-2 text-[11px] font-black text-[#52637C]">Revisado por {request.validatedByEmail || 'IBA'}: {formatDateTime(request.validatedAt)}</p> : null}
+                    {request.rejectionReason ? <p className="mt-2 text-[11px] font-bold text-rose-700">Motivo: {request.rejectionReason}</p> : null}
+                    {canReview ? (
+                      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => onReview(request, 'approved')}
+                          className="inline-flex h-10 items-center justify-center gap-2 rounded-[11px] bg-[#047857] px-3 text-xs font-black text-white disabled:bg-slate-300"
+                        >
+                          {busy ? <LoaderCircle size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
+                          Activar cuenta
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => onReview(request, 'rejected')}
+                          className="inline-flex h-10 items-center justify-center gap-2 rounded-[11px] bg-[#B42318] px-3 text-xs font-black text-white disabled:bg-slate-300"
+                        >
+                          <X size={16} />
+                          Rechazar
+                        </button>
+                      </div>
+                    ) : null}
+                  </article>
+                );
+              })
+            : null}
         </div>
       ) : null}
-
-      {!loading && !requests.length ? (
-        <article className="rounded-[14px] border border-dashed border-[#B8C9E7] bg-[#F8FBFF] p-4 text-center">
-          <p className="text-sm font-black text-[#0B1F5B]">No hay solicitudes de menores.</p>
-        </article>
-      ) : null}
-
-      {!loading
-        ? requests.map((request) => {
-            const canReview = request.status === 'iba_pending';
-            const busy = busyId === request.id;
-
-            return (
-              <article key={request.id} className="rounded-[14px] border border-[#E7EDF8] bg-[#F8FBFF] p-3">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <h3 className="break-words text-sm font-black text-[#0B1F5B]">{request.userName || request.userEmail}</h3>
-                    <p className="mt-0.5 text-[11px] font-bold text-[#64748B]">{request.userEmail}</p>
-                    <p className="mt-1 text-[11px] font-bold text-[#52637C]">Nacimiento: {request.fechaNacimiento || 'Sin fecha'}</p>
-                  </div>
-                  <MinorStatusBadge status={request.status} />
-                </div>
-                <div className="mt-3 grid gap-2 text-[11px] font-bold text-[#52637C] sm:grid-cols-2">
-                  <span>Representante: {request.guardianName || 'Sin nombre'}</span>
-                  <span>Correo: {request.guardianEmail || 'Sin correo'}</span>
-                  <span>Celular menor: {request.userPhone || 'Sin celular'}</span>
-                  <span>Celular representante: {request.guardianPhone || 'Sin celular'}</span>
-                </div>
-                {request.guardianApprovedAt ? <p className="mt-2 text-[11px] font-black text-emerald-700">Representante aprobó: {formatDateTime(request.guardianApprovedAt)}</p> : null}
-                {request.validatedAt ? <p className="mt-2 text-[11px] font-black text-[#52637C]">Revisado por {request.validatedByEmail || 'IBA'}: {formatDateTime(request.validatedAt)}</p> : null}
-                {request.rejectionReason ? <p className="mt-2 text-[11px] font-bold text-rose-700">Motivo: {request.rejectionReason}</p> : null}
-                {canReview ? (
-                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => onReview(request, 'approved')}
-                      className="inline-flex h-10 items-center justify-center gap-2 rounded-[11px] bg-[#047857] px-3 text-xs font-black text-white disabled:bg-slate-300"
-                    >
-                      {busy ? <LoaderCircle size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
-                      Activar cuenta
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => onReview(request, 'rejected')}
-                      className="inline-flex h-10 items-center justify-center gap-2 rounded-[11px] bg-[#B42318] px-3 text-xs font-black text-white disabled:bg-slate-300"
-                    >
-                      <X size={16} />
-                      Rechazar
-                    </button>
-                  </div>
-                ) : null}
-              </article>
-            );
-          })
-        : null}
     </section>
   );
 }
