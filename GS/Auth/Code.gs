@@ -815,7 +815,11 @@ function soyibaAuthApproveMinorByGuardian_(params) {
     soyibaAuthSetCell_(authSheet, authHeaders, userFound.row, 'updated_at', now);
   }
 
-  return { ok: true, title: 'Autorizacion registrada', message: 'Gracias. IBA revisara la solicitud y activara la cuenta si corresponde.' };
+  return {
+    ok: true,
+    title: 'Validación satisfactoria',
+    message: 'Tu validación fue registrada satisfactoriamente. Ahora debes esperar a que la Iglesia Bíblica Antioquía revise y apruebe la activación de la cuenta.'
+  };
 }
 
 function soyibaAuthGetMinorValidationRequestStatus_(data) {

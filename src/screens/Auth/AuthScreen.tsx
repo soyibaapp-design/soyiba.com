@@ -372,8 +372,10 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
 
       if (result.ok) {
         setPendingAccountModal({
-          title: 'Autorización registrada',
-          message: result.message,
+          title: 'Validación satisfactoria',
+          message:
+            result.message ||
+            'Tu validación fue registrada satisfactoriamente. Ahora debes esperar a que la Iglesia Bíblica Antioquía revise y apruebe la activación de la cuenta.',
         });
         window.history.replaceState(null, '', getUrlForMode('login'));
         setMode('login');
