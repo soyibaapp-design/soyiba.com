@@ -24,6 +24,13 @@ service cloud.firestore {
         && currentUserProfile().tipoUsuario == 'Miembro';
     }
 
+    function canValidateMinors() {
+      return signedIn()
+        && currentUserProfile().active == true
+        && currentUserProfile().estadoUsuario == 'Activo'
+        && (currentUserProfile().rolSistema in ['Admin', 'Moderador'] || currentUserProfile().get('minorValidator', false) == true);
+    }
+
     function isVisibleDirectoryMember() {
       return resource.data.active == true
         && resource.data.estadoUsuario == 'Activo'
@@ -73,7 +80,7 @@ service cloud.firestore {
             && request.resource.data.estadoUsuario == 'Activo'
             && request.resource.data.status == 'active'
             && request.resource.data.active == true
-            && request.resource.data.visibleDirectorio == true
+            && request.resource.data.visibleDirectorio is bool
           )
           || (
             request.resource.data.miembroValidacionEstado == 'pendiente_revision'
@@ -101,6 +108,49 @@ service cloud.firestore {
         && request.resource.data.photoUrl is string;
     }
 
+    function isSelfProfileUpdate(userId) {
+      return signedIn()
+        && request.auth.uid == userId
+        && request.resource.data.email == resource.data.email
+        && request.resource.data.id == resource.data.id
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.rolSistema == resource.data.rolSistema
+        && request.resource.data.tipoUsuario == resource.data.tipoUsuario
+        && request.resource.data.tituloUsuario == resource.data.tituloUsuario
+        && request.resource.data.estadoUsuario == resource.data.estadoUsuario
+        && request.resource.data.status == resource.data.status
+        && request.resource.data.active == resource.data.active
+        && request.resource.data.publicador == resource.data.publicador
+        && request.resource.data.publicadorEco == resource.data.publicadorEco
+        && request.resource.data.publicadorEvento == resource.data.publicadorEvento
+        && request.resource.data.get('minorValidator', false) == resource.data.get('minorValidator', false)
+        && request.resource.data.get('fechaNacimiento', '') == resource.data.get('fechaNacimiento', '')
+        && request.resource.data.get('registroMenorEdad', false) == resource.data.get('registroMenorEdad', false)
+        && request.resource.data.get('autorizacionAcudiente', false) == resource.data.get('autorizacionAcudiente', false)
+        && request.resource.data.verificado == resource.data.verificado
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'name',
+          'firstName',
+          'lastName',
+          'phone',
+          'tiempoIba',
+          'visibleDirectorio',
+          'mostrarTelefono',
+          'permitirWhatsapp',
+          'mostrarFoto',
+          'updatedAt',
+          'updatedAtServer'
+        ])
+        && request.resource.data.name is string
+        && request.resource.data.firstName is string
+        && request.resource.data.lastName is string
+        && request.resource.data.phone is string
+        && request.resource.data.visibleDirectorio is bool
+        && request.resource.data.mostrarTelefono is bool
+        && request.resource.data.permitirWhatsapp is bool
+        && request.resource.data.mostrarFoto is bool;
+    }
+
     function isSelfInitialUserCreate(userId) {
       return signedIn()
         && request.auth.uid == userId
@@ -116,8 +166,19 @@ service cloud.firestore {
         && request.resource.data.publicador == false
         && request.resource.data.publicadorEco == false
         && request.resource.data.publicadorEvento == false
+        && request.resource.data.minorValidator == false
         && request.resource.data.verificado == false
         && request.resource.data.emailHash is string
+        && request.resource.data.aceptoPoliticaDatos == true
+        && request.resource.data.autorizacionTratamientoDatos == true
+        && request.resource.data.fechaNacimiento is string
+        && request.resource.data.fechaNacimiento.matches('^\\d{4}-\\d{2}-\\d{2}$')
+        && request.resource.data.registroMenorEdad is bool
+        && request.resource.data.autorizacionAcudiente is bool
+        && request.resource.data.visibleDirectorio == false
+        && request.resource.data.mostrarTelefono == false
+        && request.resource.data.permitirWhatsapp == false
+        && request.resource.data.mostrarFoto is bool
         && request.resource.data.keys().hasOnly([
           'id',
           'email',
@@ -135,10 +196,21 @@ service cloud.firestore {
           'publicador',
           'publicadorEco',
           'publicadorEvento',
+          'minorValidator',
           'verificado',
           'emailHash',
           'aceptoPoliticaDatos',
           'fechaAceptacionPolitica',
+          'politicaDatosVersion',
+          'autorizacionTratamientoDatos',
+          'tratamientoDatosAutorizadoAt',
+          'fechaNacimiento',
+          'registroMenorEdad',
+          'autorizacionAcudiente',
+          'visibleDirectorio',
+          'mostrarTelefono',
+          'permitirWhatsapp',
+          'mostrarFoto',
           'createdAt',
           'updatedAt',
           'createdAtServer',
@@ -148,15 +220,65 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      allow get: if signedIn() && (request.auth.uid == userId || isManager() || (isActiveMember() && isVisibleDirectoryMember()));
-      allow list: if isManager() || (isActiveMember() && isVisibleDirectoryMember());
+      allow get: if signedIn() && (request.auth.uid == userId || isManager());
+      allow list: if isManager();
       allow create: if isSelfInitialUserCreate(userId);
       allow update: if (
           isManager()
           && request.resource.data.email == resource.data.email
           && request.resource.data.id == resource.data.id
-        ) || isSelfMembershipUpdate(userId) || isSelfPhotoUpdate(userId);
+        ) || isSelfMembershipUpdate(userId) || isSelfPhotoUpdate(userId) || isSelfProfileUpdate(userId);
       allow delete: if false;
+    }
+
+    match /membersDirectory/{memberId} {
+      allow get, list: if signedIn()
+        && (isManager() || isActiveMember())
+        && resource.data.visibleDirectorio == true;
+      allow create, update: if signedIn()
+        && request.auth.uid == memberId
+        && currentUserProfile().active == true
+        && currentUserProfile().estadoUsuario == 'Activo'
+        && currentUserProfile().tipoUsuario == 'Miembro'
+        && request.resource.data.id == memberId
+        && request.resource.data.tipoUsuario == 'Miembro'
+        && request.resource.data.visibleDirectorio is bool
+        && request.resource.data.mostrarTelefono is bool
+        && request.resource.data.permitirWhatsapp is bool
+        && request.resource.data.mostrarFoto is bool
+        && request.resource.data.keys().hasOnly([
+          'id',
+          'nombre',
+          'apellido',
+          'fotoUrl',
+          'telefono',
+          'rol',
+          'rolSistema',
+          'tituloUsuario',
+          'tipoUsuario',
+          'ministerio',
+          'grupoEco',
+          'sector',
+          'tiempoEnIBA',
+          'visibleDirectorio',
+          'mostrarTelefono',
+          'permitirWhatsapp',
+          'mostrarFoto',
+          'mostrarMinisterio',
+          'mostrarGrupoEco',
+          'verificado',
+          'estado',
+          'fechaRegistro',
+          'fechaActualizacion',
+          'updatedAtServer'
+        ])
+        && (!request.resource.data.visibleDirectorio || (
+          request.resource.data.rolSistema == currentUserProfile().rolSistema
+          && request.resource.data.tituloUsuario == currentUserProfile().tituloUsuario
+          && request.resource.data.estado == currentUserProfile().estadoUsuario
+          && request.resource.data.verificado == currentUserProfile().verificado
+        ));
+      allow delete: if signedIn() && request.auth.uid == memberId;
     }
 
     match /memberRegistry/{ccHash} {
@@ -192,6 +314,24 @@ service cloud.firestore {
             && request.resource.data.claimStatus == 'pendiente_revision'
           )
         );
+      allow delete: if false;
+    }
+
+    match /minorValidationRequests/{requestId} {
+      allow get, list: if canValidateMinors();
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.status == 'pending';
+      allow update: if canValidateMinors()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'status',
+          'validatedByUserId',
+          'validatedByEmail',
+          'validatedAt',
+          'rejectionReason',
+          'updatedAt',
+          'updatedAtServer'
+        ]);
       allow delete: if false;
     }
   }

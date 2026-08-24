@@ -119,6 +119,7 @@ type PublicationFormState = {
   title: string;
   description: string;
   membersOnly: boolean;
+  visibleToMinors: boolean;
   imageUrl: string;
   imageFile: File | null;
   videoUrl: string;
@@ -3168,6 +3169,7 @@ function PublicationComposerModal({
         title: form.title.trim(),
         description: form.description.trim(),
         membersOnly: form.membersOnly,
+        visibleToMinors: form.visibleToMinors,
         mediaItems: buildPublicationMediaItems({
           imageUrl,
           videoUrl,
@@ -3247,6 +3249,13 @@ function PublicationComposerModal({
             checked={form.membersOnly}
             description={form.membersOnly ? 'Esta publicación la verán solo los miembros' : 'Esta publicación la verán todos los usuarios'}
             onChange={(value) => updateField('membersOnly', value)}
+          />
+
+          <ToggleField
+            label="Mostrar a menores"
+            checked={form.visibleToMinors}
+            description="Permitir que usuarios menores de edad vean esta publicación."
+            onChange={(value) => updateField('visibleToMinors', value)}
           />
 
           <TextAreaField label="Descripción" value={form.description} onChange={(value) => updateField('description', value)} rows={4} />
@@ -3913,6 +3922,7 @@ function buildFormState(publication: SoyibaPublication | null, permittedTypes: P
       title: '',
       description: '',
       membersOnly: false,
+      visibleToMinors: false,
       imageUrl: '',
       imageFile: null,
       videoUrl: '',
@@ -3950,6 +3960,7 @@ function buildFormState(publication: SoyibaPublication | null, permittedTypes: P
     title: publication.title,
     description: publication.description,
     membersOnly: publication.membersOnly,
+    visibleToMinors: publication.visibleToMinors === true,
     imageUrl: mediaValues.imageUrl,
     imageFile: null,
     videoUrl: mediaValues.videoUrl,

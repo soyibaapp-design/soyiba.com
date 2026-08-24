@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import {
   ArrowLeft,
   ArrowRight,
+  CalendarDays,
   CheckCircle2,
   Circle,
   Eye,
@@ -69,6 +70,9 @@ const emptyRegisterForm: RegisterFormState = {
   phone: '',
   password: '',
   confirmPassword: '',
+  fechaNacimiento: '',
+  ageGroup: 'adult',
+  guardianConsent: false,
 };
 
 const emptyPasswordResetRequestForm: PasswordResetRequestState = {
@@ -101,6 +105,8 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
 
   const passwordRules = useMemo(() => getPasswordRules(registerForm.password), [registerForm.password]);
   const resetPasswordRules = useMemo(() => getPasswordRules(passwordResetConfirmForm.password), [passwordResetConfirmForm.password]);
+  const registerAgeGroup = useMemo(() => getAgeGroupFromBirthDate(registerForm.fechaNacimiento), [registerForm.fechaNacimiento]);
+  const maxBirthDate = useMemo(() => getTodayDateInputValue(), []);
   const isRegister = mode === 'register';
 
   useEffect(() => {
@@ -200,10 +206,24 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
       return;
     }
 
+    if (!registerAgeGroup) {
+      setError('Ingresa una fecha de nacimiento válida.');
+      return;
+    }
+
+    if (registerAgeGroup === 'minor' && !registerForm.guardianConsent) {
+      setError('Para menores de edad se requiere autorización del representante legal.');
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
-      const result = await registerWithEmailPassword(registerForm);
+      const result = await registerWithEmailPassword({
+        ...registerForm,
+        ageGroup: registerAgeGroup,
+        guardianConsent: registerAgeGroup === 'minor' ? registerForm.guardianConsent : false,
+      });
 
       if (result.ok) {
         onSignedIn(result.session);
@@ -597,6 +617,45 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
                 </div>
               </div>
 
+              <fieldset className="mt-3 rounded-xl border border-[#DCE6F5] bg-white p-3">
+                <legend className="px-1 text-[11px] font-black text-[#06245c]">Edad y autorización</legend>
+                <div className="grid gap-2">
+                  <AuthField
+                    id="register-birth-date"
+                    label="Fecha de nacimiento"
+                    icon={CalendarDays}
+                    type="date"
+                    autoComplete="bday"
+                    placeholder="Fecha de nacimiento"
+                    value={registerForm.fechaNacimiento}
+                    max={maxBirthDate}
+                    onChange={(value) => {
+                      const nextAgeGroup = getAgeGroupFromBirthDate(value);
+                      setRegisterForm((current) => ({
+                        ...current,
+                        fechaNacimiento: value,
+                        ageGroup: nextAgeGroup || current.ageGroup,
+                        guardianConsent: nextAgeGroup === 'adult' ? false : current.guardianConsent,
+                      }));
+                    }}
+                  />
+                  {registerAgeGroup ? (
+                    <AgeStatus label={registerAgeGroup === 'minor' ? 'Menor de edad' : 'Mayor de edad'} minor={registerAgeGroup === 'minor'} />
+                  ) : null}
+                </div>
+                {registerAgeGroup === 'minor' ? (
+                  <label className="mt-3 flex items-start gap-2.5 text-[11px] font-semibold leading-4 text-[#52637C]">
+                    <input
+                      type="checkbox"
+                      checked={registerForm.guardianConsent}
+                      onChange={(event) => setRegisterForm((current) => ({ ...current, guardianConsent: event.target.checked }))}
+                      className="mt-0.5 h-4 w-4 shrink-0 rounded border-2 border-slate-300 text-[#1459d4] accent-[#1459d4]"
+                    />
+                    <span>Confirmo que cuento con autorización de mi representante legal para registrarme y usar SOY IBA.</span>
+                  </label>
+                ) : null}
+              </fieldset>
+
               <label className="mt-3 flex items-start gap-2.5 text-[11px] leading-4 text-[#06245c]">
                 <input
                   type="checkbox"
@@ -668,6 +727,8 @@ type AuthFieldProps = {
   type?: string;
   autoComplete?: string;
   inputMode?: InputHTMLAttributes<HTMLInputElement>['inputMode'];
+  max?: string;
+  min?: string;
   rightSlot?: ReactNode;
 };
 
@@ -681,6 +742,8 @@ function AuthField({
   type = 'text',
   autoComplete,
   inputMode,
+  max,
+  min,
   rightSlot,
 }: AuthFieldProps) {
   return (
@@ -694,6 +757,8 @@ function AuthField({
           value={value}
           autoComplete={autoComplete}
           inputMode={inputMode}
+          max={max}
+          min={min}
           onChange={(event) => onChange(event.target.value)}
           placeholder={placeholder}
           className="h-full min-w-0 flex-1 bg-transparent text-[12px] font-medium text-[#06245c] outline-none placeholder:text-[#98a1bd]"
@@ -738,6 +803,21 @@ function PasswordRule({ label, isMet }: { label: string; isMet: boolean }) {
   return (
     <div className="flex items-center gap-2 text-[#06245c]">
       <Icon size={11} aria-hidden="true" className={isMet ? 'text-[#1459d4]' : 'text-slate-300'} />
+      <span>{label}</span>
+    </div>
+  );
+}
+
+function AgeStatus({ label, minor }: { label: string; minor: boolean }) {
+  const Icon = minor ? Circle : CheckCircle2;
+
+  return (
+    <div
+      className={`flex min-h-10 items-center gap-2 rounded-lg border px-3 text-left text-[11px] font-black ${
+        minor ? 'border-[#F3C36B] bg-[#FFF7E8] text-[#7A4B00]' : 'border-[#1459d4] bg-[#EAF2FF] text-[#06245c]'
+      }`}
+    >
+      <Icon size={14} className="shrink-0 text-[#1459d4]" />
       <span>{label}</span>
     </div>
   );
@@ -869,8 +949,13 @@ function LegalModal({ activeModal, onClose }: { activeModal: LegalModalId; onClo
             <X size={18} aria-hidden="true" />
           </button>
         </header>
-        <div className="max-h-[58svh] overflow-y-auto px-5 py-4 text-sm leading-6 text-slate-600">
-          <p>{content.body}</p>
+        <div className="max-h-[58svh] space-y-3 overflow-y-auto px-5 py-4 text-sm leading-6 text-slate-600">
+          {content.sections.map((section) => (
+            <section key={section.title}>
+              <h3 className="text-sm font-black text-[#06245c]">{section.title}</h3>
+              <p className="mt-1">{section.body}</p>
+            </section>
+          ))}
         </div>
         <footer className="border-t border-slate-200 px-5 py-4">
           <button
@@ -889,26 +974,78 @@ function LegalModal({ activeModal, onClose }: { activeModal: LegalModalId; onClo
 const legalContent = {
   privacy: {
     title: 'Política de Tratamiento de Datos',
-    body:
-      'La Iglesia Bíblica Antioquía recolecta y trata tus datos personales con la finalidad de gestionar tu cuenta dentro de la app SOY IBA, facilitar la comunicación interna, compartir información relevante de la iglesia, gestionar eventos, grupos, notificaciones y servicios relacionados con la comunidad. Tus datos serán tratados conforme a la normativa colombiana de protección de datos personales. Podrás solicitar actualización, corrección o eliminación de tus datos a través de los canales oficiales de la iglesia.',
+    sections: [
+      {
+        title: 'Responsable y finalidad',
+        body:
+          'La Iglesia Bíblica Antioquía trata tus datos para crear y administrar tu cuenta, validar membresía, facilitar comunicación interna, eventos, grupos ECO, publicaciones, notificaciones y servicios de la comunidad.',
+      },
+      {
+        title: 'Datos tratados',
+        body:
+          'La app puede tratar nombre, apellidos, correo, celular, foto, tiempo en la IBA, estado de membresía, roles, permisos, actividad dentro de la app y datos técnicos mínimos de seguridad como sesión, dispositivo, IP reportada y registros de uso.',
+      },
+      {
+        title: 'Visibilidad',
+        body:
+          'El directorio de miembros solo está disponible para usuarios autenticados y validados. Desde tu perfil puedes decidir si apareces en el directorio y si muestras foto, teléfono o WhatsApp.',
+      },
+      {
+        title: 'Menores de edad',
+        body:
+          'El registro de menores requiere autorización de su representante legal y se manejará bajo el interés superior del menor, evitando publicar información no necesaria.',
+      },
+      {
+        title: 'Derechos',
+        body:
+          'Puedes solicitar acceso, actualización, corrección, revocatoria o eliminación de tus datos por los canales oficiales de la iglesia. La autorización se registra de forma consultable para cumplir la normativa colombiana de protección de datos personales.',
+      },
+    ],
   },
   terms: {
     title: 'Términos de Uso',
-    body:
-      'Al usar la app SOY IBA aceptas utilizar esta plataforma de manera respetuosa, responsable y conforme a los principios de la Iglesia Bíblica Antioquía. La app está diseñada para facilitar la comunicación, participación y acceso a contenidos de la iglesia. El uso indebido, la publicación de información falsa, ofensiva o contraria al propósito de la comunidad podrá generar restricciones de acceso.',
+    sections: [
+      {
+        title: 'Uso autorizado',
+        body:
+          'SOY IBA es una plataforma privada de apoyo a la vida de la Iglesia Bíblica Antioquía. Debes usarla de manera respetuosa, responsable y conforme al propósito de la comunidad.',
+      },
+      {
+        title: 'Acceso',
+        body:
+          'Tener el enlace o código QR no garantiza acceso a información interna. La iglesia puede activar, validar, limitar o bloquear cuentas según roles, membresía, seguridad y uso adecuado.',
+      },
+      {
+        title: 'Contenido y seguridad',
+        body:
+          'No debes publicar información falsa, ofensiva, confidencial o de terceros sin autorización. El uso indebido puede generar restricciones de acceso y revisión administrativa.',
+      },
+    ],
   },
 } as const;
 function AuthFooter() {
   return (
-    <footer className="mt-2.5 flex items-center justify-center gap-3">
-      <span className="h-px flex-1 bg-slate-300" aria-hidden="true" />
-      <img
-        src={iglesiaFooterLogo}
-        alt="Iglesia Bíblica Antioquía"
-        className="h-auto w-20 shrink-0 select-none"
-        draggable={false}
-      />
-      <span className="h-px flex-1 bg-slate-300" aria-hidden="true" />
+    <footer className="mt-2.5">
+      <div className="flex items-center justify-center gap-3">
+        <span className="h-px flex-1 bg-slate-300" aria-hidden="true" />
+        <img
+          src={iglesiaFooterLogo}
+          alt="Iglesia Bíblica Antioquía"
+          className="h-auto w-20 shrink-0 select-none"
+          draggable={false}
+        />
+        <span className="h-px flex-1 bg-slate-300" aria-hidden="true" />
+      </div>
+      <div className="mt-2 text-center">
+        <a
+          href="/politica-tratamiento-datos.html"
+          target="_blank"
+          rel="noreferrer"
+          className="text-[10px] font-bold text-[#115bd8] underline-offset-4 hover:underline"
+        >
+          Política de Tratamiento de Datos y Privacidad
+        </a>
+      </div>
     </footer>
   );
 }
@@ -920,4 +1057,49 @@ function getPasswordRules(password: string) {
     { label: 'Al menos un número', isMet: /\d/.test(password) },
     { label: 'Al menos un carácter especial', isMet: /[^A-Za-z0-9ÁÉÍÓÚáéíóúÑñ]/.test(password) },
   ];
+}
+
+function getAgeGroupFromBirthDate(value: string): 'adult' | 'minor' | null {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+  if (!match) {
+    return null;
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const birthDate = new Date(year, month - 1, day);
+
+  if (birthDate.getFullYear() !== year || birthDate.getMonth() !== month - 1 || birthDate.getDate() !== day) {
+    return null;
+  }
+
+  const today = new Date();
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+  if (birthDate > todayStart) {
+    return null;
+  }
+
+  let age = todayStart.getFullYear() - year;
+  const birthdayThisYear = new Date(todayStart.getFullYear(), month - 1, day);
+
+  if (birthdayThisYear > todayStart) {
+    age -= 1;
+  }
+
+  if (age < 0 || age > 120) {
+    return null;
+  }
+
+  return age < 18 ? 'minor' : 'adult';
+}
+
+function getTodayDateInputValue() {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }

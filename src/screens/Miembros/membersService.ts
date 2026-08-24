@@ -196,16 +196,7 @@ async function getFirebaseMembersDirectory(session: SoyibaSession): Promise<IbaM
   try {
     const { collection, getDocs, getFirestore, query, where } = await import('firebase/firestore');
     const db = getFirestore(app, getFirebaseMembersDatabaseId());
-    const usersRef = collection(db, 'users');
-    const source = canManageMembersDirectory(session.user)
-      ? usersRef
-      : query(
-          usersRef,
-          where('tipoUsuario', '==', 'Miembro'),
-          where('active', '==', true),
-          where('estadoUsuario', '==', 'Activo'),
-          where('visibleDirectorio', '==', true),
-        );
+    const source = query(collection(db, 'membersDirectory'), where('visibleDirectorio', '==', true));
     const snapshot = await getDocs(source);
     return normalizeMembers(snapshot.docs.map((item) => ({ id: item.id, ...item.data() })));
   } catch {

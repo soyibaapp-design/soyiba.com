@@ -32,7 +32,7 @@ type UsersManagementScreenProps = {
   onModalOpenChange?: (open: boolean) => void;
 };
 
-type PermissionKey = 'publicador' | 'publicadorEco' | 'publicadorEvento';
+type PermissionKey = 'publicador' | 'publicadorEco' | 'publicadorEvento' | 'minorValidator';
 
 const ASSISTANT_VALUE = 'Asistente';
 const MEMBER_VALUE = 'Miembro';
@@ -53,10 +53,11 @@ const userTitleOptions = [
   'Creador de contenido',
 ];
 const userStateOptions = ['Activo', 'Inactivo', 'Pendiente', 'Bloqueado'];
-const permissionOptions: Array<{ id: PermissionKey; label: string; icon: LucideIcon; tone: string }> = [
+const permissionOptions: Array<{ id: PermissionKey; label: string; icon: LucideIcon; tone: string; description?: string }> = [
   { id: 'publicador', label: 'Publicaciones', icon: Megaphone, tone: 'bg-[#EAF2FF] text-[#145CFF]' },
   { id: 'publicadorEco', label: 'Grupos ECO', icon: UsersRound, tone: 'bg-[#F4ECFF] text-[#6D35FF]' },
   { id: 'publicadorEvento', label: 'Eventos', icon: CheckCircle2, tone: 'bg-[#E2F8EC] text-[#047857]' },
+  { id: 'minorValidator', label: 'Validación de menores', icon: ShieldCheck, tone: 'bg-[#FFF1DC] text-[#D46D00]', description: 'Puede validar representantes legales' },
 ];
 
 export function UsersManagementScreen({ session, onBack, onSessionUpdated, onModalOpenChange }: UsersManagementScreenProps) {
@@ -133,7 +134,7 @@ export function UsersManagementScreen({ session, onBack, onSessionUpdated, onMod
       total: users.length,
       active: users.filter((user) => isActiveUser(user)).length,
       managers: users.filter((user) => isManager(user)).length,
-      publishers: users.filter((user) => user.publicador || user.publicadorEco || user.publicadorEvento).length,
+      publishers: users.filter((user) => user.publicador || user.publicadorEco || user.publicadorEvento || user.minorValidator).length,
     }),
     [users],
   );
@@ -451,6 +452,7 @@ function EditUserAccessModal({
                   icon={permission.icon}
                   label={permission.label}
                   tone={permission.tone}
+                  description={permission.description}
                   checked={Boolean(form[permission.id])}
                   onChange={(checked) => updateField(permission.id, checked)}
                   disabled={assistantMode}
@@ -578,6 +580,7 @@ function PermissionToggle({
   icon: Icon,
   label,
   tone,
+  description,
   checked,
   onChange,
   disabled = false,
@@ -585,6 +588,7 @@ function PermissionToggle({
   icon: LucideIcon;
   label: string;
   tone: string;
+  description?: string;
   checked: boolean;
   onChange: (checked: boolean) => void;
   disabled?: boolean;
@@ -606,7 +610,7 @@ function PermissionToggle({
       </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-xs font-black text-[#0B1F5B]">{label}</span>
-        <span className="mt-0.5 block text-[10px] font-bold text-[#637295]">{checked ? 'Activo' : 'Inactivo'}</span>
+        <span className="mt-0.5 block text-[10px] font-bold text-[#637295]">{description || (checked ? 'Activo' : 'Inactivo')}</span>
       </span>
       <span className={`relative h-8 w-14 shrink-0 rounded-full p-1 transition ${checked ? 'bg-[#145CFF]' : 'bg-[#CBD8EA]'}`}>
         <span className={`block h-6 w-6 rounded-full bg-white shadow-[0_6px_14px_rgba(15,23,42,0.18)] transition ${checked ? 'translate-x-6' : 'translate-x-0'}`} />
@@ -645,6 +649,7 @@ function getInitialAccessForm(user: ManagedUser): ManagedUserAccessPayload {
     publicador: Boolean(user.publicador),
     publicadorEco: Boolean(user.publicadorEco),
     publicadorEvento: Boolean(user.publicadorEvento),
+    minorValidator: Boolean(user.minorValidator),
     verificado: Boolean(user.verificado),
     active: estadoUsuario === 'Activo',
   });
@@ -669,6 +674,7 @@ function getPermissionLabels(user: ManagedUser) {
     user.publicador ? 'Publicaciones' : '',
     user.publicadorEco ? 'Grupos ECO' : '',
     user.publicadorEvento ? 'Eventos' : '',
+    user.minorValidator ? 'Validación menores' : '',
   ].filter(Boolean);
 }
 
@@ -689,6 +695,7 @@ function getAssistantAccessForm(form: ManagedUserAccessPayload): ManagedUserAcce
     publicador: false,
     publicadorEco: false,
     publicadorEvento: false,
+    minorValidator: false,
   };
 }
 

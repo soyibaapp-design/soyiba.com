@@ -30,6 +30,7 @@ var SOYIBA_AUTH_HEADERS = [
   'publicador',
   'publicador_eco',
   'publicador_evento',
+  'minor_validator',
   'acepto_politica_datos',
   'fecha_aceptacion_politica',
   'active',
@@ -44,7 +45,16 @@ var SOYIBA_AUTH_HEADERS = [
   'miembro_validado_at',
   'miembro_validado_por',
   'miembro_validacion_estado',
-  'miembro_validacion_notas'
+  'miembro_validacion_notas',
+  'politica_datos_version',
+  'tratamiento_datos_autorizado_at',
+  'fecha_nacimiento',
+  'registro_menor_edad',
+  'autorizacion_acudiente',
+  'visible_directorio',
+  'mostrar_telefono',
+  'permitir_whatsapp',
+  'mostrar_foto'
 ];
 var SOYIBA_MIEMBROS_IBA_HEADERS = [
   'cc',
@@ -133,7 +143,8 @@ var SOYIBA_PUBLICACIONES_HEADERS = [
   'asistentes',
   'fechaInicioVigencia',
   'fechaFinVigencia',
-  'solo_miembros'
+  'solo_miembros',
+  'visible_to_minors'
 ];
 var SOYIBA_GUARDADOS_HEADERS = [
   'saved_id',
@@ -436,9 +447,20 @@ function soyibaAuthRegister_(data) {
   var tituloUsuario = String(data.tituloUsuario || data.titulo_usuario || 'Asistente');
   var rolSistema = String(data.rolSistema || data.rol_sistema || role || 'Usuario');
   var estadoUsuario = String(data.estadoUsuario || data.estado_usuario || 'Activo');
+  var fechaNacimiento = soyibaAuthNormalizeBirthDate_(data.fechaNacimiento || data.fecha_nacimiento);
+  var registroMenorEdad = soyibaAuthIsMinorFromBirthDate_(fechaNacimiento);
+  var autorizacionAcudiente = registroMenorEdad ? soyibaAuthIsTrue_(data.autorizacionAcudiente !== undefined ? data.autorizacionAcudiente : data.autorizacion_acudiente) : false;
 
   if (!email || !password || !firstName || !lastName || !phone) {
     return { ok: false, error: 'Correo, contrasena, nombres, apellidos y celular son requeridos.' };
+  }
+
+  if (!fechaNacimiento) {
+    return { ok: false, error: 'Fecha de nacimiento requerida.' };
+  }
+
+  if (registroMenorEdad && !autorizacionAcudiente) {
+    return { ok: false, error: 'Para menores de edad se requiere autorizacion del representante legal.' };
   }
 
   if (password.length < 8) {
@@ -478,12 +500,22 @@ function soyibaAuthRegister_(data) {
     false,
     false,
     false,
+    false,
     true,
     now,
     true,
     '',
     false,
-    ''
+    '',
+    String(data.politicaDatosVersion || data.politica_datos_version || '2026-08-24'),
+    now,
+    fechaNacimiento,
+    registroMenorEdad,
+    autorizacionAcudiente,
+    false,
+    false,
+    false,
+    true
   ];
 
   sheet.appendRow(row);
@@ -589,6 +621,10 @@ function soyibaAuthUpdateProfile_(data) {
   var phone = String(data.phone || data.celular || '').trim();
   var tiempoIba = String(data.tiempoIba || data.tiempo_iba || '').trim();
   var displayName = String(data.displayName || data.display_name || [firstName, lastName].join(' ').trim() || email.split('@')[0] || 'Usuario');
+  var visibleDirectorio = soyibaAuthIsTrue_(data.visibleDirectorio !== undefined ? data.visibleDirectorio : data.visible_directorio);
+  var mostrarTelefono = soyibaAuthIsTrue_(data.mostrarTelefono !== undefined ? data.mostrarTelefono : data.mostrar_telefono);
+  var permitirWhatsapp = soyibaAuthIsTrue_(data.permitirWhatsapp !== undefined ? data.permitirWhatsapp : data.permitir_whatsapp);
+  var mostrarFoto = data.mostrarFoto === undefined && data.mostrar_foto === undefined ? true : soyibaAuthIsTrue_(data.mostrarFoto !== undefined ? data.mostrarFoto : data.mostrar_foto);
 
   if (!email || !firstName || !lastName || !phone) {
     return { ok: false, error: 'Nombre, apellido y celular son requeridos.' };
@@ -600,6 +636,10 @@ function soyibaAuthUpdateProfile_(data) {
   soyibaAuthSetCell_(sheet, headers, found.row, 'last_name', lastName);
   soyibaAuthSetCell_(sheet, headers, found.row, 'phone', phone);
   soyibaAuthSetCell_(sheet, headers, found.row, 'tiempo_iba', tiempoIba);
+  soyibaAuthSetCell_(sheet, headers, found.row, 'visible_directorio', visibleDirectorio);
+  soyibaAuthSetCell_(sheet, headers, found.row, 'mostrar_telefono', mostrarTelefono);
+  soyibaAuthSetCell_(sheet, headers, found.row, 'permitir_whatsapp', permitirWhatsapp);
+  soyibaAuthSetCell_(sheet, headers, found.row, 'mostrar_foto', mostrarFoto);
   soyibaAuthSetCell_(sheet, headers, found.row, 'updated_at', now);
 
   return soyibaAuthSessionFromRow_(sheet, found.row, data.token);
@@ -851,7 +891,7 @@ function soyibaMembersList_(data) {
 }
 
 function soyibaMembersIsVisibleAuthUser_(record) {
-  return soyibaAuthCanViewMembersDirectory_(record);
+  return soyibaAuthCanViewMembersDirectory_(record) && soyibaAuthIsTrue_(record.visible_directorio);
 }
 
 function soyibaMembersBuildFromAuth_(record) {
@@ -869,8 +909,8 @@ function soyibaMembersBuildFromAuth_(record) {
     id: String(record.user_id || record.email || ''),
     nombre: firstName,
     apellido: lastName,
-    fotoUrl: String(record.photo_url || record.photoUrl || record.fotoUrl || ''),
-    telefono: String(record.phone || ''),
+    fotoUrl: soyibaMembersShowValue_(record.mostrar_foto, true) ? String(record.photo_url || record.photoUrl || record.fotoUrl || '') : '',
+    telefono: soyibaMembersShowValue_(record.mostrar_telefono, false) && soyibaMembersShowValue_(record.permitir_whatsapp, false) ? String(record.phone || '') : '',
     email: '',
     rol: String(record.rol_sistema || record.role || 'Miembro'),
     rolSistema: String(record.rol_sistema || record.role || 'Miembro'),
@@ -880,10 +920,10 @@ function soyibaMembersBuildFromAuth_(record) {
     grupoEco: '',
     sector: '',
     tiempoEnIBA: String(record.tiempo_iba || ''),
-    visibleDirectorio: true,
-    mostrarTelefono: Boolean(record.phone),
-    permitirWhatsapp: Boolean(record.phone),
-    mostrarFoto: true,
+    visibleDirectorio: soyibaAuthIsTrue_(record.visible_directorio),
+    mostrarTelefono: soyibaMembersShowValue_(record.mostrar_telefono, false),
+    permitirWhatsapp: soyibaMembersShowValue_(record.permitir_whatsapp, false),
+    mostrarFoto: soyibaMembersShowValue_(record.mostrar_foto, true),
     mostrarMinisterio: false,
     mostrarGrupoEco: false,
     verificado: soyibaAuthIsTrue_(record.usuario_verificado),
@@ -891,6 +931,14 @@ function soyibaMembersBuildFromAuth_(record) {
     fechaRegistro: String(record.created_at || ''),
     fechaActualizacion: String(record.updated_at || '')
   };
+}
+
+function soyibaMembersShowValue_(value, fallback) {
+  if (value === '' || value === undefined || value === null) {
+    return fallback;
+  }
+
+  return soyibaAuthIsTrue_(value);
 }
 
 function soyibaAuthUpdateUserAccess_(data) {
@@ -916,6 +964,7 @@ function soyibaAuthUpdateUserAccess_(data) {
   var publicador = soyibaAuthIsTrue_(data.publicador);
   var publicadorEco = soyibaAuthIsTrue_(data.publicadorEco !== undefined ? data.publicadorEco : data.publicador_eco);
   var publicadorEvento = soyibaAuthIsTrue_(data.publicadorEvento !== undefined ? data.publicadorEvento : data.publicador_evento);
+  var minorValidator = soyibaAuthIsTrue_(data.minorValidator !== undefined ? data.minorValidator : data.minor_validator);
   var verificado = soyibaAuthIsTrue_(data.verificado !== undefined ? data.verificado : (data.usuarioVerificado !== undefined ? data.usuarioVerificado : data.usuario_verificado));
   var now = new Date().toISOString();
 
@@ -926,6 +975,7 @@ function soyibaAuthUpdateUserAccess_(data) {
     publicador = false;
     publicadorEco = false;
     publicadorEvento = false;
+    minorValidator = false;
   } else {
     rolSistema = soyibaAuthCoerceMemberValue_(rolSistema);
     tipoUsuario = 'Miembro';
@@ -940,6 +990,7 @@ function soyibaAuthUpdateUserAccess_(data) {
   soyibaAuthSetCell_(sheet, headers, found.row, 'publicador', publicador);
   soyibaAuthSetCell_(sheet, headers, found.row, 'publicador_eco', publicadorEco);
   soyibaAuthSetCell_(sheet, headers, found.row, 'publicador_evento', publicadorEvento);
+  soyibaAuthSetCell_(sheet, headers, found.row, 'minor_validator', minorValidator);
   soyibaAuthSetCell_(sheet, headers, found.row, 'usuario_verificado', verificado);
   soyibaAuthSetCell_(sheet, headers, found.row, 'active', active);
   soyibaAuthSetCell_(sheet, headers, found.row, 'status', active && soyibaAuthStateIsActive_(estadoUsuario) ? 'active' : 'inactive');
@@ -1354,7 +1405,19 @@ function soyibaAuthBuildUser_(user) {
     publicador: soyibaAuthIsTrue_(user.publicador),
     publicadorEco: soyibaAuthIsTrue_(user.publicador_eco),
     publicadorEvento: soyibaAuthIsTrue_(user.publicador_evento),
+    minorValidator: soyibaAuthIsTrue_(user.minor_validator),
     verificado: soyibaAuthIsTrue_(user.usuario_verificado),
+    aceptoPoliticaDatos: soyibaAuthIsTrue_(user.acepto_politica_datos),
+    fechaAceptacionPolitica: user.fecha_aceptacion_politica || '',
+    politicaDatosVersion: user.politica_datos_version || '',
+    autorizacionTratamientoDatos: Boolean(user.tratamiento_datos_autorizado_at),
+    fechaNacimiento: user.fecha_nacimiento || '',
+    registroMenorEdad: soyibaAuthIsTrue_(user.registro_menor_edad),
+    autorizacionAcudiente: soyibaAuthIsTrue_(user.autorizacion_acudiente),
+    visibleDirectorio: soyibaAuthIsTrue_(user.visible_directorio),
+    mostrarTelefono: soyibaAuthIsTrue_(user.mostrar_telefono),
+    permitirWhatsapp: soyibaAuthIsTrue_(user.permitir_whatsapp),
+    mostrarFoto: user.mostrar_foto === '' || user.mostrar_foto === undefined ? true : soyibaAuthIsTrue_(user.mostrar_foto),
     active: user.active === '' || user.active === undefined ? user.status === 'active' : soyibaAuthIsTrue_(user.active)
   };
 }
@@ -1701,6 +1764,9 @@ function soyibaAuthSetMembershipValidated_(sheet, headers, row, cc, now) {
   soyibaAuthSetCell_(sheet, headers, row, 'miembro_validado_por', 'MiembrosIBA.email');
   soyibaAuthSetCell_(sheet, headers, row, 'miembro_validacion_estado', 'validado');
   soyibaAuthSetCell_(sheet, headers, row, 'miembro_validacion_notas', '');
+  if (String(soyibaAuthGetUserByRow_(sheet, row).visible_directorio || '') === '') {
+    soyibaAuthSetCell_(sheet, headers, row, 'visible_directorio', false);
+  }
   soyibaAuthSetCell_(sheet, headers, row, 'updated_at', now);
 }
 
@@ -1726,6 +1792,63 @@ function soyibaAuthGetHeaders_(sheet) {
 
 function soyibaAuthNormalizeEmail_(email) {
   return String(email || '').trim().toLowerCase();
+}
+
+function soyibaAuthNormalizeBirthDate_(value) {
+  var text = String(value || '').trim();
+  var match = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+  if (!match) {
+    return '';
+  }
+
+  var year = Number(match[1]);
+  var month = Number(match[2]);
+  var day = Number(match[3]);
+  var birthDate = new Date(year, month - 1, day);
+
+  if (birthDate.getFullYear() !== year || birthDate.getMonth() !== month - 1 || birthDate.getDate() !== day) {
+    return '';
+  }
+
+  var today = new Date();
+  var todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+  if (birthDate > todayStart) {
+    return '';
+  }
+
+  var age = todayStart.getFullYear() - year;
+  var birthdayThisYear = new Date(todayStart.getFullYear(), month - 1, day);
+
+  if (birthdayThisYear > todayStart) {
+    age -= 1;
+  }
+
+  return age >= 0 && age <= 120 ? text : '';
+}
+
+function soyibaAuthIsMinorFromBirthDate_(value) {
+  var text = soyibaAuthNormalizeBirthDate_(value);
+
+  if (!text) {
+    return false;
+  }
+
+  var parts = text.split('-');
+  var year = Number(parts[0]);
+  var month = Number(parts[1]);
+  var day = Number(parts[2]);
+  var today = new Date();
+  var todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+  var age = todayStart.getFullYear() - year;
+  var birthdayThisYear = new Date(todayStart.getFullYear(), month - 1, day);
+
+  if (birthdayThisYear > todayStart) {
+    age -= 1;
+  }
+
+  return age < 18;
 }
 
 function soyibaAuthNormalizeCc_(value) {
@@ -2144,6 +2267,10 @@ function soyibaPublicacionesList_(data) {
       continue;
     }
 
+    if (soyibaPublicacionesIsMinorUser_(currentUser) && !soyibaPublicacionesIsVisibleToMinors_(record)) {
+      continue;
+    }
+
     publications.push(soyibaPublicacionesBuildResponse_(
       record,
       savedMap[String(record.publication_id)] === true,
@@ -2179,6 +2306,7 @@ function soyibaPublicacionesCreate_(data) {
   var eventPayload = soyibaPublicacionesNormalizeEventPayload_(data, 0);
   var ecoPayload = soyibaPublicacionesNormalizeEcoPayload_(data);
   var membersOnly = soyibaPublicacionesNormalizeMembersOnly_(data);
+  var visibleToMinors = soyibaPublicacionesNormalizeVisibleToMinors_(data);
   var row = [
     publicationId,
     nowIso,
@@ -2219,7 +2347,8 @@ function soyibaPublicacionesCreate_(data) {
     0,
     type === 'Grupo ECO' ? ecoPayload.validFrom : '',
     type === 'Grupo ECO' ? ecoPayload.validUntil : '',
-    membersOnly
+    membersOnly,
+    visibleToMinors
   ];
 
   var sheet = soyibaPublicacionesGetSheet_();
@@ -2266,6 +2395,7 @@ function soyibaPublicacionesUpdate_(data) {
   soyibaPublicacionesSetCell_(sheet, headers, found.row, 'cta_phone', String((data.cta && data.cta.phone) || data.cta_phone || ''));
   soyibaPublicacionesSetCell_(sheet, headers, found.row, 'related_links_json', soyibaPublicacionesStringifyArray_(soyibaPublicacionesNormalizeRelatedLinks_(data.relatedLinks || data.related_links || [])));
   soyibaPublicacionesSetCell_(sheet, headers, found.row, 'solo_miembros', soyibaPublicacionesNormalizeMembersOnly_(data));
+  soyibaPublicacionesSetCell_(sheet, headers, found.row, 'visible_to_minors', soyibaPublicacionesNormalizeVisibleToMinors_(data));
 
   if (type === 'Evento') {
     var currentYoVoy = Number(found.record.yovoy || 0);
@@ -2744,6 +2874,9 @@ function soyibaPublicacionesGetCurrentUser_(data, usersByKey) {
     publicador: soyibaPublicacionesIsTrue_((user && user.publicador) || source.publicador),
     publicadorEco: soyibaPublicacionesIsTrue_((user && user.publicador_eco) || source.publicadorEco || source.publicador_eco),
     publicadorEvento: soyibaPublicacionesIsTrue_((user && user.publicador_evento) || source.publicadorEvento || source.publicador_evento),
+    minorValidator: soyibaPublicacionesIsTrue_((user && user.minor_validator) || source.minorValidator || source.minor_validator),
+    fechaNacimiento: String((user && user.fecha_nacimiento) || source.fechaNacimiento || source.fecha_nacimiento || ''),
+    registroMenorEdad: soyibaPublicacionesIsTrue_((user && user.registro_menor_edad) || source.registroMenorEdad || source.registro_menor_edad || data.isMinor),
     tipoUsuario: String((user && user.tipo_usuario) || source.tipoUsuario || source.tipo_usuario || ''),
     verificado: soyibaPublicacionesIsTrue_(verificado)
   };
@@ -2865,6 +2998,7 @@ function soyibaPublicacionesBuildResponse_(record, savedByCurrentUser, yovoyByCu
     },
     relatedLinks: soyibaPublicacionesNormalizeRelatedLinks_(record.related_links_json),
     membersOnly: soyibaPublicacionesIsMembersOnly_(record),
+    visibleToMinors: soyibaPublicacionesIsVisibleToMinors_(record),
     savedCount: Number(record.guardados || 0),
     viewsCount: Number(record.views || 0),
     sharedCount: Number(record.compartidos || 0),
@@ -3548,8 +3682,36 @@ function soyibaPublicacionesIsMembersOnly_(record) {
   ));
 }
 
+function soyibaPublicacionesNormalizeVisibleToMinors_(data) {
+  return soyibaPublicacionesIsTrue_(soyibaPublicacionesFirstValue_(
+    data && data.visibleToMinors,
+    data && data.visible_to_minors,
+    data && data.mostrarAMenores,
+    data && data.mostrar_a_menores
+  ));
+}
+
+function soyibaPublicacionesIsVisibleToMinors_(record) {
+  return soyibaPublicacionesIsTrue_(soyibaPublicacionesFirstValue_(
+    record && record.visibleToMinors,
+    record && record.visible_to_minors,
+    record && record.mostrarAMenores,
+    record && record.mostrar_a_menores
+  ));
+}
+
 function soyibaPublicacionesIsMemberUser_(user) {
   return String((user && (user.tipoUsuario || user.tipo_usuario)) || '').trim().toLowerCase() === 'miembro';
+}
+
+function soyibaPublicacionesIsMinorUser_(user) {
+  var fechaNacimiento = user && (user.fechaNacimiento || user.fecha_nacimiento);
+
+  if (fechaNacimiento) {
+    return soyibaAuthIsMinorFromBirthDate_(fechaNacimiento);
+  }
+
+  return soyibaPublicacionesIsTrue_(user && (user.registroMenorEdad || user.registro_menor_edad));
 }
 
 function soyibaPublicacionesNormalizeIdList_(value) {

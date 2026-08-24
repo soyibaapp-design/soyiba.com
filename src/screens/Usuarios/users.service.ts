@@ -21,6 +21,7 @@ export type ManagedUserAccessPayload = {
   publicador: boolean;
   publicadorEco: boolean;
   publicadorEvento: boolean;
+  minorValidator: boolean;
   verificado: boolean;
   active: boolean;
 };
@@ -92,6 +93,7 @@ export async function updateManagedUser(
       publicador: normalizedPayload.publicador,
       publicadorEco: normalizedPayload.publicadorEco,
       publicadorEvento: normalizedPayload.publicadorEvento,
+      minorValidator: normalizedPayload.minorValidator,
       verificado: normalizedPayload.verificado,
     },
     () => updateLocalManagedUser(session, targetUser, normalizedPayload),
@@ -160,6 +162,7 @@ async function updateFirebaseManagedUser(
         publicador: nextUser.publicador,
         publicadorEco: nextUser.publicadorEco,
         publicadorEvento: nextUser.publicadorEvento,
+        minorValidator: nextUser.minorValidator,
         verificado: nextUser.verificado,
         updatedAt,
         updatedByUserId: session.user.id,
@@ -193,6 +196,7 @@ function normalizeAccessPayload(payload: ManagedUserAccessPayload): ManagedUserA
     publicador: Boolean(payload.publicador),
     publicadorEco: Boolean(payload.publicadorEco),
     publicadorEvento: Boolean(payload.publicadorEvento),
+    minorValidator: Boolean(payload.minorValidator),
     verificado: Boolean(payload.verificado),
     active: estadoUsuario === 'Activo' && Boolean(payload.active),
   };
@@ -205,6 +209,7 @@ function normalizeManagedUser(user: Partial<ManagedUser>): ManagedUser {
     usuarioVerificado?: unknown;
     usuario_verificado?: unknown;
     verified?: unknown;
+    fecha_nacimiento?: unknown;
   };
   const rolSistema = stringValue(user.rolSistema || user.role) || 'Usuario';
   const rawTipoUsuario = stringValue(user.tipoUsuario) || 'Asistente';
@@ -234,7 +239,13 @@ function normalizeManagedUser(user: Partial<ManagedUser>): ManagedUser {
     publicador: toBoolean(user.publicador),
     publicadorEco: toBoolean(user.publicadorEco),
     publicadorEvento: toBoolean(user.publicadorEvento),
+    minorValidator: toBoolean(user.minorValidator),
     verificado: toBoolean(userRecord.verificado ?? userRecord.usuarioVerificado ?? userRecord.usuario_verificado ?? userRecord.verified),
+    fechaNacimiento: stringValue(userRecord.fechaNacimiento ?? userRecord.fecha_nacimiento),
+    visibleDirectorio: user.visibleDirectorio === undefined ? false : toBoolean(user.visibleDirectorio),
+    mostrarTelefono: user.mostrarTelefono === undefined ? false : toBoolean(user.mostrarTelefono),
+    permitirWhatsapp: user.permitirWhatsapp === undefined ? false : toBoolean(user.permitirWhatsapp),
+    mostrarFoto: user.mostrarFoto === undefined ? true : toBoolean(user.mostrarFoto),
     active,
     status: stringValue(user.status) || (active ? 'active' : 'inactive'),
     createdAt: stringValue(user.createdAt),
@@ -317,6 +328,7 @@ function getSeedLocalUsers(session: SoyibaSession): ManagedUser[] {
       publicador: true,
       publicadorEco: false,
       publicadorEvento: true,
+      minorValidator: false,
       active: true,
     }),
     normalizeManagedUser({
@@ -333,6 +345,7 @@ function getSeedLocalUsers(session: SoyibaSession): ManagedUser[] {
       publicador: false,
       publicadorEco: true,
       publicadorEvento: false,
+      minorValidator: false,
       active: true,
     }),
     normalizeManagedUser({
@@ -349,6 +362,7 @@ function getSeedLocalUsers(session: SoyibaSession): ManagedUser[] {
       publicador: false,
       publicadorEco: false,
       publicadorEvento: false,
+      minorValidator: false,
       active: false,
     }),
   ];
@@ -455,6 +469,7 @@ function applyAccessRules(payload: ManagedUserAccessPayload): ManagedUserAccessP
       publicador: false,
       publicadorEco: false,
       publicadorEvento: false,
+      minorValidator: false,
     };
   }
 

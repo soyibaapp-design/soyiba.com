@@ -741,7 +741,7 @@ type PasswordFormState = {
   confirmPassword: string;
 };
 
-type EditPanel = 'personal' | 'security';
+type EditPanel = 'personal' | 'privacy' | 'security';
 
 function EditProfileModal({ session, onClose, onSessionUpdated, onSaved }: EditProfileModalProps) {
   const user = session.user;
@@ -762,7 +762,7 @@ function EditProfileModal({ session, onClose, onSessionUpdated, onSaved }: EditP
   const [securityError, setSecurityError] = useState('');
   const rules = getPasswordRules(passwordForm.newPassword);
 
-  function updateProfileField(field: keyof UpdateProfilePayload, value: string) {
+  function updateProfileField<K extends keyof UpdateProfilePayload>(field: K, value: UpdateProfilePayload[K]) {
     setProfileForm((current) => ({ ...current, [field]: value }));
   }
 
@@ -949,6 +949,60 @@ function EditProfileModal({ session, onClose, onSessionUpdated, onSaved }: EditP
           <section className="overflow-hidden rounded-[13px] border border-[#DCE6F5] bg-white">
             <button
               type="button"
+              onClick={() => setOpenPanel('privacy')}
+              className="flex h-12 w-full items-center justify-between bg-[#F8FBFF] px-3 text-xs font-black text-[#145CFF]"
+            >
+              <span className="flex items-center gap-2">
+                <ShieldCheck size={16} />
+                Privacidad
+              </span>
+              <ChevronDown size={16} className={openPanel === 'privacy' ? 'rotate-180' : ''} />
+            </button>
+            {openPanel === 'privacy' ? (
+              <div className="grid gap-3 p-3.5">
+                <div className="rounded-[12px] border border-[#E1E8F3] bg-[#F8FBFF] p-3">
+                  <p className="text-[11px] font-bold leading-5 text-[#52637C]">
+                    El directorio solo es visible para miembros validados y gestores. Estos controles definen qué datos tuyos pueden consultar otros miembros.
+                  </p>
+                </div>
+                {!isMemberUser(user) ? (
+                  <p className="rounded-[10px] bg-amber-50 px-3 py-2 text-[11px] font-bold leading-4 text-amber-700">
+                    Estas preferencias se aplicarán cuando tu perfil sea validado como miembro.
+                  </p>
+                ) : null}
+                <PrivacyToggle
+                  label="Aparecer en el directorio de miembros"
+                  description="Si está desactivado, tu perfil no se mostrará en Miembros IBA."
+                  checked={profileForm.visibleDirectorio}
+                  onChange={(checked) => updateProfileField('visibleDirectorio', checked)}
+                />
+                <PrivacyToggle
+                  label="Mostrar mi foto"
+                  description="Controla si otros miembros ven tu foto de perfil en el directorio."
+                  checked={profileForm.mostrarFoto}
+                  onChange={(checked) => updateProfileField('mostrarFoto', checked)}
+                  disabled={!profileForm.visibleDirectorio}
+                />
+                <PrivacyToggle
+                  label="Mostrar mi teléfono"
+                  description="Permite que tu número sea usado para contacto dentro del directorio."
+                  checked={profileForm.mostrarTelefono}
+                  onChange={(checked) => updateProfileField('mostrarTelefono', checked)}
+                  disabled={!profileForm.visibleDirectorio}
+                />
+                <PrivacyToggle
+                  label="Permitir contacto por WhatsApp"
+                  description="Muestra el botón de WhatsApp solo si también permites mostrar tu teléfono."
+                  checked={profileForm.permitirWhatsapp}
+                  onChange={(checked) => updateProfileField('permitirWhatsapp', checked)}
+                  disabled={!profileForm.visibleDirectorio || !profileForm.mostrarTelefono}
+                />
+              </div>
+            ) : null}
+          </section>
+          <section className="overflow-hidden rounded-[13px] border border-[#DCE6F5] bg-white">
+            <button
+              type="button"
               onClick={() => setOpenPanel('security')}
               className="flex h-12 w-full items-center justify-between bg-[#F8FBFF] px-3 text-xs font-black text-[#145CFF]"
             >
@@ -1082,6 +1136,36 @@ function EditableField({
   );
 }
 
+function PrivacyToggle({
+  label,
+  description,
+  checked,
+  onChange,
+  disabled = false,
+}: {
+  label: string;
+  description: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <label className={`flex min-h-[70px] items-center gap-3 rounded-[12px] border border-[#DCE6F5] bg-white p-3 ${disabled ? 'opacity-55' : ''}`}>
+      <span className="min-w-0 flex-1">
+        <span className="block text-xs font-black leading-4 text-[#0B1F5B]">{label}</span>
+        <span className="mt-1 block text-[11px] font-semibold leading-4 text-[#637295]">{description}</span>
+      </span>
+      <input
+        type="checkbox"
+        checked={checked}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.checked)}
+        className="h-5 w-5 shrink-0 rounded border-2 border-slate-300 text-[#145CFF] accent-[#145CFF] disabled:cursor-not-allowed"
+      />
+    </label>
+  );
+}
+
 function getInitialProfileForm(user: SoyibaUser): UpdateProfilePayload {
   const nameParts = getDisplayName(user).split(/\s+/).filter(Boolean);
 
@@ -1091,11 +1175,27 @@ function getInitialProfileForm(user: SoyibaUser): UpdateProfilePayload {
     email: getFieldValue(user.email),
     phone: getFieldValue(user.phone),
     tiempoIba: getFieldValue(user.tiempoIba),
+    visibleDirectorio: getBooleanField(user.visibleDirectorio, false),
+    mostrarTelefono: getBooleanField(user.mostrarTelefono, false),
+    permitirWhatsapp: getBooleanField(user.permitirWhatsapp, false),
+    mostrarFoto: getBooleanField(user.mostrarFoto, true),
   };
 }
 
 function getFieldValue(value: unknown) {
   return String(value ?? '');
+}
+
+function getBooleanField(value: unknown, fallback: boolean) {
+  if (value === undefined || value === null || value === '') {
+    return fallback;
+  }
+
+  if (typeof value === 'boolean') {
+    return value;
+  }
+
+  return ['true', '1', 'si', 'sí', 'yes', 'activo', 'active'].includes(normalizePlainText(value));
 }
 
 function getPasswordRules(password: string) {

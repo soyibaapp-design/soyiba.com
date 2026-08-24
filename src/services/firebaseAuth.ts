@@ -12,6 +12,17 @@ type FirebaseUserProfile = Partial<SoyibaUser> & {
   estado_usuario?: string;
   usuario_verificado?: unknown;
   photo_url?: string;
+  acepto_politica_datos?: unknown;
+  fecha_aceptacion_politica?: string;
+  politica_datos_version?: string;
+  autorizacion_tratamiento_datos?: unknown;
+  fecha_nacimiento?: string;
+  registro_menor_edad?: unknown;
+  autorizacion_acudiente?: unknown;
+  visible_directorio?: unknown;
+  mostrar_telefono?: unknown;
+  permitir_whatsapp?: unknown;
+  mostrar_foto?: unknown;
 };
 
 export function isFirebaseAuthEnabled() {
@@ -143,7 +154,19 @@ function buildSoyibaUserFromFirebase(
     publicador: toBoolean(profile.publicador ?? claims.publicador),
     publicadorEco: toBoolean(profile.publicadorEco ?? claims.publicadorEco),
     publicadorEvento: toBoolean(profile.publicadorEvento ?? claims.publicadorEvento),
+    minorValidator: toBoolean(profile.minorValidator ?? claims.minorValidator),
     verificado: toBoolean(profile.verificado ?? profile.usuario_verificado ?? claims.verificado),
+    aceptoPoliticaDatos: toBoolean(profile.aceptoPoliticaDatos ?? profile.acepto_politica_datos),
+    fechaAceptacionPolitica: stringValue(profile.fechaAceptacionPolitica ?? profile.fecha_aceptacion_politica),
+    politicaDatosVersion: stringValue(profile.politicaDatosVersion ?? profile.politica_datos_version),
+    autorizacionTratamientoDatos: toBoolean(profile.autorizacionTratamientoDatos ?? profile.autorizacion_tratamiento_datos),
+    fechaNacimiento: stringValue(profile.fechaNacimiento ?? profile.fecha_nacimiento),
+    registroMenorEdad: toBoolean(profile.registroMenorEdad ?? profile.registro_menor_edad),
+    autorizacionAcudiente: toBoolean(profile.autorizacionAcudiente ?? profile.autorizacion_acudiente),
+    visibleDirectorio: toBoolean(profile.visibleDirectorio ?? profile.visible_directorio),
+    mostrarTelefono: toBoolean(profile.mostrarTelefono ?? profile.mostrar_telefono),
+    permitirWhatsapp: toBoolean(profile.permitirWhatsapp ?? profile.permitir_whatsapp),
+    mostrarFoto: profile.mostrarFoto === undefined && profile.mostrar_foto === undefined ? true : toBoolean(profile.mostrarFoto ?? profile.mostrar_foto),
     active: profile.active === undefined ? estadoUsuario === 'Activo' : toBoolean(profile.active),
   };
 }

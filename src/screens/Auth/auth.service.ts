@@ -26,8 +26,20 @@ export type SoyibaUser = {
   publicador?: boolean;
   publicadorEco?: boolean;
   publicadorEvento?: boolean;
+  minorValidator?: boolean;
   verificado?: boolean;
   active?: boolean;
+  aceptoPoliticaDatos?: boolean;
+  fechaAceptacionPolitica?: string;
+  politicaDatosVersion?: string;
+  autorizacionTratamientoDatos?: boolean;
+  fechaNacimiento?: string;
+  registroMenorEdad?: boolean;
+  autorizacionAcudiente?: boolean;
+  visibleDirectorio?: boolean;
+  mostrarTelefono?: boolean;
+  permitirWhatsapp?: boolean;
+  mostrarFoto?: boolean;
 };
 
 export type SoyibaSession = {
@@ -41,6 +53,9 @@ export type RegisterPayload = {
   email: string;
   phone: string;
   password: string;
+  fechaNacimiento: string;
+  ageGroup: 'adult' | 'minor';
+  guardianConsent: boolean;
 };
 
 export type UpdateProfilePayload = {
@@ -49,6 +64,10 @@ export type UpdateProfilePayload = {
   email: string;
   phone: string;
   tiempoIba: string;
+  visibleDirectorio: boolean;
+  mostrarTelefono: boolean;
+  permitirWhatsapp: boolean;
+  mostrarFoto: boolean;
 };
 
 type BasicAuthResponse = {
@@ -69,6 +88,7 @@ const AUTH_LOGIN_RETRY_DELAYS_MS: number[] = [];
 const AUTH_LOGIN_TIMEOUT_MS = 15000;
 const AUTH_LOGIN_TRANSIENT_ERROR =
   'No fue posible iniciar sesión. Intenta nuevamente.';
+const PRIVACY_POLICY_VERSION = '2026-08-24';
 
 type AuthResult =
   | { ok: true; session: SoyibaSession }
@@ -165,6 +185,7 @@ async function callLoginWithRetry(email: string, password: string) {
             publicador: false,
             publicadorEco: false,
             publicadorEvento: false,
+            minorValidator: false,
             verificado: false,
             active: true,
           },
@@ -197,9 +218,22 @@ export async function registerWithEmailPassword(payload: RegisterPayload): Promi
   const phone = normalizeText(payload.phone);
   const normalizedEmail = normalizeEmail(payload.email);
   const displayName = [firstName, lastName].filter(Boolean).join(' ').trim();
+  const birthDate = normalizeBirthDate(payload.fechaNacimiento);
+  const ageInfo = getBirthDateAgeInfo(birthDate);
 
   if (!firstName || !lastName || !normalizedEmail || !phone || !payload.password) {
     return { ok: false, error: 'Completa todos los campos para crear tu cuenta.' };
+  }
+
+  if (!ageInfo.ok) {
+    return { ok: false, error: ageInfo.error };
+  }
+
+  const isMinor = ageInfo.age < 18;
+  const ageGroup = isMinor ? 'minor' : 'adult';
+
+  if (isMinor && !payload.guardianConsent) {
+    return { ok: false, error: 'Para menores de edad se requiere autorización del representante legal.' };
   }
 
   if (isFirebaseAuthEnabled()) {
@@ -209,6 +243,9 @@ export async function registerWithEmailPassword(payload: RegisterPayload): Promi
       email: normalizedEmail,
       phone,
       password: payload.password,
+      fechaNacimiento: birthDate,
+      ageGroup,
+      guardianConsent: isMinor ? payload.guardianConsent : false,
     });
   }
 
@@ -228,6 +265,15 @@ export async function registerWithEmailPassword(payload: RegisterPayload): Promi
       rolSistema: 'Usuario',
       estadoUsuario: 'Activo',
       aceptoPoliticaDatos: true,
+      politicaDatosVersion: PRIVACY_POLICY_VERSION,
+      autorizacionTratamientoDatos: true,
+      fechaNacimiento: birthDate,
+      registroMenorEdad: isMinor,
+      autorizacionAcudiente: isMinor ? payload.guardianConsent : false,
+      visibleDirectorio: false,
+      mostrarTelefono: false,
+      permitirWhatsapp: false,
+      mostrarFoto: true,
       verificado: false,
     },
     () => ({
@@ -248,7 +294,19 @@ export async function registerWithEmailPassword(payload: RegisterPayload): Promi
         publicador: false,
         publicadorEco: false,
         publicadorEvento: false,
+        minorValidator: false,
         verificado: false,
+        aceptoPoliticaDatos: true,
+        fechaAceptacionPolitica: new Date().toISOString(),
+        politicaDatosVersion: PRIVACY_POLICY_VERSION,
+        autorizacionTratamientoDatos: true,
+        fechaNacimiento: birthDate,
+        registroMenorEdad: isMinor,
+        autorizacionAcudiente: isMinor ? payload.guardianConsent : false,
+        visibleDirectorio: false,
+        mostrarTelefono: false,
+        permitirWhatsapp: false,
+        mostrarFoto: true,
         active: true,
       },
     }),
@@ -288,7 +346,19 @@ async function registerWithFirebaseEmailPassword(payload: RegisterPayload): Prom
       publicador: false,
       publicadorEco: false,
       publicadorEvento: false,
+      minorValidator: false,
       verificado: false,
+      aceptoPoliticaDatos: true,
+      fechaAceptacionPolitica: now,
+      politicaDatosVersion: PRIVACY_POLICY_VERSION,
+      autorizacionTratamientoDatos: true,
+      fechaNacimiento: payload.fechaNacimiento,
+      registroMenorEdad: payload.ageGroup === 'minor',
+      autorizacionAcudiente: payload.ageGroup === 'minor' ? payload.guardianConsent : false,
+      visibleDirectorio: false,
+      mostrarTelefono: false,
+      permitirWhatsapp: false,
+      mostrarFoto: true,
       active: true,
     };
 
@@ -299,6 +369,16 @@ async function registerWithFirebaseEmailPassword(payload: RegisterPayload): Prom
       status: 'active',
       aceptoPoliticaDatos: true,
       fechaAceptacionPolitica: now,
+      politicaDatosVersion: PRIVACY_POLICY_VERSION,
+      autorizacionTratamientoDatos: true,
+      tratamientoDatosAutorizadoAt: now,
+      fechaNacimiento: payload.fechaNacimiento,
+      registroMenorEdad: payload.ageGroup === 'minor',
+      autorizacionAcudiente: payload.ageGroup === 'minor' ? payload.guardianConsent : false,
+      visibleDirectorio: false,
+      mostrarTelefono: false,
+      permitirWhatsapp: false,
+      mostrarFoto: true,
       createdAt: now,
       updatedAt: now,
       createdAtServer: serverTimestamp(),
@@ -330,6 +410,20 @@ export async function updateUserProfile(session: SoyibaSession, payload: UpdateP
     return { ok: false, error: 'Nombre, apellido y celular son requeridos.' };
   }
 
+  if (isFirebaseAuthEnabled()) {
+    return updateUserProfileWithFirebase(session, {
+      firstName,
+      lastName,
+      email: normalizedEmail,
+      phone,
+      tiempoIba,
+      visibleDirectorio: Boolean(payload.visibleDirectorio),
+      mostrarTelefono: Boolean(payload.mostrarTelefono),
+      permitirWhatsapp: Boolean(payload.permitirWhatsapp),
+      mostrarFoto: Boolean(payload.mostrarFoto),
+    });
+  }
+
   const response = await callAppsScript<AuthResponse>(
     'Auth',
     'updateProfile',
@@ -342,6 +436,10 @@ export async function updateUserProfile(session: SoyibaSession, payload: UpdateP
       phone,
       tiempoIba,
       displayName,
+      visibleDirectorio: Boolean(payload.visibleDirectorio),
+      mostrarTelefono: Boolean(payload.mostrarTelefono),
+      permitirWhatsapp: Boolean(payload.permitirWhatsapp),
+      mostrarFoto: Boolean(payload.mostrarFoto),
     },
     () => ({
       ok: true,
@@ -354,6 +452,10 @@ export async function updateUserProfile(session: SoyibaSession, payload: UpdateP
         lastName,
         phone,
         tiempoIba,
+        visibleDirectorio: Boolean(payload.visibleDirectorio),
+        mostrarTelefono: Boolean(payload.mostrarTelefono),
+        permitirWhatsapp: Boolean(payload.permitirWhatsapp),
+        mostrarFoto: Boolean(payload.mostrarFoto),
       },
     }),
   );
@@ -392,6 +494,75 @@ export async function updateUserPhoto(session: SoyibaSession, photoUrl: string):
   );
 
   return preserveLocalOnlyUserFields(normalizeAuthResponse(response, 'No fue posible actualizar la foto.'), session);
+}
+
+async function updateUserProfileWithFirebase(session: SoyibaSession, payload: UpdateProfilePayload): Promise<AuthResult> {
+  const app = getFirebaseApp();
+
+  if (!app) {
+    return { ok: false, error: 'Firebase no esta configurado.' };
+  }
+
+  try {
+    const [{ getAuth, onAuthStateChanged, updateProfile }, { doc, getFirestore, serverTimestamp, setDoc }] = await Promise.all([
+      import('firebase/auth'),
+      import('firebase/firestore'),
+    ]);
+    const auth = getAuth(app);
+    const firebaseUser = auth.currentUser || (await waitForFirebaseUser(auth, onAuthStateChanged));
+
+    if (!firebaseUser || firebaseUser.uid !== session.user.id) {
+      return { ok: false, error: 'No encontramos tu sesion de Firebase para actualizar el perfil.' };
+    }
+
+    const displayName = [payload.firstName, payload.lastName].filter(Boolean).join(' ').trim();
+    const updatedAt = new Date().toISOString();
+
+    const nextUser: SoyibaUser = {
+      ...session.user,
+      name: displayName,
+      firstName: payload.firstName,
+      lastName: payload.lastName,
+      phone: payload.phone,
+      tiempoIba: payload.tiempoIba,
+      visibleDirectorio: Boolean(payload.visibleDirectorio),
+      mostrarTelefono: Boolean(payload.mostrarTelefono),
+      permitirWhatsapp: Boolean(payload.permitirWhatsapp),
+      mostrarFoto: Boolean(payload.mostrarFoto),
+    };
+
+    await Promise.all([
+      updateProfile(firebaseUser, { displayName }),
+      setDoc(
+        doc(getFirestore(app, getFirebaseAuthDatabaseId()), 'users', session.user.id),
+        {
+          name: displayName,
+          firstName: payload.firstName,
+          lastName: payload.lastName,
+          phone: payload.phone,
+          tiempoIba: payload.tiempoIba,
+          visibleDirectorio: Boolean(payload.visibleDirectorio),
+          mostrarTelefono: Boolean(payload.mostrarTelefono),
+          permitirWhatsapp: Boolean(payload.permitirWhatsapp),
+          mostrarFoto: Boolean(payload.mostrarFoto),
+          updatedAt,
+          updatedAtServer: serverTimestamp(),
+        },
+        { merge: true },
+      ),
+    ]);
+    await syncFirebaseMemberDirectoryDoc(app, nextUser);
+
+    return {
+      ok: true,
+      session: {
+        token: await firebaseUser.getIdToken(true),
+        user: nextUser,
+      },
+    };
+  } catch {
+    return { ok: false, error: 'No fue posible actualizar el perfil en Firebase. Revisa las reglas de Firestore.' };
+  }
 }
 
 async function updateUserPhotoWithFirebase(session: SoyibaSession, photoValue: string): Promise<AuthResult> {
@@ -436,6 +607,11 @@ async function updateUserPhotoWithFirebase(session: SoyibaSession, photoValue: s
         { merge: true },
       ),
     ]);
+
+    await syncFirebaseMemberDirectoryDoc(app, {
+      ...session.user,
+      photoUrl: nextPhotoUrl,
+    });
 
     return {
       ok: true,
@@ -652,7 +828,7 @@ async function verifyMembershipByCcWithFirebase(session: SoyibaSession, normaliz
               estadoUsuario: 'Activo',
               status: 'active',
               active: true,
-              visibleDirectorio: true,
+              visibleDirectorio: Boolean(session.user.visibleDirectorio),
             }
           : baseUserPatch,
         { merge: true },
@@ -697,6 +873,8 @@ async function verifyMembershipByCcWithFirebase(session: SoyibaSession, normaliz
           miembroValidacionEstado: result.claimStatus,
           miembroValidacionNotas: result.claimNotes,
         };
+
+    await syncFirebaseMemberDirectoryDoc(app, nextUser);
 
     return {
       ok: true,
@@ -857,6 +1035,47 @@ function normalizeEmail(value: unknown) {
   return normalizeText(value).toLowerCase();
 }
 
+function normalizeBirthDate(value: unknown) {
+  return normalizeText(value);
+}
+
+function getBirthDateAgeInfo(value: string): { ok: true; age: number } | { ok: false; error: string } {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+  if (!match) {
+    return { ok: false, error: 'Ingresa tu fecha de nacimiento.' };
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const birthDate = new Date(year, month - 1, day);
+
+  if (birthDate.getFullYear() !== year || birthDate.getMonth() !== month - 1 || birthDate.getDate() !== day) {
+    return { ok: false, error: 'La fecha de nacimiento no es valida.' };
+  }
+
+  const today = new Date();
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+  if (birthDate > todayStart) {
+    return { ok: false, error: 'La fecha de nacimiento no puede ser futura.' };
+  }
+
+  let age = todayStart.getFullYear() - year;
+  const birthdayThisYear = new Date(todayStart.getFullYear(), month - 1, day);
+
+  if (birthdayThisYear > todayStart) {
+    age -= 1;
+  }
+
+  if (age > 120) {
+    return { ok: false, error: 'Revisa la fecha de nacimiento ingresada.' };
+  }
+
+  return { ok: true, age };
+}
+
 function normalizeCc(value: unknown) {
   return normalizeText(value).replace(/\D/g, '');
 }
@@ -1009,6 +1228,22 @@ function preserveLocalOnlyUserFields(result: AuthResult, currentSession: SoyibaS
     user.verificado = currentSession.user.verificado;
   }
 
+  if (user.visibleDirectorio === undefined) {
+    user.visibleDirectorio = currentSession.user.visibleDirectorio;
+  }
+
+  if (user.mostrarTelefono === undefined) {
+    user.mostrarTelefono = currentSession.user.mostrarTelefono;
+  }
+
+  if (user.permitirWhatsapp === undefined) {
+    user.permitirWhatsapp = currentSession.user.permitirWhatsapp;
+  }
+
+  if (user.mostrarFoto === undefined) {
+    user.mostrarFoto = currentSession.user.mostrarFoto;
+  }
+
   return {
     ok: true,
     session: {
@@ -1016,4 +1251,61 @@ function preserveLocalOnlyUserFields(result: AuthResult, currentSession: SoyibaS
       user,
     },
   };
+}
+
+async function syncFirebaseMemberDirectoryDoc(app: NonNullable<ReturnType<typeof getFirebaseApp>>, user: SoyibaUser) {
+  const { deleteDoc, doc, getFirestore, serverTimestamp, setDoc } = await import('firebase/firestore');
+  const directoryRef = doc(getFirestore(app, getFirebaseAuthDatabaseId()), 'membersDirectory', user.id);
+
+  if (!isDirectoryEligibleUser(user)) {
+    await deleteDoc(directoryRef);
+    return;
+  }
+
+  const mostrarTelefono = Boolean(user.mostrarTelefono);
+  const permitirWhatsapp = Boolean(user.permitirWhatsapp);
+  const mostrarFoto = user.mostrarFoto === undefined ? true : Boolean(user.mostrarFoto);
+
+  await setDoc(directoryRef, {
+    id: user.id,
+    nombre: user.firstName || getFirstNameFromDisplay(user.name),
+    apellido: user.lastName || getLastNameFromDisplay(user.name),
+    fotoUrl: mostrarFoto ? (user.photoUrl || '') : '',
+    telefono: mostrarTelefono && permitirWhatsapp ? (user.phone || '') : '',
+    rol: user.rolSistema || user.role || 'Miembro',
+    rolSistema: user.rolSistema || user.role || 'Miembro',
+    tituloUsuario: user.tituloUsuario || user.tipoUsuario || 'Miembro',
+    tipoUsuario: 'Miembro',
+    ministerio: '',
+    grupoEco: '',
+    sector: '',
+    tiempoEnIBA: user.tiempoIba || '',
+    visibleDirectorio: true,
+    mostrarTelefono,
+    permitirWhatsapp,
+    mostrarFoto,
+    mostrarMinisterio: false,
+    mostrarGrupoEco: false,
+    verificado: Boolean(user.verificado),
+    estado: user.estadoUsuario || 'Activo',
+    fechaRegistro: '',
+    fechaActualizacion: new Date().toISOString(),
+    updatedAtServer: serverTimestamp(),
+  });
+}
+
+function isDirectoryEligibleUser(user: SoyibaUser) {
+  const active = user.active === undefined ? normalizePlainText(user.estadoUsuario || 'Activo') === 'activo' : Boolean(user.active);
+  return active
+    && normalizePlainText(user.estadoUsuario || 'Activo') === 'activo'
+    && normalizePlainText(user.tipoUsuario) === 'miembro'
+    && Boolean(user.visibleDirectorio);
+}
+
+function getFirstNameFromDisplay(value: unknown) {
+  return normalizeText(value).split(/\s+/)[0] || '';
+}
+
+function getLastNameFromDisplay(value: unknown) {
+  return normalizeText(value).split(/\s+/).slice(1).join(' ');
 }

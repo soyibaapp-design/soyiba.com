@@ -76,6 +76,7 @@ export type SoyibaPublication = {
   };
   relatedLinks: PublicationRelatedLink[];
   membersOnly: boolean;
+  visibleToMinors: boolean;
   savedCount: number;
   viewsCount: number;
   sharedCount: number;
@@ -92,6 +93,7 @@ export type PublicationPayload = {
   cta: SoyibaPublication['cta'];
   relatedLinks: PublicationRelatedLink[];
   membersOnly: boolean;
+  visibleToMinors: boolean;
   event?: {
     dateTime: string;
     place: string;
@@ -150,7 +152,7 @@ type PublicationsResponse = {
 };
 
 const publicationFeedCache = new Map<string, SoyibaPublication[]>();
-const PUBLICATION_FEED_STORAGE_PREFIX = 'soyiba.publications.feed.v2.';
+const PUBLICATION_FEED_STORAGE_PREFIX = 'soyiba.publications.feed.v3.';
 const PUBLICATION_FEED_STORAGE_TTL_MS = 30 * 60 * 1000;
 const PUBLICATION_FEED_STORAGE_STALE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const PUBLICATION_FEED_RETRY_DELAYS_MS = [1200, 2600, 5200];
@@ -188,6 +190,7 @@ const localPublications: SoyibaPublication[] = [
       },
     ],
     membersOnly: false,
+    visibleToMinors: false,
     savedCount: 24,
     viewsCount: 356,
     sharedCount: 12,
@@ -226,6 +229,7 @@ const localPublications: SoyibaPublication[] = [
       },
     ],
     membersOnly: false,
+    visibleToMinors: false,
     savedCount: 1,
     viewsCount: 11,
     sharedCount: 16,
@@ -286,6 +290,7 @@ const localPublications: SoyibaPublication[] = [
       },
     ],
     membersOnly: false,
+    visibleToMinors: false,
     savedCount: 18,
     viewsCount: 240,
     sharedCount: 9,
@@ -318,6 +323,7 @@ const localPublications: SoyibaPublication[] = [
     },
     relatedLinks: [],
     membersOnly: false,
+    visibleToMinors: false,
     savedCount: 4,
     viewsCount: 62,
     sharedCount: 5,
@@ -360,6 +366,7 @@ const localPublications: SoyibaPublication[] = [
     },
     relatedLinks: [],
     membersOnly: false,
+    visibleToMinors: false,
     savedCount: 6,
     viewsCount: 95,
     sharedCount: 8,
@@ -402,6 +409,7 @@ const localPublications: SoyibaPublication[] = [
     },
     relatedLinks: [],
     membersOnly: false,
+    visibleToMinors: false,
     savedCount: 2,
     viewsCount: 44,
     sharedCount: 3,
@@ -443,6 +451,7 @@ const localPublications: SoyibaPublication[] = [
     },
     relatedLinks: [],
     membersOnly: false,
+    visibleToMinors: false,
     savedCount: 7,
     viewsCount: 88,
     sharedCount: 4,
@@ -469,14 +478,14 @@ const localPublications: SoyibaPublication[] = [
 
 export function getCachedPublicationFeed(session: SoyibaSession, options: PublicationFeedOptions = {}) {
   const cached = getCachedPublicationFeedInternal(session, options);
-  return cached ? hydrateCurrentUserAuthor(clonePublications(cached), session.user) : null;
+  return cached ? filterPublicationsForCurrentUser(hydrateCurrentUserAuthor(clonePublications(cached), session.user), session.user) : null;
 }
 
 export async function getPublicationFeed(session: SoyibaSession, options: PublicationFeedOptions = {}, forceRefresh = false) {
   const cached = getCachedPublicationFeedInternal(session, options);
 
   if (cached && !forceRefresh) {
-    return hydrateCurrentUserAuthor(clonePublications(cached), session.user);
+    return filterPublicationsForCurrentUser(hydrateCurrentUserAuthor(clonePublications(cached), session.user), session.user);
   }
 
   let response: PublicationsResponse;
@@ -485,7 +494,7 @@ export async function getPublicationFeed(session: SoyibaSession, options: Public
     response = await callPublicationList(session, options);
   } catch (error) {
     if (cached) {
-      return hydrateCurrentUserAuthor(clonePublications(cached), session.user);
+      return filterPublicationsForCurrentUser(hydrateCurrentUserAuthor(clonePublications(cached), session.user), session.user);
     }
 
     throw error;
@@ -493,16 +502,19 @@ export async function getPublicationFeed(session: SoyibaSession, options: Public
 
   if (!response.ok) {
     if (cached) {
-      return hydrateCurrentUserAuthor(clonePublications(cached), session.user);
+      return filterPublicationsForCurrentUser(hydrateCurrentUserAuthor(clonePublications(cached), session.user), session.user);
     }
 
     throw new Error(response.error || 'No fue posible cargar las publicaciones.');
   }
 
-  const publications = hydrateCurrentUserAuthor(normalizePublications(response.publications || [], options.type), session.user);
+  const publications = filterPublicationsForCurrentUser(
+    hydrateCurrentUserAuthor(normalizePublications(response.publications || [], options.type), session.user),
+    session.user,
+  );
 
   if (cached && publications.length === 0 && cached.length > 0) {
-    return hydrateCurrentUserAuthor(clonePublications(cached), session.user);
+    return filterPublicationsForCurrentUser(hydrateCurrentUserAuthor(clonePublications(cached), session.user), session.user);
   }
 
   if (publications.length > 0 || options.type) {
@@ -524,6 +536,7 @@ async function callPublicationList(session: SoyibaSession, options: PublicationF
           userId: session.user.id,
           email: session.user.email,
           type: options.type,
+          isMinor: isMinorOrUnknownAudience(session.user),
         },
         () => ({
           ok: true,
@@ -590,6 +603,7 @@ export async function createPublication(session: SoyibaSession, payload: Publica
         viewsCount: 0,
         sharedCount: 0,
         savedByCurrentUser: false,
+        visibleToMinors: payload.visibleToMinors,
       },
     }),
   );
@@ -627,6 +641,7 @@ export async function updatePublication(session: SoyibaSession, publicationId: s
         viewsCount: 0,
         sharedCount: 0,
         savedByCurrentUser: false,
+        visibleToMinors: payload.visibleToMinors,
       },
     }),
   );
@@ -1251,6 +1266,11 @@ function getUserRequest(user: SoyibaUser) {
     publicadorEvento: user.publicadorEvento,
     tipoUsuario: user.tipoUsuario,
     tipo_usuario: user.tipoUsuario,
+    fechaNacimiento: user.fechaNacimiento,
+    fecha_nacimiento: user.fechaNacimiento,
+    registroMenorEdad: Boolean(user.registroMenorEdad),
+    registro_menor_edad: Boolean(user.registroMenorEdad),
+    minorValidator: Boolean(user.minorValidator),
     verificado: Boolean(user.verificado),
   };
 }
@@ -1314,6 +1334,7 @@ function normalizePublication(value: unknown): SoyibaPublication {
     },
     relatedLinks: normalizeRelatedLinks(record.relatedLinks || record.related_links_json),
     membersOnly: isTrue(valueFrom(record.membersOnly, record.members_only, record.soloMiembros, record.solo_miembros)),
+    visibleToMinors: isTrue(valueFrom(record.visibleToMinors, record.visible_to_minors, record.mostrarAMenores, record.mostrar_a_menores)),
     savedCount: numberFrom(record.savedCount || record.guardados),
     viewsCount: numberFrom(record.viewsCount || record.views),
     sharedCount: numberFrom(record.sharedCount || record.compartidos),
@@ -1321,6 +1342,52 @@ function normalizePublication(value: unknown): SoyibaPublication {
     event: normalizeEventDetails(record),
     eco: normalizeEcoDetails(record),
   };
+}
+
+function filterPublicationsForCurrentUser(publications: SoyibaPublication[], user: SoyibaUser) {
+  if (!isMinorOrUnknownAudience(user)) {
+    return publications;
+  }
+
+  return publications.filter((publication) => publication.visibleToMinors === true);
+}
+
+function isMinorOrUnknownAudience(user: SoyibaUser) {
+  return isMinorFromBirthDate(user.fechaNacimiento) || isTrue(user.registroMenorEdad) || normalizeText(user.role || user.rolSistema) === 'public' || user.id === 'public-viewer';
+}
+
+function isMinorFromBirthDate(value: unknown) {
+  const text = stringFrom(value);
+  const match = text.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+  if (!match) {
+    return false;
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const birthDate = new Date(year, month - 1, day);
+
+  if (birthDate.getFullYear() !== year || birthDate.getMonth() !== month - 1 || birthDate.getDate() !== day) {
+    return false;
+  }
+
+  const today = new Date();
+  const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+  if (birthDate > todayStart) {
+    return false;
+  }
+
+  let age = todayStart.getFullYear() - year;
+  const birthdayThisYear = new Date(todayStart.getFullYear(), month - 1, day);
+
+  if (birthdayThisYear > todayStart) {
+    age -= 1;
+  }
+
+  return age >= 0 && age < 18;
 }
 
 function normalizeEventDetails(record: Record<string, unknown>): PublicationEventDetails {
@@ -1674,7 +1741,8 @@ function getPublicationFeedUserCacheKey(session: SoyibaSession) {
   const identity = session.user.id || session.user.email || 'anon';
   const userType = normalizeText(session.user.tipoUsuario || '');
   const role = normalizeText(session.user.rolSistema || session.user.role || '');
-  return `${identity}::${userType || 'sin-tipo'}::${role || 'sin-rol'}`;
+  const minorState = isMinorOrUnknownAudience(session.user) ? 'restringido' : 'adulto';
+  return `${identity}::${userType || 'sin-tipo'}::${role || 'sin-rol'}::${minorState}`;
 }
 
 function getPublicationFeedCacheKey(session: SoyibaSession, options: PublicationFeedOptions) {
