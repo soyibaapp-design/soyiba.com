@@ -179,7 +179,10 @@ function buildSoyibaUserFromFirebase(
     guardianPhone: stringValue(profile.guardianPhone ?? profile.guardian_phone),
     minorValidationStatus: stringValue(profile.minorValidationStatus ?? profile.minor_validation_status),
     minorValidationRequestId: stringValue(profile.minorValidationRequestId ?? profile.minor_validation_request_id),
-    visibleDirectorio: toBoolean(profile.visibleDirectorio ?? profile.visible_directorio),
+    visibleDirectorio:
+      profile.visibleDirectorio === undefined && profile.visible_directorio === undefined
+        ? true
+        : toBoolean(profile.visibleDirectorio ?? profile.visible_directorio),
     mostrarTelefono: toBoolean(profile.mostrarTelefono ?? profile.mostrar_telefono),
     permitirWhatsapp: toBoolean(profile.permitirWhatsapp ?? profile.permitir_whatsapp),
     mostrarFoto: profile.mostrarFoto === undefined && profile.mostrar_foto === undefined ? true : toBoolean(profile.mostrarFoto ?? profile.mostrar_foto),

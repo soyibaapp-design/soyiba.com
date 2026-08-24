@@ -260,7 +260,7 @@ service cloud.firestore {
         && request.resource.data.fechaNacimiento.matches('^\\d{4}-\\d{2}-\\d{2}$')
         && request.resource.data.registroMenorEdad is bool
         && request.resource.data.autorizacionAcudiente is bool
-        && request.resource.data.visibleDirectorio == false
+        && request.resource.data.visibleDirectorio == true
         && request.resource.data.mostrarTelefono == false
         && request.resource.data.permitirWhatsapp == false
         && request.resource.data.mostrarFoto is bool

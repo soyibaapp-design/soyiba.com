@@ -1175,7 +1175,7 @@ function getInitialProfileForm(user: SoyibaUser): UpdateProfilePayload {
     email: getFieldValue(user.email),
     phone: getFieldValue(user.phone),
     tiempoIba: getFieldValue(user.tiempoIba),
-    visibleDirectorio: getBooleanField(user.visibleDirectorio, false),
+    visibleDirectorio: getBooleanField(user.visibleDirectorio, true),
     mostrarTelefono: getBooleanField(user.mostrarTelefono, false),
     permitirWhatsapp: getBooleanField(user.permitirWhatsapp, false),
     mostrarFoto: getBooleanField(user.mostrarFoto, true),

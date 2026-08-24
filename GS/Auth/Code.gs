@@ -3,7 +3,7 @@ var SOYIBA_AUTH_SHEET = 'Auth';
 var SOYIBA_MINOR_VALIDATION_SHEET = 'MinorValidationRequests';
 var SOYIBA_MIEMBROS_IBA_SHEET = 'MiembrosIBA';
 var SOYIBA_HEALTH_SESSIONS_SHEET = 'AppHealthSessions';
-var SOYIBA_AUTH_CODE_VERSION = 'membership-email-claim-validation-2026-07-21';
+var SOYIBA_AUTH_CODE_VERSION = 'privacy-directory-defaults-2026-08-24';
 var SOYIBA_PASSWORD_RESET_TTL_MINUTES = 60;
 var SOYIBA_HEALTH_ACTIVE_WINDOW_MS = 2 * 60 * 1000;
 var SOYIBA_AUTH_HEADERS = [
@@ -332,7 +332,7 @@ function soyibaAuthRegister_(data) {
     guardianPhone,
     minorValidationStatus,
     requestId,
-    false,
+    true,
     false,
     false,
     true
@@ -558,7 +558,7 @@ function soyibaAuthUpdateProfile_(data) {
   var phone = String(data.phone || data.celular || '').trim();
   var tiempoIba = String(data.tiempoIba || data.tiempo_iba || '').trim();
   var displayName = String(data.displayName || data.display_name || [firstName, lastName].join(' ').trim() || email.split('@')[0] || 'Usuario');
-  var visibleDirectorio = soyibaAuthIsTrue_(data.visibleDirectorio !== undefined ? data.visibleDirectorio : data.visible_directorio);
+  var visibleDirectorio = data.visibleDirectorio === undefined && data.visible_directorio === undefined ? true : soyibaAuthIsTrue_(data.visibleDirectorio !== undefined ? data.visibleDirectorio : data.visible_directorio);
   var mostrarTelefono = soyibaAuthIsTrue_(data.mostrarTelefono !== undefined ? data.mostrarTelefono : data.mostrar_telefono);
   var permitirWhatsapp = soyibaAuthIsTrue_(data.permitirWhatsapp !== undefined ? data.permitirWhatsapp : data.permitir_whatsapp);
   var mostrarFoto = data.mostrarFoto === undefined && data.mostrar_foto === undefined ? true : soyibaAuthIsTrue_(data.mostrarFoto !== undefined ? data.mostrarFoto : data.mostrar_foto);
@@ -1885,7 +1885,7 @@ function soyibaAuthSetMembershipValidated_(sheet, headers, row, cc, now) {
   soyibaAuthSetCell_(sheet, headers, row, 'miembro_validacion_estado', 'validado');
   soyibaAuthSetCell_(sheet, headers, row, 'miembro_validacion_notas', '');
   if (String(soyibaAuthGetUserByRow_(sheet, row).visible_directorio || '') === '') {
-    soyibaAuthSetCell_(sheet, headers, row, 'visible_directorio', false);
+    soyibaAuthSetCell_(sheet, headers, row, 'visible_directorio', true);
   }
   soyibaAuthSetCell_(sheet, headers, row, 'updated_at', now);
 }
