@@ -1,4 +1,6 @@
 import { callAppsScript } from '../../services/appsScriptClient';
+import { getFirebaseApp } from '../../services/firebase';
+import { isFirebaseAuthEnabled } from '../../services/firebaseAuth';
 import { canUploadToFirebaseStorage, deleteSoyibaMediaFromStorage, getFirebaseStoragePath, uploadSoyibaMediaToStorage } from '../../services/firebaseStorage';
 import type { SoyibaSession, SoyibaUser } from '../Auth/auth.service';
 
@@ -152,7 +154,7 @@ type PublicationsResponse = {
 };
 
 const publicationFeedCache = new Map<string, SoyibaPublication[]>();
-const PUBLICATION_FEED_STORAGE_PREFIX = 'soyiba.publications.feed.v3.';
+const PUBLICATION_FEED_STORAGE_PREFIX = 'soyiba.publications.feed.v4.';
 const PUBLICATION_FEED_STORAGE_TTL_MS = 30 * 60 * 1000;
 const PUBLICATION_FEED_STORAGE_STALE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const PUBLICATION_FEED_RETRY_DELAYS_MS = [1200, 2600, 5200];
@@ -509,7 +511,7 @@ export async function getPublicationFeed(session: SoyibaSession, options: Public
   }
 
   const publications = filterPublicationsForCurrentUser(
-    hydrateCurrentUserAuthor(normalizePublications(response.publications || [], options.type), session.user),
+    await hydratePublicationAuthors(normalizePublications(response.publications || [], options.type), session.user),
     session.user,
   );
 
@@ -1307,6 +1309,83 @@ function hydrateCurrentUserAuthor(publications: SoyibaPublication[], user: Soyib
   });
 }
 
+async function hydratePublicationAuthors(publications: SoyibaPublication[], user: SoyibaUser) {
+  const currentUserHydrated = hydrateCurrentUserAuthor(publications, user);
+  const directoryProfiles = await getFirebaseDirectoryAuthorProfiles().catch(() => []);
+
+  if (!directoryProfiles.length) {
+    return currentUserHydrated;
+  }
+
+  const profilesById = new Map(directoryProfiles.filter((profile) => profile.id).map((profile) => [profile.id, profile]));
+  const profilesByName = new Map<string, DirectoryAuthorProfile | null>();
+
+  for (const profile of directoryProfiles) {
+    const nameKey = normalizeAuthorName(profile.name);
+
+    if (!nameKey) {
+      continue;
+    }
+
+    profilesByName.set(nameKey, profilesByName.has(nameKey) ? null : profile);
+  }
+
+  return currentUserHydrated.map((publication) => {
+    const match =
+      profilesById.get(publication.author.id) ||
+      profilesByName.get(normalizeAuthorName(publication.author.name)) ||
+      null;
+
+    if (!match || (!match.photoUrl && match.verified === undefined)) {
+      return publication;
+    }
+
+    return {
+      ...publication,
+      author: {
+        ...publication.author,
+        photoUrl: match.photoUrl || publication.author.photoUrl,
+        verified: match.verified === undefined ? publication.author.verified : match.verified,
+      },
+    };
+  });
+}
+
+type DirectoryAuthorProfile = {
+  id: string;
+  name: string;
+  photoUrl: string;
+  verified?: boolean;
+};
+
+async function getFirebaseDirectoryAuthorProfiles(): Promise<DirectoryAuthorProfile[]> {
+  if (!isFirebaseAuthEnabled()) {
+    return [];
+  }
+
+  const app = getFirebaseApp();
+
+  if (!app) {
+    return [];
+  }
+
+  const { collection, getDocs, getFirestore, query, where } = await import('firebase/firestore');
+  const db = getFirestore(app, getFirebasePublicationsDatabaseId());
+  const snapshot = await getDocs(query(collection(db, 'membersDirectory'), where('visibleDirectorio', '==', true)));
+
+  return snapshot.docs.map((item) => {
+    const record = item.data() as Record<string, unknown>;
+    const name = [stringFrom(record.nombre), stringFrom(record.apellido)].filter(Boolean).join(' ').trim();
+
+    return {
+      id: stringFrom(record.id || item.id),
+      name,
+      photoUrl: stringFrom(valueFrom(record.fotoUrl, record.photoUrl, record.foto_url, record.photo_url)),
+      verified: record.verificado === undefined ? undefined : isTrue(record.verificado),
+    };
+  });
+}
+
 function normalizePublication(value: unknown): SoyibaPublication {
   const record = value && typeof value === 'object' ? (value as Record<string, unknown>) : {};
   const author = (record.author && typeof record.author === 'object' ? record.author : {}) as Record<string, unknown>;
@@ -1677,6 +1756,10 @@ function getUserDisplayName(user: SoyibaUser) {
   return user.name || [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email || 'Usuario SOY IBA';
 }
 
+function getFirebasePublicationsDatabaseId() {
+  return String(import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID || 'soyibadb').trim() || 'soyibadb';
+}
+
 function isAdminLike(user: SoyibaUser) {
   return ['admin', 'moderador'].includes(normalizeText(user.rolSistema || user.role));
 }
@@ -1692,6 +1775,15 @@ function normalizeText(value: unknown) {
 
 function normalizeEmail(value: unknown) {
   return normalizeText(value);
+}
+
+function normalizeAuthorName(value: unknown) {
+  return stringFrom(value)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function stringFrom(value: unknown) {

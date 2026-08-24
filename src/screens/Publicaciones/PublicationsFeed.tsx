@@ -1222,19 +1222,7 @@ function HomeTransmissionCard({
         </header>
 
         <div className="flex min-w-0 items-center gap-2 px-4 pt-2 text-[12px] text-[#637295]">
-          {publication.author.photoUrl ? (
-            <img src={publication.author.photoUrl} alt="" className="h-8 w-8 shrink-0 rounded-full object-cover ring-2 ring-[#EEF2F7]" />
-          ) : (
-            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#EAF2FF] text-[11px] font-black text-[#145CFF] ring-2 ring-[#EEF2F7]">
-              {publication.author.name
-                .split(/\s+/)
-                .filter(Boolean)
-                .slice(0, 2)
-                .map((part) => part[0])
-                .join('')
-                .toUpperCase() || 'SI'}
-            </span>
-          )}
+          <AuthorAvatar publication={publication} size="sm" />
           <AuthorName publication={publication} className="flex-1 font-black text-[#0B1F5B]" />
           <span className="h-1 w-1 shrink-0 rounded-full bg-[#B8C4D8]" />
           <span className="shrink-0 truncate text-[11px] font-bold">{formatBroadcastDate(publication.createdAt)}</span>
@@ -3837,21 +3825,46 @@ function ImageLightbox({ preview, onClose }: { preview: ImagePreview; onClose: (
   );
 }
 
-function AuthorAvatar({ publication }: { publication: SoyibaPublication }) {
-  if (publication.author.photoUrl) {
-    return <img src={publication.author.photoUrl} alt="" className="h-12 w-12 shrink-0 rounded-full object-cover ring-2 ring-[#EEF2F7]" />;
+function AuthorAvatar({ publication, size = 'lg' }: { publication: SoyibaPublication; size?: 'sm' | 'lg' }) {
+  const [sourceIndex, setSourceIndex] = useState(0);
+  const photoSources = useMemo(
+    () => (publication.author.photoUrl ? getGoogleDriveImageCandidates(publication.author.photoUrl) : []),
+    [publication.author.photoUrl],
+  );
+  const sizeClass = size === 'sm' ? 'h-8 w-8 text-[11px]' : 'h-12 w-12 text-sm';
+  const currentSource = photoSources[sourceIndex];
+
+  useEffect(() => {
+    setSourceIndex(0);
+  }, [publication.author.photoUrl]);
+
+  if (currentSource) {
+    return (
+      <img
+        src={currentSource}
+        alt=""
+        className={`${sizeClass} shrink-0 rounded-full object-cover ring-2 ring-[#EEF2F7]`}
+        onError={() => setSourceIndex((current) => (current + 1 < photoSources.length ? current + 1 : photoSources.length))}
+      />
+    );
   }
 
   return (
-    <div className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#EAF2FF] text-sm font-black text-[#145CFF] ring-2 ring-[#EEF2F7]">
-      {publication.author.name
-        .split(/\s+/)
-        .filter(Boolean)
-        .slice(0, 2)
-        .map((part) => part[0])
-        .join('')
-        .toUpperCase() || 'SI'}
+    <div className={`grid ${sizeClass} shrink-0 place-items-center rounded-full bg-[#EAF2FF] font-black text-[#145CFF] ring-2 ring-[#EEF2F7]`}>
+      {getAuthorInitials(publication)}
     </div>
+  );
+}
+
+function getAuthorInitials(publication: SoyibaPublication) {
+  return (
+    publication.author.name
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0])
+      .join('')
+      .toUpperCase() || 'SI'
   );
 }
 
