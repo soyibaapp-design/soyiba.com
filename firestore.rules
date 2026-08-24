@@ -155,7 +155,7 @@ service cloud.firestore {
       return signedIn()
         && request.auth.uid == userId
         && request.resource.data.id == userId
-        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.email is string
         && request.resource.data.role == 'Usuario'
         && request.resource.data.rolSistema == 'Usuario'
         && request.resource.data.tipoUsuario == 'Asistente'

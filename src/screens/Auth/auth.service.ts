@@ -357,6 +357,7 @@ export async function registerWithEmailPassword(payload: RegisterPayload): Promi
 
 async function registerWithFirebaseEmailPassword(payload: RegisterPayload): Promise<AuthResult> {
   const app = getFirebaseApp();
+  let registerStage = 'firebase-auth';
 
   if (!app) {
     return { ok: false, error: 'Firebase no esta configurado.' };
@@ -412,6 +413,7 @@ async function registerWithFirebaseEmailPassword(payload: RegisterPayload): Prom
     const db = getFirestore(app, getFirebaseAuthDatabaseId());
 
     await updateProfile(credential.user, { displayName });
+    registerStage = 'user-profile';
     await setDoc(doc(db, 'users', credential.user.uid), {
       ...user,
       emailHash: await sha256Hex(payload.email),
@@ -441,6 +443,7 @@ async function registerWithFirebaseEmailPassword(payload: RegisterPayload): Prom
     });
 
     if (isMinor) {
+      registerStage = 'minor-validation-request';
       await setDoc(doc(db, 'minorValidationRequests', requestId), {
         id: requestId,
         userId: credential.user.uid,
@@ -458,6 +461,7 @@ async function registerWithFirebaseEmailPassword(payload: RegisterPayload): Prom
         updatedAtServer: serverTimestamp(),
       });
 
+      registerStage = 'guardian-email';
       await requestGuardianApprovalEmail({
         requestId,
         userId: credential.user.uid,
@@ -469,6 +473,7 @@ async function registerWithFirebaseEmailPassword(payload: RegisterPayload): Prom
         guardianEmail: payload.guardianEmail,
         guardianPhone: payload.guardianPhone,
       });
+      registerStage = 'sign-out';
       await signOut(auth);
 
       return {
@@ -487,6 +492,10 @@ async function registerWithFirebaseEmailPassword(payload: RegisterPayload): Prom
       },
     };
   } catch (error) {
+    if (error instanceof Error && /permission-denied|missing or insufficient permissions/i.test(error.message)) {
+      return { ok: false, error: getFirebaseRegisterPermissionError(registerStage) };
+    }
+
     return { ok: false, error: getFirebaseRegisterError(error) };
   }
 }
@@ -1365,6 +1374,18 @@ function getFirebaseRegisterError(error: unknown) {
   }
 
   return 'No fue posible crear la cuenta en Firebase.';
+}
+
+function getFirebaseRegisterPermissionError(stage: string) {
+  if (stage === 'minor-validation-request') {
+    return 'Firebase creó el perfil, pero Firestore bloqueó la solicitud de validación del menor. Revisa reglas de minorValidationRequests.';
+  }
+
+  if (stage === 'user-profile') {
+    return 'La cuenta fue creada en Firebase Auth, pero Firestore bloqueó el perfil. Revisa las reglas de users.';
+  }
+
+  return 'Firestore bloqueó el registro. Revisa las reglas de seguridad.';
 }
 
 function isTransientAppsScriptError(error: unknown) {
