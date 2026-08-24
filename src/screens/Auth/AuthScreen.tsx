@@ -106,6 +106,8 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
   const [passwordResetRequestForm, setPasswordResetRequestForm] = useState<PasswordResetRequestState>(emptyPasswordResetRequestForm);
   const [passwordResetConfirmForm, setPasswordResetConfirmForm] = useState<PasswordResetConfirmState>(() => getPasswordResetStateFromHash() || emptyPasswordResetConfirmForm);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [minorApprovalAcceptedDataPolicy, setMinorApprovalAcceptedDataPolicy] = useState(false);
+  const [minorApprovalAcceptedPrivacyPolicy, setMinorApprovalAcceptedPrivacyPolicy] = useState(false);
   const [error, setError] = useState('');
   const [statusMessage, setStatusMessage] = useState('');
   const [pendingAccountModal, setPendingAccountModal] = useState<PendingAccountModalState>(null);
@@ -123,6 +125,7 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
   const minorApprovalState = useMemo(() => (mode === 'approve-minor' ? getMinorApprovalStateFromHash() : null), [mode]);
   const maxBirthDate = useMemo(() => getTodayDateInputValue(), []);
   const isRegister = mode === 'register';
+  const canSubmitMinorApproval = minorApprovalAcceptedDataPolicy && minorApprovalAcceptedPrivacyPolicy;
 
   useEffect(() => {
     if (mode !== 'reset' || !passwordResetConfirmForm.token || passwordResetConfirmForm.email) {
@@ -156,6 +159,8 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
       setError('');
       setStatusMessage('');
       setPendingAccountModal(null);
+      setMinorApprovalAcceptedDataPolicy(false);
+      setMinorApprovalAcceptedPrivacyPolicy(false);
 
       if (nextMode === 'reset') {
         const resetState = getPasswordResetStateFromHash();
@@ -174,6 +179,8 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
     setError('');
     setStatusMessage('');
     setPendingAccountModal(null);
+    setMinorApprovalAcceptedDataPolicy(false);
+    setMinorApprovalAcceptedPrivacyPolicy(false);
     window.history.replaceState(null, '', getUrlForMode(nextMode));
   }
 
@@ -353,6 +360,11 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
       return;
     }
 
+    if (!canSubmitMinorApproval) {
+      setError('Debes leer y aceptar la Política de Tratamiento de Datos y la Política de Privacidad.');
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -365,6 +377,8 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
         });
         window.history.replaceState(null, '', getUrlForMode('login'));
         setMode('login');
+        setMinorApprovalAcceptedDataPolicy(false);
+        setMinorApprovalAcceptedPrivacyPolicy(false);
       } else {
         setError(result.error);
       }
@@ -604,9 +618,44 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
                 Al continuar, confirmas que autorizas que IBA revise esta solicitud y active la cuenta si corresponde.
               </div>
 
+              <div className="mt-3 rounded-xl border border-[#DCE6F5] bg-white px-4 py-3">
+                <p className="text-[12px] font-semibold leading-5 text-[#52637C]">
+                  Antes de autorizar, remítete a la{' '}
+                  <a href="politica-tratamiento-datos.html" target="_blank" rel="noreferrer" className="font-bold text-[#115bd8] underline-offset-4 hover:underline">
+                    Política de Tratamiento de Datos
+                  </a>{' '}
+                  y a la{' '}
+                  <a href="politica-privacidad.html" target="_blank" rel="noreferrer" className="font-bold text-[#115bd8] underline-offset-4 hover:underline">
+                    Política de Privacidad
+                  </a>
+                  .
+                </p>
+
+                <div className="mt-3 space-y-2">
+                  <label className="flex items-start gap-2.5 text-[11px] font-semibold leading-4 text-[#52637C]">
+                    <input
+                      type="checkbox"
+                      checked={minorApprovalAcceptedDataPolicy}
+                      onChange={(event) => setMinorApprovalAcceptedDataPolicy(event.target.checked)}
+                      className="mt-0.5 h-4 w-4 shrink-0 rounded border-2 border-slate-300 text-[#1459d4] accent-[#1459d4]"
+                    />
+                    <span>Declaro que leí y acepto la Política de Tratamiento de Datos.</span>
+                  </label>
+                  <label className="flex items-start gap-2.5 text-[11px] font-semibold leading-4 text-[#52637C]">
+                    <input
+                      type="checkbox"
+                      checked={minorApprovalAcceptedPrivacyPolicy}
+                      onChange={(event) => setMinorApprovalAcceptedPrivacyPolicy(event.target.checked)}
+                      className="mt-0.5 h-4 w-4 shrink-0 rounded border-2 border-slate-300 text-[#1459d4] accent-[#1459d4]"
+                    />
+                    <span>Declaro que leí y acepto la Política de Privacidad.</span>
+                  </label>
+                </div>
+              </div>
+
               <AuthError message={error} />
 
-              <PrimaryAuthButton label="Autorizar revisión por IBA" isLoading={isSubmitting} />
+              <PrimaryAuthButton label="Autorizar revisión por IBA" isLoading={isSubmitting} disabled={!canSubmitMinorApproval} />
               <AuthFooter />
             </form>
           ) : (
@@ -935,11 +984,11 @@ function IconButton({ label, onClick, icon: Icon }: { label: string; onClick: ()
   );
 }
 
-function PrimaryAuthButton({ label, isLoading }: { label: string; isLoading: boolean }) {
+function PrimaryAuthButton({ label, isLoading, disabled = false }: { label: string; isLoading: boolean; disabled?: boolean }) {
   return (
     <button
       type="submit"
-      disabled={isLoading}
+      disabled={isLoading || disabled}
       className="mt-3 flex h-10 w-full items-center justify-center rounded-xl bg-[#062b70] px-4 text-[13px] font-bold text-white shadow-[0_18px_45px_rgba(6,43,112,0.25)] transition hover:bg-[#041f55] disabled:cursor-not-allowed disabled:bg-slate-400"
     >
       {isLoading ? <LoaderCircle className="mr-2 animate-spin" size={18} aria-hidden="true" /> : null}
@@ -1248,7 +1297,7 @@ function AuthFooter() {
       </div>
       <div className="mt-2 text-center">
         <a
-          href="/politica-tratamiento-datos.html"
+          href="politica-tratamiento-datos.html"
           target="_blank"
           rel="noreferrer"
           className="text-[10px] font-bold text-[#115bd8] underline-offset-4 hover:underline"
