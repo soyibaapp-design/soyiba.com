@@ -546,6 +546,28 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
                 />
               </div>
 
+              <div className="mt-2.5">
+                <AuthField
+                  id="register-birth-date"
+                  label="Fecha de nacimiento"
+                  icon={CalendarDays}
+                  type="date"
+                  autoComplete="bday"
+                  placeholder="Fecha de nacimiento"
+                  value={registerForm.fechaNacimiento}
+                  max={maxBirthDate}
+                  onChange={(value) => {
+                    const nextAgeGroup = getAgeGroupFromBirthDate(value);
+                    setRegisterForm((current) => ({
+                      ...current,
+                      fechaNacimiento: value,
+                      ageGroup: nextAgeGroup || current.ageGroup,
+                      guardianConsent: nextAgeGroup === 'adult' ? false : current.guardianConsent,
+                    }));
+                  }}
+                />
+              </div>
+
               <div className="mt-2.5 space-y-2.5">
                 <AuthField
                   id="register-email"
@@ -620,28 +642,11 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
               <fieldset className="mt-3 rounded-xl border border-[#DCE6F5] bg-white p-3">
                 <legend className="px-1 text-[11px] font-black text-[#06245c]">Edad y autorización</legend>
                 <div className="grid gap-2">
-                  <AuthField
-                    id="register-birth-date"
-                    label="Fecha de nacimiento"
-                    icon={CalendarDays}
-                    type="date"
-                    autoComplete="bday"
-                    placeholder="Fecha de nacimiento"
-                    value={registerForm.fechaNacimiento}
-                    max={maxBirthDate}
-                    onChange={(value) => {
-                      const nextAgeGroup = getAgeGroupFromBirthDate(value);
-                      setRegisterForm((current) => ({
-                        ...current,
-                        fechaNacimiento: value,
-                        ageGroup: nextAgeGroup || current.ageGroup,
-                        guardianConsent: nextAgeGroup === 'adult' ? false : current.guardianConsent,
-                      }));
-                    }}
-                  />
                   {registerAgeGroup ? (
                     <AgeStatus label={registerAgeGroup === 'minor' ? 'Menor de edad' : 'Mayor de edad'} minor={registerAgeGroup === 'minor'} />
-                  ) : null}
+                  ) : (
+                    <p className="text-[11px] font-semibold leading-4 text-[#52637C]">Ingresa tu fecha de nacimiento para calcular si eres mayor o menor de edad.</p>
+                  )}
                 </div>
                 {registerAgeGroup === 'minor' ? (
                   <label className="mt-3 flex items-start gap-2.5 text-[11px] font-semibold leading-4 text-[#52637C]">
