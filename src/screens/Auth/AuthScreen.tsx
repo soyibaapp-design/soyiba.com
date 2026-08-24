@@ -73,6 +73,9 @@ const emptyRegisterForm: RegisterFormState = {
   fechaNacimiento: '',
   ageGroup: 'adult',
   guardianConsent: false,
+  guardianName: '',
+  guardianEmail: '',
+  guardianPhone: '',
 };
 
 const emptyPasswordResetRequestForm: PasswordResetRequestState = {
@@ -211,9 +214,16 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
       return;
     }
 
-    if (registerAgeGroup === 'minor' && !registerForm.guardianConsent) {
-      setError('Para menores de edad se requiere autorización del representante legal.');
-      return;
+    if (registerAgeGroup === 'minor') {
+      if (!registerForm.guardianName.trim() || !registerForm.guardianEmail.trim() || !registerForm.guardianPhone.trim()) {
+        setError('Ingresa nombre, correo y celular del representante legal.');
+        return;
+      }
+
+      if (!registerForm.guardianConsent) {
+        setError('Para menores de edad se requiere autorización del representante legal.');
+        return;
+      }
     }
 
     setIsSubmitting(true);
@@ -227,6 +237,10 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
 
       if (result.ok) {
         onSignedIn(result.session);
+      } else if (result.pending) {
+        setStatusMessage(result.message || result.error);
+        setRegisterForm(emptyRegisterForm);
+        setAcceptedTerms(false);
       } else {
         setError(result.error);
       }
@@ -649,15 +663,50 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
                   )}
                 </div>
                 {registerAgeGroup === 'minor' ? (
-                  <label className="mt-3 flex items-start gap-2.5 text-[11px] font-semibold leading-4 text-[#52637C]">
-                    <input
-                      type="checkbox"
-                      checked={registerForm.guardianConsent}
-                      onChange={(event) => setRegisterForm((current) => ({ ...current, guardianConsent: event.target.checked }))}
-                      className="mt-0.5 h-4 w-4 shrink-0 rounded border-2 border-slate-300 text-[#1459d4] accent-[#1459d4]"
+                  <div className="mt-3 space-y-2.5">
+                    <AuthField
+                      id="register-guardian-name"
+                      label="Nombre del representante"
+                      icon={UserRound}
+                      autoComplete="name"
+                      placeholder="Nombre del representante legal"
+                      value={registerForm.guardianName}
+                      onChange={(value) => setRegisterForm((current) => ({ ...current, guardianName: value }))}
                     />
-                    <span>Confirmo que cuento con autorización de mi representante legal para registrarme y usar SOY IBA.</span>
-                  </label>
+                    <div className="grid gap-2.5 sm:grid-cols-2">
+                      <AuthField
+                        id="register-guardian-email"
+                        label="Correo del representante"
+                        icon={Mail}
+                        type="email"
+                        autoComplete="email"
+                        inputMode="email"
+                        placeholder="Correo del representante"
+                        value={registerForm.guardianEmail}
+                        onChange={(value) => setRegisterForm((current) => ({ ...current, guardianEmail: value }))}
+                      />
+                      <AuthField
+                        id="register-guardian-phone"
+                        label="Celular del representante"
+                        icon={Smartphone}
+                        type="tel"
+                        autoComplete="tel"
+                        inputMode="tel"
+                        placeholder="Celular del representante"
+                        value={registerForm.guardianPhone}
+                        onChange={(value) => setRegisterForm((current) => ({ ...current, guardianPhone: value }))}
+                      />
+                    </div>
+                    <label className="flex items-start gap-2.5 text-[11px] font-semibold leading-4 text-[#52637C]">
+                      <input
+                        type="checkbox"
+                        checked={registerForm.guardianConsent}
+                        onChange={(event) => setRegisterForm((current) => ({ ...current, guardianConsent: event.target.checked }))}
+                        className="mt-0.5 h-4 w-4 shrink-0 rounded border-2 border-slate-300 text-[#1459d4] accent-[#1459d4]"
+                      />
+                      <span>Confirmo que cuento con autorización de mi representante legal para iniciar el registro y solicitar su aprobación por correo.</span>
+                    </label>
+                  </div>
                 ) : null}
               </fieldset>
 
@@ -674,6 +723,7 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
                 </span>
               </label>
 
+              <AuthStatus message={statusMessage} />
               <AuthError message={error} />
 
               <PrimaryAuthButton label="Crear cuenta" isLoading={isSubmitting} />

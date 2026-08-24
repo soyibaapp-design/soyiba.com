@@ -38,6 +38,36 @@ type UpdateManagedUserResponse = {
   error?: string;
 };
 
+export type MinorValidationStatus = 'guardian_pending' | 'iba_pending' | 'approved' | 'rejected';
+
+export type MinorValidationRequest = {
+  id: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  userPhone: string;
+  fechaNacimiento: string;
+  guardianName: string;
+  guardianEmail: string;
+  guardianPhone: string;
+  status: MinorValidationStatus;
+  guardianApprovedAt: string;
+  validatedAt: string;
+  validatedByEmail: string;
+  rejectionReason: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type MinorValidationStatusResponse = {
+  ok: boolean;
+  status?: string;
+  guardianApprovedAt?: string;
+  reviewedAt?: string;
+  rejectionReason?: string;
+  error?: string;
+};
+
 export async function getManagedUsers(session: SoyibaSession): Promise<ManagedUser[]> {
   if (isFirebaseAuthEnabled()) {
     return getFirebaseManagedUsers();
@@ -104,6 +134,110 @@ export async function updateManagedUser(
   }
 
   return normalizeManagedUser(response.user);
+}
+
+export async function getMinorValidationRequests(session: SoyibaSession): Promise<MinorValidationRequest[]> {
+  if (!isFirebaseAuthEnabled()) {
+    return [];
+  }
+
+  const app = getFirebaseApp();
+
+  if (!app) {
+    throw new Error('Firebase no esta configurado.');
+  }
+
+  const { collection, doc, getDocs, getFirestore, serverTimestamp, updateDoc } = await import('firebase/firestore');
+  const db = getFirestore(app, getFirebaseUsersDatabaseId());
+  const snapshot = await getDocs(collection(db, 'minorValidationRequests'));
+  const requests = snapshot.docs
+    .map((item) => normalizeMinorValidationRequest({ id: item.id, ...item.data() }))
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+
+  await Promise.all(
+    requests
+      .filter((request) => request.status === 'guardian_pending')
+      .map(async (request) => {
+        try {
+          const status = await fetchGuardianApprovalStatus(request.id);
+          if (status.status === 'iba_pending') {
+            const updatedAt = new Date().toISOString();
+            await updateDoc(doc(db, 'minorValidationRequests', request.id), {
+              status: 'iba_pending',
+              guardianApprovedAt: status.guardianApprovedAt || updatedAt,
+              updatedAt,
+              updatedAtServer: serverTimestamp(),
+            });
+            request.status = 'iba_pending';
+            request.guardianApprovedAt = status.guardianApprovedAt || updatedAt;
+            request.updatedAt = updatedAt;
+          }
+        } catch {
+          // La cola sigue usable aunque la sincronizacion del correo falle temporalmente.
+        }
+      }),
+  );
+
+  return requests;
+}
+
+export async function reviewMinorValidationRequest(
+  session: SoyibaSession,
+  request: MinorValidationRequest,
+  decision: 'approved' | 'rejected',
+  rejectionReason = '',
+) {
+  if (!isFirebaseAuthEnabled()) {
+    throw new Error('La validacion de menores requiere Firebase.');
+  }
+
+  const app = getFirebaseApp();
+
+  if (!app) {
+    throw new Error('Firebase no esta configurado.');
+  }
+
+  const { doc, getFirestore, serverTimestamp, updateDoc } = await import('firebase/firestore');
+  const db = getFirestore(app, getFirebaseUsersDatabaseId());
+  const updatedAt = new Date().toISOString();
+  const approved = decision === 'approved';
+
+  await updateDoc(doc(db, 'minorValidationRequests', request.id), {
+    status: decision,
+    validatedByUserId: session.user.id,
+    validatedByEmail: session.user.email,
+    validatedAt: updatedAt,
+    rejectionReason: approved ? '' : rejectionReason,
+    updatedAt,
+    updatedAtServer: serverTimestamp(),
+  });
+
+  await updateDoc(doc(db, 'users', request.userId), {
+    estadoUsuario: approved ? 'Activo' : 'Bloqueado',
+    status: approved ? 'active' : 'minor_rejected',
+    active: approved,
+    minorValidationStatus: decision,
+    minorValidationReviewedAt: updatedAt,
+    minorValidationReviewedByUserId: session.user.id,
+    minorValidationReviewedByEmail: session.user.email,
+    minorValidationRejectionReason: approved ? '' : rejectionReason,
+    updatedAt,
+    updatedAtServer: serverTimestamp(),
+  });
+
+  await callAppsScript(
+    'Auth',
+    'reviewMinorValidationRequest',
+    {
+      requestId: request.id,
+      decision,
+      rejectionReason: approved ? '' : rejectionReason,
+      reviewerUserId: session.user.id,
+      reviewerEmail: session.user.email,
+    },
+    () => ({ ok: true }),
+    { timeoutMs: 12000 },
+  ).catch(() => undefined);
 }
 
 async function getFirebaseManagedUsers(): Promise<ManagedUser[]> {
@@ -252,6 +386,58 @@ function normalizeManagedUser(user: Partial<ManagedUser>): ManagedUser {
     updatedAt: stringValue(user.updatedAt),
     lastLoginAt: stringValue(user.lastLoginAt),
   };
+}
+
+async function fetchGuardianApprovalStatus(requestId: string) {
+  const response = await callAppsScript<MinorValidationStatusResponse>(
+    'Auth',
+    'getMinorValidationRequestStatus',
+    { requestId },
+    undefined,
+    { timeoutMs: 9000 },
+  );
+
+  if (!response.ok) {
+    throw new Error(response.error || 'No fue posible consultar el estado del representante.');
+  }
+
+  return {
+    status: normalizeMinorValidationStatus(response.status),
+    guardianApprovedAt: stringValue(response.guardianApprovedAt),
+    reviewedAt: stringValue(response.reviewedAt),
+    rejectionReason: stringValue(response.rejectionReason),
+  };
+}
+
+function normalizeMinorValidationRequest(record: Record<string, unknown>): MinorValidationRequest {
+  return {
+    id: stringValue(record.id || record.requestId || record.request_id),
+    userId: stringValue(record.userId || record.user_id),
+    userName: stringValue(record.userName || record.user_name),
+    userEmail: stringValue(record.userEmail || record.user_email).toLowerCase(),
+    userPhone: stringValue(record.userPhone || record.user_phone),
+    fechaNacimiento: stringValue(record.fechaNacimiento || record.fecha_nacimiento),
+    guardianName: stringValue(record.guardianName || record.guardian_name),
+    guardianEmail: stringValue(record.guardianEmail || record.guardian_email).toLowerCase(),
+    guardianPhone: stringValue(record.guardianPhone || record.guardian_phone),
+    status: normalizeMinorValidationStatus(record.status),
+    guardianApprovedAt: stringValue(record.guardianApprovedAt || record.guardian_approved_at),
+    validatedAt: stringValue(record.validatedAt || record.validated_at),
+    validatedByEmail: stringValue(record.validatedByEmail || record.validated_by_email),
+    rejectionReason: stringValue(record.rejectionReason || record.rejection_reason),
+    createdAt: stringValue(record.createdAt || record.created_at),
+    updatedAt: stringValue(record.updatedAt || record.updated_at),
+  };
+}
+
+function normalizeMinorValidationStatus(value: unknown): MinorValidationStatus {
+  const status = stringValue(value);
+
+  if (status === 'iba_pending' || status === 'approved' || status === 'rejected') {
+    return status;
+  }
+
+  return 'guardian_pending';
 }
 
 function getLocalManagedUsers(session: SoyibaSession) {

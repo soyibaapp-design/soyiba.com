@@ -347,12 +347,12 @@ export function ProfileScreen({
         },
         {
           id: 'users',
-          title: 'Gestión de usuarios',
-          description: 'Roles, estados, tipos y permisos.',
+          title: isManager(user) ? 'Gestión de usuarios' : 'Validación de menores',
+          description: isManager(user) ? 'Roles, estados, tipos y permisos.' : 'Revisar autorizaciones de representantes legales.',
           buttonLabel: 'Abrir',
           icon: UsersRound,
           tone: 'violet',
-          visible: isManager(user),
+          visible: isManager(user) || isTrue(user.minorValidator),
           target: 'usuarios',
         },
         {

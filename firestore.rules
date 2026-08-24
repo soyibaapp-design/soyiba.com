@@ -160,9 +160,27 @@ service cloud.firestore {
         && request.resource.data.rolSistema == 'Usuario'
         && request.resource.data.tipoUsuario == 'Asistente'
         && request.resource.data.tituloUsuario == 'Asistente'
-        && request.resource.data.estadoUsuario == 'Activo'
-        && request.resource.data.status == 'active'
-        && request.resource.data.active == true
+        && (
+          (
+            request.resource.data.registroMenorEdad == false
+            && request.resource.data.estadoUsuario == 'Activo'
+            && request.resource.data.status == 'active'
+            && request.resource.data.active == true
+            && request.resource.data.minorValidationStatus == 'not_required'
+          )
+          || (
+            request.resource.data.registroMenorEdad == true
+            && request.resource.data.estadoUsuario == 'Pendiente representante'
+            && request.resource.data.status == 'minor_pending_guardian'
+            && request.resource.data.active == false
+            && request.resource.data.autorizacionAcudiente == true
+            && request.resource.data.guardianName is string
+            && request.resource.data.guardianEmail is string
+            && request.resource.data.guardianPhone is string
+            && request.resource.data.minorValidationStatus == 'guardian_pending'
+            && request.resource.data.minorValidationRequestId is string
+          )
+        )
         && request.resource.data.publicador == false
         && request.resource.data.publicadorEco == false
         && request.resource.data.publicadorEvento == false
@@ -207,6 +225,11 @@ service cloud.firestore {
           'fechaNacimiento',
           'registroMenorEdad',
           'autorizacionAcudiente',
+          'guardianName',
+          'guardianEmail',
+          'guardianPhone',
+          'minorValidationStatus',
+          'minorValidationRequestId',
           'visibleDirectorio',
           'mostrarTelefono',
           'permitirWhatsapp',
@@ -219,15 +242,55 @@ service cloud.firestore {
         ]);
     }
 
+    function canValidateMinorUserActivation(userId) {
+      return canValidateMinors()
+        && resource.data.id == userId
+        && resource.data.registroMenorEdad == true
+        && request.resource.data.email == resource.data.email
+        && request.resource.data.id == resource.data.id
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'estadoUsuario',
+          'status',
+          'active',
+          'minorValidationStatus',
+          'minorValidationReviewedAt',
+          'minorValidationReviewedByUserId',
+          'minorValidationReviewedByEmail',
+          'minorValidationRejectionReason',
+          'updatedAt',
+          'updatedAtServer'
+        ])
+        && (
+          (
+            request.resource.data.minorValidationStatus == 'approved'
+            && request.resource.data.estadoUsuario == 'Activo'
+            && request.resource.data.status == 'active'
+            && request.resource.data.active == true
+          )
+          || (
+            request.resource.data.minorValidationStatus == 'rejected'
+            && request.resource.data.estadoUsuario == 'Bloqueado'
+            && request.resource.data.status == 'minor_rejected'
+            && request.resource.data.active == false
+          )
+          || (
+            request.resource.data.minorValidationStatus == 'iba_pending'
+            && request.resource.data.estadoUsuario == 'Pendiente IBA'
+            && request.resource.data.status == 'minor_pending_iba'
+            && request.resource.data.active == false
+          )
+        );
+    }
+
     match /users/{userId} {
-      allow get: if signedIn() && (request.auth.uid == userId || isManager());
+      allow get: if signedIn() && (request.auth.uid == userId || isManager() || (canValidateMinors() && resource.data.registroMenorEdad == true));
       allow list: if isManager();
       allow create: if isSelfInitialUserCreate(userId);
       allow update: if (
           isManager()
           && request.resource.data.email == resource.data.email
           && request.resource.data.id == resource.data.id
-        ) || isSelfMembershipUpdate(userId) || isSelfPhotoUpdate(userId) || isSelfProfileUpdate(userId);
+        ) || canValidateMinorUserActivation(userId) || isSelfMembershipUpdate(userId) || isSelfPhotoUpdate(userId) || isSelfProfileUpdate(userId);
       allow delete: if false;
     }
 
@@ -321,10 +384,12 @@ service cloud.firestore {
       allow get, list: if canValidateMinors();
       allow create: if signedIn()
         && request.resource.data.userId == request.auth.uid
-        && request.resource.data.status == 'pending';
+        && request.resource.data.status == 'guardian_pending'
+        && request.resource.data.id == requestId;
       allow update: if canValidateMinors()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'status',
+          'guardianApprovedAt',
           'validatedByUserId',
           'validatedByEmail',
           'validatedAt',

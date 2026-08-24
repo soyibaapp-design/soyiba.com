@@ -39,7 +39,7 @@ Instalar la PWA no da acceso a informacion interna. El directorio requiere sesio
 
 7. Menores de edad
 
-El registro solicita `fechaNacimiento` y calcula si el usuario es menor de edad. Si es menor, se exige confirmacion de autorizacion del representante legal y se registra `fechaNacimiento`, `registroMenorEdad` y `autorizacionAcudiente`. La iglesia debe conservar un procedimiento externo para validar esa autorizacion cuando sea necesario.
+El registro solicita `fechaNacimiento` y calcula si el usuario es menor de edad. Si es menor, se solicitan datos del representante legal, se envia un correo de aprobacion, la cuenta queda inactiva y se crea una solicitud interna. Cuando el representante aprueba, IBA debe revisar la solicitud con un usuario `minorValidator`, `Admin` o `Moderador`; solo entonces la cuenta queda activa. Se registran `fechaNacimiento`, `registroMenorEdad`, `autorizacionAcudiente`, `guardianName`, `guardianEmail`, `guardianPhone`, `minorValidationStatus` y la solicitud en `minorValidationRequests`.
 
 8. Revisiones o auditorias
 
@@ -58,6 +58,6 @@ La distribucion por enlace/QR debe acompanarse de controles de cuenta. La app no
 - Publicar la politica formal completa en un canal permanente de la iglesia.
 - Definir correo o canal para consultas, actualizaciones, revocatorias y supresion de datos.
 - Nombrar responsable interno del tratamiento de datos.
-- Completar el procedimiento verificable para menores de edad con autorizacion del representante, revision interna y evidencia de validacion.
+- Mantener responsables internos y evidencias operativas para el procedimiento de menores: aprobacion del representante, revision IBA, decision y motivo de rechazo cuando aplique.
 - Revisar si aplica inscripcion o actualizacion de bases de datos ante la RNBD/SIC segun la naturaleza juridica y obligaciones de la iglesia.
 - Programar auditoria externa o revision periodica de seguridad.

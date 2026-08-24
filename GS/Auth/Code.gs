@@ -1,5 +1,6 @@
 var SOYIBA_AUTH_SPREADSHEET_ID = '1Sk6f6mScrMTcXfa-psxoY4boa_1gqJmFt7anP-lpErM';
 var SOYIBA_AUTH_SHEET = 'Auth';
+var SOYIBA_MINOR_VALIDATION_SHEET = 'MinorValidationRequests';
 var SOYIBA_MIEMBROS_IBA_SHEET = 'MiembrosIBA';
 var SOYIBA_HEALTH_SESSIONS_SHEET = 'AppHealthSessions';
 var SOYIBA_AUTH_CODE_VERSION = 'membership-email-claim-validation-2026-07-21';
@@ -48,10 +49,36 @@ var SOYIBA_AUTH_HEADERS = [
   'fecha_nacimiento',
   'registro_menor_edad',
   'autorizacion_acudiente',
+  'guardian_name',
+  'guardian_email',
+  'guardian_phone',
+  'minor_validation_status',
+  'minor_validation_request_id',
   'visible_directorio',
   'mostrar_telefono',
   'permitir_whatsapp',
   'mostrar_foto'
+];
+var SOYIBA_MINOR_VALIDATION_HEADERS = [
+  'request_id',
+  'user_id',
+  'user_name',
+  'user_email',
+  'user_phone',
+  'fecha_nacimiento',
+  'guardian_name',
+  'guardian_email',
+  'guardian_phone',
+  'status',
+  'approval_token_hash',
+  'approval_token_salt',
+  'created_at',
+  'guardian_approved_at',
+  'reviewed_at',
+  'reviewed_by_user_id',
+  'reviewed_by_email',
+  'rejection_reason',
+  'updated_at'
 ];
 var SOYIBA_MIEMBROS_IBA_HEADERS = [
   'cc',
@@ -91,7 +118,13 @@ var SOYIBA_HEALTH_SESSION_HEADERS = [
   'updated_at'
 ];
 
-function doGet() {
+function doGet(e) {
+  var params = (e && e.parameter) || {};
+
+  if (params.action === 'approveMinor') {
+    return soyibaAuthGuardianApprovalHtml_(soyibaAuthApproveMinorByGuardian_(params));
+  }
+
   return soyibaAuthJson_({ ok: true, module: 'Auth', screen: 'Auth', version: SOYIBA_AUTH_CODE_VERSION });
 }
 
@@ -153,6 +186,18 @@ function doPost(e) {
       return soyibaAuthJson_(soyibaAuthCompletePasswordReset_(data));
     }
 
+    if (action === 'createMinorValidationRequest') {
+      return soyibaAuthJson_(soyibaAuthCreateMinorValidationRequest_(data));
+    }
+
+    if (action === 'getMinorValidationRequestStatus') {
+      return soyibaAuthJson_(soyibaAuthGetMinorValidationRequestStatus_(data));
+    }
+
+    if (action === 'reviewMinorValidationRequest') {
+      return soyibaAuthJson_(soyibaAuthReviewMinorValidationRequest_(data));
+    }
+
     if (action === 'listUsers') {
       return soyibaAuthJson_(soyibaAuthListUsers_(data));
     }
@@ -206,6 +251,11 @@ function soyibaAuthRegister_(data) {
   var fechaNacimiento = soyibaAuthNormalizeBirthDate_(data.fechaNacimiento || data.fecha_nacimiento);
   var registroMenorEdad = soyibaAuthIsMinorFromBirthDate_(fechaNacimiento);
   var autorizacionAcudiente = registroMenorEdad ? soyibaAuthIsTrue_(data.autorizacionAcudiente !== undefined ? data.autorizacionAcudiente : data.autorizacion_acudiente) : false;
+  var guardianName = registroMenorEdad ? String(data.guardianName || data.guardian_name || '').trim() : '';
+  var guardianEmail = registroMenorEdad ? soyibaAuthNormalizeEmail_(data.guardianEmail || data.guardian_email) : '';
+  var guardianPhone = registroMenorEdad ? String(data.guardianPhone || data.guardian_phone || '').trim() : '';
+  var requestId = registroMenorEdad ? String(data.requestId || data.request_id || Utilities.getUuid()).trim() : '';
+  var minorValidationStatus = registroMenorEdad ? 'guardian_pending' : 'not_required';
 
   if (!email || !password || !firstName || !lastName || !phone) {
     return { ok: false, error: 'Correo, contrasena, nombres, apellidos y celular son requeridos.' };
@@ -217,6 +267,10 @@ function soyibaAuthRegister_(data) {
 
   if (registroMenorEdad && !autorizacionAcudiente) {
     return { ok: false, error: 'Para menores de edad se requiere autorizacion del representante legal.' };
+  }
+
+  if (registroMenorEdad && (!guardianName || !guardianEmail || !guardianPhone)) {
+    return { ok: false, error: 'Datos del representante legal requeridos.' };
   }
 
   if (password.length < 8) {
@@ -242,7 +296,7 @@ function soyibaAuthRegister_(data) {
     salt,
     displayName,
     role,
-    'active',
+    registroMenorEdad ? 'minor_pending_guardian' : 'active',
     now,
     now,
     '',
@@ -253,14 +307,14 @@ function soyibaAuthRegister_(data) {
     tipoUsuario,
     tituloUsuario,
     rolSistema,
-    estadoUsuario,
+    registroMenorEdad ? 'Pendiente representante' : estadoUsuario,
     false,
     false,
     false,
     false,
     true,
     now,
-    true,
+    !registroMenorEdad,
     '',
     false,
     '',
@@ -269,11 +323,38 @@ function soyibaAuthRegister_(data) {
     fechaNacimiento,
     registroMenorEdad,
     autorizacionAcudiente,
+    guardianName,
+    guardianEmail,
+    guardianPhone,
+    minorValidationStatus,
+    requestId,
     false,
     false,
     false,
     true
   ]);
+
+  if (registroMenorEdad) {
+    soyibaAuthCreateMinorValidationRequest_({
+      requestId: requestId,
+      userId: userId,
+      userName: displayName,
+      userEmail: email,
+      userPhone: phone,
+      fechaNacimiento: fechaNacimiento,
+      guardianName: guardianName,
+      guardianEmail: guardianEmail,
+      guardianPhone: guardianPhone,
+      appUrl: data.appUrl || data.app_url
+    });
+
+    return {
+      ok: false,
+      pending: true,
+      message: 'Registro recibido. Enviamos un correo al representante legal; cuando apruebe, IBA revisara y activara la cuenta.',
+      requestId: requestId
+    };
+  }
 
   return {
     ok: true,
@@ -312,6 +393,11 @@ function soyibaAuthRegister_(data) {
       fechaNacimiento,
       registroMenorEdad,
       autorizacionAcudiente,
+      guardianName,
+      guardianEmail,
+      guardianPhone,
+      minorValidationStatus,
+      requestId,
       false,
       false,
       false,
@@ -401,6 +487,11 @@ function soyibaAuthBuildUser_(user) {
     fechaNacimiento: user.fecha_nacimiento || '',
     registroMenorEdad: soyibaAuthIsTrue_(user.registro_menor_edad),
     autorizacionAcudiente: soyibaAuthIsTrue_(user.autorizacion_acudiente),
+    guardianName: user.guardian_name || '',
+    guardianEmail: user.guardian_email || '',
+    guardianPhone: user.guardian_phone || '',
+    minorValidationStatus: user.minor_validation_status || '',
+    minorValidationRequestId: user.minor_validation_request_id || '',
     visibleDirectorio: soyibaAuthIsTrue_(user.visible_directorio),
     mostrarTelefono: soyibaAuthIsTrue_(user.mostrar_telefono),
     permitirWhatsapp: soyibaAuthIsTrue_(user.permitir_whatsapp),
@@ -606,6 +697,175 @@ function soyibaAuthCompletePasswordReset_(data) {
   soyibaAuthSetCell_(sheet, headers, found.row, 'reset_requested_at', '');
 
   return { ok: true, message: 'Tu contrasena fue actualizada. Ya puedes iniciar sesion.' };
+}
+
+function soyibaAuthCreateMinorValidationRequest_(data) {
+  var requestId = String(data.requestId || data.request_id || Utilities.getUuid()).trim();
+  var userId = String(data.userId || data.user_id || '').trim();
+  var userName = String(data.userName || data.user_name || '').trim();
+  var userEmail = soyibaAuthNormalizeEmail_(data.userEmail || data.user_email);
+  var userPhone = String(data.userPhone || data.user_phone || '').trim();
+  var fechaNacimiento = soyibaAuthNormalizeBirthDate_(data.fechaNacimiento || data.fecha_nacimiento);
+  var guardianName = String(data.guardianName || data.guardian_name || '').trim();
+  var guardianEmail = soyibaAuthNormalizeEmail_(data.guardianEmail || data.guardian_email);
+  var guardianPhone = String(data.guardianPhone || data.guardian_phone || '').trim();
+
+  if (!requestId || !userId || !userEmail || !fechaNacimiento || !guardianName || !guardianEmail || !guardianPhone) {
+    return { ok: false, error: 'Solicitud de menor incompleta.' };
+  }
+
+  var sheet = soyibaMinorValidationGetSheet_();
+  var existing = soyibaMinorValidationFindById_(sheet, requestId);
+  var now = new Date().toISOString();
+  var token = soyibaAuthCreateResetToken_();
+  var tokenSalt = Utilities.getUuid();
+  var tokenHash = soyibaAuthHashPassword_(token, tokenSalt);
+  var approvalLink = soyibaAuthBuildMinorApprovalLink_(requestId, token);
+  var row = [
+    requestId,
+    userId,
+    userName,
+    userEmail,
+    userPhone,
+    fechaNacimiento,
+    guardianName,
+    guardianEmail,
+    guardianPhone,
+    'guardian_pending',
+    tokenHash,
+    tokenSalt,
+    now,
+    '',
+    '',
+    '',
+    '',
+    '',
+    now
+  ];
+
+  if (existing.row > 0) {
+    soyibaMinorValidationReplaceRow_(sheet, existing.row, row);
+  } else {
+    sheet.appendRow(row);
+  }
+
+  MailApp.sendEmail({
+    to: guardianEmail,
+    subject: 'Aprobacion de registro de menor en SOY IBA',
+    name: 'SOY IBA',
+    body:
+      'Hola ' + guardianName + ',\n\n' +
+      userName + ' solicito registrarse en SOY IBA como menor de edad.\n\n' +
+      'Para autorizar que IBA revise y active esta cuenta, abre este enlace:\n' +
+      approvalLink + '\n\n' +
+      'Si no reconoces esta solicitud, ignora este correo.',
+    htmlBody: soyibaAuthBuildMinorApprovalEmailHtml_(guardianName, userName, approvalLink)
+  });
+
+  return { ok: true, requestId: requestId, status: 'guardian_pending' };
+}
+
+function soyibaAuthApproveMinorByGuardian_(params) {
+  var requestId = String(params.requestId || params.request_id || '').trim();
+  var token = String(params.token || '').trim();
+
+  if (!requestId || !token) {
+    return { ok: false, title: 'Enlace incompleto', message: 'El enlace de aprobacion no esta completo.' };
+  }
+
+  var sheet = soyibaMinorValidationGetSheet_();
+  var found = soyibaMinorValidationFindById_(sheet, requestId);
+
+  if (found.row < 1) {
+    return { ok: false, title: 'Solicitud no encontrada', message: 'No encontramos esta solicitud de validacion.' };
+  }
+
+  var salt = String(found.record.approval_token_salt || '');
+  var hash = String(found.record.approval_token_hash || '');
+
+  if (!salt || !hash || soyibaAuthHashPassword_(token, salt) !== hash) {
+    return { ok: false, title: 'Enlace no valido', message: 'El enlace de aprobacion no es valido.' };
+  }
+
+  var status = String(found.record.status || '').trim();
+  if (status !== 'guardian_pending') {
+    return { ok: true, title: 'Solicitud ya procesada', message: 'Esta autorizacion ya fue registrada anteriormente.' };
+  }
+
+  var headers = soyibaMinorValidationGetHeaders_(sheet);
+  var now = new Date().toISOString();
+  soyibaMinorValidationSetCell_(sheet, headers, found.row, 'status', 'iba_pending');
+  soyibaMinorValidationSetCell_(sheet, headers, found.row, 'guardian_approved_at', now);
+  soyibaMinorValidationSetCell_(sheet, headers, found.row, 'approval_token_hash', '');
+  soyibaMinorValidationSetCell_(sheet, headers, found.row, 'approval_token_salt', '');
+  soyibaMinorValidationSetCell_(sheet, headers, found.row, 'updated_at', now);
+
+  var authSheet = soyibaAuthGetSheet_();
+  var userFound = soyibaAuthFindUserByIdOrEmail_(authSheet, found.record.user_id, found.record.user_email);
+  if (userFound.row > 0) {
+    var authHeaders = soyibaAuthGetHeaders_(authSheet);
+    soyibaAuthSetCell_(authSheet, authHeaders, userFound.row, 'minor_validation_status', 'iba_pending');
+    soyibaAuthSetCell_(authSheet, authHeaders, userFound.row, 'estado_usuario', 'Pendiente IBA');
+    soyibaAuthSetCell_(authSheet, authHeaders, userFound.row, 'status', 'minor_pending_iba');
+    soyibaAuthSetCell_(authSheet, authHeaders, userFound.row, 'active', false);
+    soyibaAuthSetCell_(authSheet, authHeaders, userFound.row, 'updated_at', now);
+  }
+
+  return { ok: true, title: 'Autorizacion registrada', message: 'Gracias. IBA revisara la solicitud y activara la cuenta si corresponde.' };
+}
+
+function soyibaAuthGetMinorValidationRequestStatus_(data) {
+  var requestId = String(data.requestId || data.request_id || '').trim();
+
+  if (!requestId) {
+    return { ok: false, error: 'Solicitud requerida.' };
+  }
+
+  var sheet = soyibaMinorValidationGetSheet_();
+  var found = soyibaMinorValidationFindById_(sheet, requestId);
+
+  if (found.row < 1) {
+    return { ok: false, error: 'Solicitud no encontrada.' };
+  }
+
+  return {
+    ok: true,
+    requestId: requestId,
+    status: String(found.record.status || ''),
+    guardianApprovedAt: String(found.record.guardian_approved_at || ''),
+    reviewedAt: String(found.record.reviewed_at || ''),
+    rejectionReason: String(found.record.rejection_reason || '')
+  };
+}
+
+function soyibaAuthReviewMinorValidationRequest_(data) {
+  var requestId = String(data.requestId || data.request_id || '').trim();
+  var decision = String(data.decision || '').trim();
+  var reviewerUserId = String(data.reviewerUserId || data.reviewer_user_id || data.actorUserId || '').trim();
+  var reviewerEmail = soyibaAuthNormalizeEmail_(data.reviewerEmail || data.reviewer_email || data.actorEmail);
+  var rejectionReason = String(data.rejectionReason || data.rejection_reason || '').trim();
+
+  if (!requestId || ['approved', 'rejected'].indexOf(decision) < 0) {
+    return { ok: false, error: 'Decision de validacion no valida.' };
+  }
+
+  var sheet = soyibaMinorValidationGetSheet_();
+  var found = soyibaMinorValidationFindById_(sheet, requestId);
+
+  if (found.row < 1) {
+    return { ok: false, error: 'Solicitud no encontrada.' };
+  }
+
+  var headers = soyibaMinorValidationGetHeaders_(sheet);
+  var now = new Date().toISOString();
+  soyibaMinorValidationSetCell_(sheet, headers, found.row, 'status', decision);
+  soyibaMinorValidationSetCell_(sheet, headers, found.row, 'reviewed_at', now);
+  soyibaMinorValidationSetCell_(sheet, headers, found.row, 'reviewed_by_user_id', reviewerUserId);
+  soyibaMinorValidationSetCell_(sheet, headers, found.row, 'reviewed_by_email', reviewerEmail);
+  soyibaMinorValidationSetCell_(sheet, headers, found.row, 'rejection_reason', decision === 'rejected' ? rejectionReason : '');
+  soyibaMinorValidationSetCell_(sheet, headers, found.row, 'updated_at', now);
+
+  return { ok: true, requestId: requestId, status: decision };
 }
 
 function soyibaAuthUpdateProfilePhoto_(data) {
@@ -1242,6 +1502,65 @@ function soyibaMiembrosIbaGetSheet_() {
   return sheet;
 }
 
+function soyibaMinorValidationGetSheet_() {
+  var spreadsheet = SOYIBA_AUTH_SPREADSHEET_ID
+    ? SpreadsheetApp.openById(SOYIBA_AUTH_SPREADSHEET_ID)
+    : SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = spreadsheet.getSheetByName(SOYIBA_MINOR_VALIDATION_SHEET) || spreadsheet.insertSheet(SOYIBA_MINOR_VALIDATION_SHEET);
+  soyibaMinorValidationEnsureHeaders_(sheet);
+  return sheet;
+}
+
+function soyibaMinorValidationEnsureHeaders_(sheet) {
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(SOYIBA_MINOR_VALIDATION_HEADERS);
+    return;
+  }
+
+  var headers = soyibaMinorValidationGetHeaders_(sheet);
+  var needsRewrite = SOYIBA_MINOR_VALIDATION_HEADERS.some(function (header) {
+    return headers.indexOf(header) === -1;
+  });
+
+  if (needsRewrite) {
+    sheet.getRange(1, 1, 1, SOYIBA_MINOR_VALIDATION_HEADERS.length).setValues([SOYIBA_MINOR_VALIDATION_HEADERS]);
+  }
+}
+
+function soyibaMinorValidationGetHeaders_(sheet) {
+  return sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), SOYIBA_MINOR_VALIDATION_HEADERS.length)).getValues()[0];
+}
+
+function soyibaMinorValidationFindById_(sheet, requestId) {
+  var headers = soyibaMinorValidationGetHeaders_(sheet);
+  var idColumn = headers.indexOf('request_id');
+  var lastRow = sheet.getLastRow();
+
+  if (idColumn < 0 || lastRow < 2) {
+    return { row: -1, record: null };
+  }
+
+  var values = sheet.getRange(2, 1, lastRow - 1, Math.max(sheet.getLastColumn(), SOYIBA_MINOR_VALIDATION_HEADERS.length)).getValues();
+  for (var index = 0; index < values.length; index += 1) {
+    if (String(values[index][idColumn] || '').trim() === requestId) {
+      return { row: index + 2, record: soyibaAuthRowToObject_(headers, values[index]) };
+    }
+  }
+
+  return { row: -1, record: null };
+}
+
+function soyibaMinorValidationReplaceRow_(sheet, row, values) {
+  sheet.getRange(row, 1, 1, values.length).setValues([values]);
+}
+
+function soyibaMinorValidationSetCell_(sheet, headers, row, header, value) {
+  var column = headers.indexOf(header);
+  if (column >= 0) {
+    sheet.getRange(row, column + 1).setValue(value);
+  }
+}
+
 function soyibaMiembrosIbaEnsureHeaders_(sheet) {
   if (sheet.getLastRow() === 0) {
     sheet.appendRow(SOYIBA_MIEMBROS_IBA_HEADERS);
@@ -1770,6 +2089,16 @@ function soyibaAuthBuildResetLink_(appUrl, email, token) {
   return baseUrl + '#restablecer?email=' + encodeURIComponent(email) + '&token=' + encodeURIComponent(token);
 }
 
+function soyibaAuthBuildMinorApprovalLink_(requestId, token) {
+  var serviceUrl = ScriptApp.getService().getUrl();
+
+  if (!serviceUrl) {
+    throw new Error('Falta desplegar el Web App de Apps Script para generar el enlace del representante.');
+  }
+
+  return serviceUrl + '?action=approveMinor&requestId=' + encodeURIComponent(requestId) + '&token=' + encodeURIComponent(token);
+}
+
 function soyibaAuthGetFirstName_(user) {
   var firstName = String(user.first_name || user.firstName || '').trim();
 
@@ -1793,6 +2122,41 @@ function soyibaAuthBuildPasswordResetEmailHtml_(user, resetLink) {
     '<p>Si no hiciste esta solicitud, puedes ignorar este mensaje.</p>',
     '</div>'
   ].join('');
+}
+
+function soyibaAuthBuildMinorApprovalEmailHtml_(guardianName, userName, approvalLink) {
+  var safeGuardian = soyibaAuthEscapeHtml_(guardianName || 'representante');
+  var safeUser = soyibaAuthEscapeHtml_(userName || 'el menor');
+  var safeLink = soyibaAuthEscapeHtml_(approvalLink);
+
+  return [
+    '<div style="font-family:Arial,sans-serif;color:#06245c;line-height:1.5">',
+    '<h2 style="margin:0 0 12px">Aprobacion de registro de menor</h2>',
+    '<p>Hola ' + safeGuardian + ', ' + safeUser + ' solicito registrarse en SOY IBA como menor de edad.</p>',
+    '<p>Si autorizas que IBA revise esta solicitud y active la cuenta si corresponde, usa este boton:</p>',
+    '<p><a href="' + safeLink + '" style="display:inline-block;background:#062b70;color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:10px;font-weight:700">Autorizar revision por IBA</a></p>',
+    '<p>Si no reconoces esta solicitud, ignora este correo.</p>',
+    '</div>'
+  ].join('');
+}
+
+function soyibaAuthGuardianApprovalHtml_(result) {
+  var title = soyibaAuthEscapeHtml_(result.title || (result.ok ? 'Solicitud registrada' : 'No fue posible registrar la autorizacion'));
+  var message = soyibaAuthEscapeHtml_(result.message || '');
+  var color = result.ok ? '#047857' : '#b42318';
+
+  return HtmlService.createHtmlOutput([
+    '<!doctype html><html lang="es"><head><meta charset="utf-8">',
+    '<meta name="viewport" content="width=device-width,initial-scale=1">',
+    '<title>' + title + '</title></head>',
+    '<body style="margin:0;background:#f8fbff;font-family:Arial,sans-serif;color:#06245c">',
+    '<main style="min-height:100vh;display:grid;place-items:center;padding:24px">',
+    '<section style="max-width:520px;background:#fff;border:1px solid #dce6f5;border-radius:18px;padding:24px;box-shadow:0 18px 42px rgba(15,23,42,.08)">',
+    '<div style="width:48px;height:48px;border-radius:999px;background:' + color + ';opacity:.12;margin-bottom:14px"></div>',
+    '<h1 style="margin:0 0 10px;font-size:24px;line-height:1.15">' + title + '</h1>',
+    '<p style="margin:0;color:#40516f;line-height:1.5">' + message + '</p>',
+    '</section></main></body></html>'
+  ].join(''));
 }
 
 function soyibaAuthEscapeHtml_(value) {

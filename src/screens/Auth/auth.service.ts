@@ -23,6 +23,7 @@ export type SoyibaUser = {
   tituloUsuario?: string;
   rolSistema?: 'Admin' | 'Moderador' | 'Usuario' | 'Pruebas' | string;
   estadoUsuario?: string;
+  status?: string;
   publicador?: boolean;
   publicadorEco?: boolean;
   publicadorEvento?: boolean;
@@ -36,6 +37,11 @@ export type SoyibaUser = {
   fechaNacimiento?: string;
   registroMenorEdad?: boolean;
   autorizacionAcudiente?: boolean;
+  guardianName?: string;
+  guardianEmail?: string;
+  guardianPhone?: string;
+  minorValidationStatus?: string;
+  minorValidationRequestId?: string;
   visibleDirectorio?: boolean;
   mostrarTelefono?: boolean;
   permitirWhatsapp?: boolean;
@@ -56,6 +62,9 @@ export type RegisterPayload = {
   fechaNacimiento: string;
   ageGroup: 'adult' | 'minor';
   guardianConsent: boolean;
+  guardianName: string;
+  guardianEmail: string;
+  guardianPhone: string;
 };
 
 export type UpdateProfilePayload = {
@@ -82,6 +91,8 @@ type AuthResponse = {
   user?: SoyibaUser;
   message?: string;
   error?: string;
+  pending?: boolean;
+  requestId?: string;
 };
 
 const AUTH_LOGIN_RETRY_DELAYS_MS: number[] = [];
@@ -92,7 +103,7 @@ const PRIVACY_POLICY_VERSION = '2026-08-24';
 
 type AuthResult =
   | { ok: true; session: SoyibaSession }
-  | { ok: false; error: string };
+  | { ok: false; error: string; pending?: boolean; message?: string };
 
 export type BasicAuthResult =
   | { ok: true; message: string }
@@ -121,9 +132,15 @@ export async function signInWithEmailPassword(email: string, password: string): 
 
   if (isFirebaseAuthEnabled()) {
     try {
-      return { ok: true, session: await signInWithFirebaseEmailPassword(normalizedEmail, password) };
-    } catch {
-      return { ok: false, error: 'Correo o contrasena invalidos.' };
+      const session = await signInWithFirebaseEmailPassword(normalizedEmail, password);
+
+      if (!isUserAllowedToSignIn(session.user)) {
+        return { ok: false, error: getInactiveUserMessage(session.user) };
+      }
+
+      return { ok: true, session };
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : 'Correo o contrasena invalidos.' };
     }
   }
 
@@ -220,6 +237,9 @@ export async function registerWithEmailPassword(payload: RegisterPayload): Promi
   const displayName = [firstName, lastName].filter(Boolean).join(' ').trim();
   const birthDate = normalizeBirthDate(payload.fechaNacimiento);
   const ageInfo = getBirthDateAgeInfo(birthDate);
+  const guardianName = normalizeText(payload.guardianName);
+  const guardianEmail = normalizeEmail(payload.guardianEmail);
+  const guardianPhone = normalizeText(payload.guardianPhone);
 
   if (!firstName || !lastName || !normalizedEmail || !phone || !payload.password) {
     return { ok: false, error: 'Completa todos los campos para crear tu cuenta.' };
@@ -236,6 +256,10 @@ export async function registerWithEmailPassword(payload: RegisterPayload): Promi
     return { ok: false, error: 'Para menores de edad se requiere autorización del representante legal.' };
   }
 
+  if (isMinor && (!guardianName || !guardianEmail || !guardianPhone)) {
+    return { ok: false, error: 'Para menores de edad ingresa nombre, correo y celular del representante legal.' };
+  }
+
   if (isFirebaseAuthEnabled()) {
     return registerWithFirebaseEmailPassword({
       firstName,
@@ -246,6 +270,9 @@ export async function registerWithEmailPassword(payload: RegisterPayload): Promi
       fechaNacimiento: birthDate,
       ageGroup,
       guardianConsent: isMinor ? payload.guardianConsent : false,
+      guardianName: isMinor ? guardianName : '',
+      guardianEmail: isMinor ? guardianEmail : '',
+      guardianPhone: isMinor ? guardianPhone : '',
     });
   }
 
@@ -270,6 +297,10 @@ export async function registerWithEmailPassword(payload: RegisterPayload): Promi
       fechaNacimiento: birthDate,
       registroMenorEdad: isMinor,
       autorizacionAcudiente: isMinor ? payload.guardianConsent : false,
+      guardianName: isMinor ? guardianName : '',
+      guardianEmail: isMinor ? guardianEmail : '',
+      guardianPhone: isMinor ? guardianPhone : '',
+      appUrl: getAppBaseUrl(),
       visibleDirectorio: false,
       mostrarTelefono: false,
       permitirWhatsapp: false,
@@ -312,6 +343,15 @@ export async function registerWithEmailPassword(payload: RegisterPayload): Promi
     }),
   );
 
+  if (!response.ok && response.pending) {
+    return {
+      ok: false,
+      pending: true,
+      message: response.message || 'Registro recibido. Enviamos un correo al representante legal para continuar la validación.',
+      error: response.message || 'Registro pendiente de validación.',
+    };
+  }
+
   return normalizeAuthResponse(response, 'No fue posible crear la cuenta.');
 }
 
@@ -323,7 +363,7 @@ async function registerWithFirebaseEmailPassword(payload: RegisterPayload): Prom
   }
 
   try {
-    const [{ createUserWithEmailAndPassword, getAuth, updateProfile }, { doc, getFirestore, serverTimestamp, setDoc }] = await Promise.all([
+    const [{ createUserWithEmailAndPassword, getAuth, signOut, updateProfile }, { doc, getFirestore, serverTimestamp, setDoc }] = await Promise.all([
       import('firebase/auth'),
       import('firebase/firestore'),
     ]);
@@ -331,6 +371,9 @@ async function registerWithFirebaseEmailPassword(payload: RegisterPayload): Prom
     const credential = await createUserWithEmailAndPassword(auth, payload.email, payload.password);
     const displayName = [payload.firstName, payload.lastName].filter(Boolean).join(' ').trim();
     const now = new Date().toISOString();
+    const isMinor = payload.ageGroup === 'minor';
+    const requestId = isMinor ? createRequestId() : '';
+    const minorStatus = isMinor ? 'guardian_pending' : 'not_required';
     const user: SoyibaUser = {
       id: credential.user.uid,
       email: payload.email,
@@ -342,7 +385,7 @@ async function registerWithFirebaseEmailPassword(payload: RegisterPayload): Prom
       rolSistema: 'Usuario',
       tipoUsuario: 'Asistente',
       tituloUsuario: 'Asistente',
-      estadoUsuario: 'Activo',
+      estadoUsuario: isMinor ? 'Pendiente representante' : 'Activo',
       publicador: false,
       publicadorEco: false,
       publicadorEvento: false,
@@ -353,28 +396,39 @@ async function registerWithFirebaseEmailPassword(payload: RegisterPayload): Prom
       politicaDatosVersion: PRIVACY_POLICY_VERSION,
       autorizacionTratamientoDatos: true,
       fechaNacimiento: payload.fechaNacimiento,
-      registroMenorEdad: payload.ageGroup === 'minor',
-      autorizacionAcudiente: payload.ageGroup === 'minor' ? payload.guardianConsent : false,
+      registroMenorEdad: isMinor,
+      autorizacionAcudiente: isMinor ? payload.guardianConsent : false,
+      guardianName: isMinor ? payload.guardianName : '',
+      guardianEmail: isMinor ? payload.guardianEmail : '',
+      guardianPhone: isMinor ? payload.guardianPhone : '',
+      minorValidationStatus: minorStatus,
+      minorValidationRequestId: requestId,
       visibleDirectorio: false,
       mostrarTelefono: false,
       permitirWhatsapp: false,
       mostrarFoto: true,
-      active: true,
+      active: !isMinor,
     };
+    const db = getFirestore(app, getFirebaseAuthDatabaseId());
 
     await updateProfile(credential.user, { displayName });
-    await setDoc(doc(getFirestore(app, getFirebaseAuthDatabaseId()), 'users', credential.user.uid), {
+    await setDoc(doc(db, 'users', credential.user.uid), {
       ...user,
       emailHash: await sha256Hex(payload.email),
-      status: 'active',
+      status: isMinor ? 'minor_pending_guardian' : 'active',
       aceptoPoliticaDatos: true,
       fechaAceptacionPolitica: now,
       politicaDatosVersion: PRIVACY_POLICY_VERSION,
       autorizacionTratamientoDatos: true,
       tratamientoDatosAutorizadoAt: now,
       fechaNacimiento: payload.fechaNacimiento,
-      registroMenorEdad: payload.ageGroup === 'minor',
-      autorizacionAcudiente: payload.ageGroup === 'minor' ? payload.guardianConsent : false,
+      registroMenorEdad: isMinor,
+      autorizacionAcudiente: isMinor ? payload.guardianConsent : false,
+      guardianName: isMinor ? payload.guardianName : '',
+      guardianEmail: isMinor ? payload.guardianEmail : '',
+      guardianPhone: isMinor ? payload.guardianPhone : '',
+      minorValidationStatus: minorStatus,
+      minorValidationRequestId: requestId,
       visibleDirectorio: false,
       mostrarTelefono: false,
       permitirWhatsapp: false,
@@ -386,6 +440,45 @@ async function registerWithFirebaseEmailPassword(payload: RegisterPayload): Prom
       migratedFrom: 'firebase-register',
     });
 
+    if (isMinor) {
+      await setDoc(doc(db, 'minorValidationRequests', requestId), {
+        id: requestId,
+        userId: credential.user.uid,
+        userEmail: payload.email,
+        userName: displayName || payload.email,
+        userPhone: payload.phone,
+        fechaNacimiento: payload.fechaNacimiento,
+        guardianName: payload.guardianName,
+        guardianEmail: payload.guardianEmail,
+        guardianPhone: payload.guardianPhone,
+        status: 'guardian_pending',
+        createdAt: now,
+        updatedAt: now,
+        createdAtServer: serverTimestamp(),
+        updatedAtServer: serverTimestamp(),
+      });
+
+      await requestGuardianApprovalEmail({
+        requestId,
+        userId: credential.user.uid,
+        userName: displayName || payload.email,
+        userEmail: payload.email,
+        userPhone: payload.phone,
+        fechaNacimiento: payload.fechaNacimiento,
+        guardianName: payload.guardianName,
+        guardianEmail: payload.guardianEmail,
+        guardianPhone: payload.guardianPhone,
+      });
+      await signOut(auth);
+
+      return {
+        ok: false,
+        pending: true,
+        message: 'Registro recibido. Enviamos un correo al representante legal; cuando apruebe, IBA revisará y activará la cuenta.',
+        error: 'Registro pendiente de validación.',
+      };
+    }
+
     return {
       ok: true,
       session: {
@@ -395,6 +488,35 @@ async function registerWithFirebaseEmailPassword(payload: RegisterPayload): Prom
     };
   } catch (error) {
     return { ok: false, error: getFirebaseRegisterError(error) };
+  }
+}
+
+type GuardianApprovalEmailPayload = {
+  requestId: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  userPhone: string;
+  fechaNacimiento: string;
+  guardianName: string;
+  guardianEmail: string;
+  guardianPhone: string;
+};
+
+async function requestGuardianApprovalEmail(payload: GuardianApprovalEmailPayload) {
+  const response = await callAppsScript<{ ok: boolean; error?: string }>(
+    'Auth',
+    'createMinorValidationRequest',
+    {
+      ...payload,
+      appUrl: getAppBaseUrl(),
+    },
+    () => ({ ok: true }),
+    { timeoutMs: 16000 },
+  );
+
+  if (!response.ok) {
+    throw new Error(response.error || 'No fue posible enviar el correo al representante legal.');
   }
 }
 
@@ -1033,6 +1155,52 @@ function normalizeText(value: unknown) {
 
 function normalizeEmail(value: unknown) {
   return normalizeText(value).toLowerCase();
+}
+
+function createRequestId() {
+  if (globalThis.crypto && 'randomUUID' in globalThis.crypto) {
+    return globalThis.crypto.randomUUID();
+  }
+
+  return `minor-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+}
+
+function getAppBaseUrl() {
+  if (typeof window === 'undefined') {
+    return '';
+  }
+
+  return window.location.origin + window.location.pathname.replace(/[#?].*$/, '');
+}
+
+function isUserAllowedToSignIn(user: SoyibaUser) {
+  const status = normalizePlainText(user.status || '');
+  const minorStatus = normalizePlainText(user.minorValidationStatus || '');
+  const active = user.active === undefined ? true : Boolean(user.active);
+
+  if (status.startsWith('minor_pending') || ['guardian_pending', 'iba_pending', 'rejected'].includes(minorStatus)) {
+    return false;
+  }
+
+  return active && !['inactive', 'inactivo', 'blocked', 'bloqueado'].includes(status);
+}
+
+function getInactiveUserMessage(user: SoyibaUser) {
+  const minorStatus = normalizePlainText(user.minorValidationStatus || user.status || '');
+
+  if (minorStatus.includes('guardian')) {
+    return 'Tu cuenta está pendiente de aprobación por tu representante legal.';
+  }
+
+  if (minorStatus.includes('iba')) {
+    return 'Tu representante ya aprobó. La cuenta está pendiente de revisión por IBA.';
+  }
+
+  if (minorStatus.includes('reject')) {
+    return 'La validación del menor fue rechazada. Contacta a IBA para más información.';
+  }
+
+  return 'Tu cuenta aún no está activa.';
 }
 
 function normalizeBirthDate(value: unknown) {

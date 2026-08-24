@@ -19,6 +19,11 @@ type FirebaseUserProfile = Partial<SoyibaUser> & {
   fecha_nacimiento?: string;
   registro_menor_edad?: unknown;
   autorizacion_acudiente?: unknown;
+  guardian_name?: string;
+  guardian_email?: string;
+  guardian_phone?: string;
+  minor_validation_status?: string;
+  minor_validation_request_id?: string;
   visible_directorio?: unknown;
   mostrar_telefono?: unknown;
   permitir_whatsapp?: unknown;
@@ -40,10 +45,15 @@ export async function signInWithFirebaseEmailPassword(email: string, password: s
   const auth = getAuth(app);
   const credential = await signInWithEmailAndPassword(auth, email, password);
   const [token, tokenResult] = await Promise.all([credential.user.getIdToken(), credential.user.getIdTokenResult()]);
+  const profile = await getFirebaseUserProfile(app, credential.user.uid);
+
+  if (!Object.keys(profile).length) {
+    throw new Error('No fue posible validar el estado de tu cuenta. Intenta nuevamente.');
+  }
 
   return {
     token,
-    user: buildSoyibaUserFromFirebase(credential.user, tokenResult.claims, {}),
+    user: buildSoyibaUserFromFirebase(credential.user, tokenResult.claims, profile),
   };
 }
 
@@ -149,6 +159,7 @@ function buildSoyibaUserFromFirebase(
     tipoUsuario,
     tituloUsuario,
     estadoUsuario,
+    status: stringValue(profile.status || claims.status),
     tiempoIba: stringValue(profile.tiempoIba || claims.tiempoIba),
     photoUrl: stringValue(profile.photoUrl || profile.photo_url || firebaseUser.photoURL),
     publicador: toBoolean(profile.publicador ?? claims.publicador),
@@ -163,6 +174,11 @@ function buildSoyibaUserFromFirebase(
     fechaNacimiento: stringValue(profile.fechaNacimiento ?? profile.fecha_nacimiento),
     registroMenorEdad: toBoolean(profile.registroMenorEdad ?? profile.registro_menor_edad),
     autorizacionAcudiente: toBoolean(profile.autorizacionAcudiente ?? profile.autorizacion_acudiente),
+    guardianName: stringValue(profile.guardianName ?? profile.guardian_name),
+    guardianEmail: stringValue(profile.guardianEmail ?? profile.guardian_email),
+    guardianPhone: stringValue(profile.guardianPhone ?? profile.guardian_phone),
+    minorValidationStatus: stringValue(profile.minorValidationStatus ?? profile.minor_validation_status),
+    minorValidationRequestId: stringValue(profile.minorValidationRequestId ?? profile.minor_validation_request_id),
     visibleDirectorio: toBoolean(profile.visibleDirectorio ?? profile.visible_directorio),
     mostrarTelefono: toBoolean(profile.mostrarTelefono ?? profile.mostrar_telefono),
     permitirWhatsapp: toBoolean(profile.permitirWhatsapp ?? profile.permitir_whatsapp),

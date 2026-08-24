@@ -19,7 +19,10 @@ import {
 } from 'lucide-react';
 import type { SoyibaSession, SoyibaUser } from '../Auth/auth.service';
 import {
+  getMinorValidationRequests,
   getManagedUsers,
+  reviewMinorValidationRequest,
+  type MinorValidationRequest,
   updateManagedUser,
   type ManagedUser,
   type ManagedUserAccessPayload,
@@ -66,8 +69,13 @@ export function UsersManagementScreen({ session, onBack, onSessionUpdated, onMod
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [editingUser, setEditingUser] = useState<ManagedUser | null>(null);
+  const [minorRequests, setMinorRequests] = useState<MinorValidationRequest[]>([]);
+  const [minorRequestsLoading, setMinorRequestsLoading] = useState(true);
+  const [minorRequestsError, setMinorRequestsError] = useState('');
+  const [minorReviewBusyId, setMinorReviewBusyId] = useState('');
   const [savedMessage, setSavedMessage] = useState('');
   const canManage = isManager(session.user);
+  const canValidateMinors = canManage || isMinorValidator(session.user);
 
   useEffect(() => {
     onModalOpenChange?.(Boolean(editingUser));
@@ -103,6 +111,36 @@ export function UsersManagementScreen({ session, onBack, onSessionUpdated, onMod
       isMounted = false;
     };
   }, [canManage, session]);
+
+  useEffect(() => {
+    if (!canValidateMinors) {
+      setMinorRequestsLoading(false);
+      return;
+    }
+
+    let isMounted = true;
+    setMinorRequestsLoading(true);
+    setMinorRequestsError('');
+
+    getMinorValidationRequests(session)
+      .then((items) => {
+        if (!isMounted) return;
+        setMinorRequests(items);
+      })
+      .catch((loadError) => {
+        if (!isMounted) return;
+        setMinorRequestsError(loadError instanceof Error ? loadError.message : 'No fue posible cargar validaciones de menores.');
+      })
+      .finally(() => {
+        if (isMounted) {
+          setMinorRequestsLoading(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [canValidateMinors, session]);
 
   const filteredUsers = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -161,7 +199,41 @@ export function UsersManagementScreen({ session, onBack, onSessionUpdated, onMod
     return updatedUser;
   }
 
-  if (!canManage) {
+  async function handleReviewMinorRequest(request: MinorValidationRequest, decision: 'approved' | 'rejected') {
+    const rejectionReason = decision === 'rejected' ? window.prompt('Motivo del rechazo') || '' : '';
+
+    if (decision === 'rejected' && !rejectionReason.trim()) {
+      return;
+    }
+
+    setMinorReviewBusyId(request.id);
+    setMinorRequestsError('');
+
+    try {
+      await reviewMinorValidationRequest(session, request, decision, rejectionReason.trim());
+      setMinorRequests((current) =>
+        current.map((item) =>
+          item.id === request.id
+            ? {
+                ...item,
+                status: decision,
+                validatedAt: new Date().toISOString(),
+                validatedByEmail: session.user.email,
+                rejectionReason: decision === 'rejected' ? rejectionReason.trim() : '',
+              }
+            : item,
+        ),
+      );
+      setSavedMessage(decision === 'approved' ? `${request.userName} activado.` : `${request.userName} rechazado.`);
+      window.setTimeout(() => setSavedMessage(''), 2400);
+    } catch (reviewError) {
+      setMinorRequestsError(reviewError instanceof Error ? reviewError.message : 'No fue posible revisar la solicitud.');
+    } finally {
+      setMinorReviewBusyId('');
+    }
+  }
+
+  if (!canValidateMinors) {
     return (
       <motion.section
         initial={{ opacity: 0, y: 10 }}
@@ -183,7 +255,7 @@ export function UsersManagementScreen({ session, onBack, onSessionUpdated, onMod
             <ShieldCheck size={28} />
           </div>
           <h1 className="mt-4 text-lg font-black text-[#0B1F5B]">Acceso restringido</h1>
-          <p className="mt-2 text-sm font-bold leading-5 text-[#637295]">Tu rol actual no permite administrar usuarios.</p>
+          <p className="mt-2 text-sm font-bold leading-5 text-[#637295]">Tu rol actual no permite administrar usuarios ni validar menores.</p>
         </section>
       </motion.section>
     );
@@ -211,18 +283,28 @@ export function UsersManagementScreen({ session, onBack, onSessionUpdated, onMod
           <div className="min-w-0 flex-1">
             <p className="text-[11px] font-black uppercase text-[#145CFF]">Administración</p>
             <h1 className="mt-1 break-words text-2xl font-black leading-7 text-[#0B1F5B]">Gestión de usuarios</h1>
-            <p className="mt-1 text-sm font-semibold leading-5 text-[#637295]">Roles, estados, tipos y permisos.</p>
+            <p className="mt-1 text-sm font-semibold leading-5 text-[#637295]">{canManage ? 'Roles, estados, tipos, permisos y menores.' : 'Validación de menores de edad.'}</p>
           </div>
         </div>
       </header>
 
-      <section className="grid grid-cols-2 gap-2 min-[560px]:grid-cols-4">
+      {canManage ? <section className="grid grid-cols-2 gap-2 min-[560px]:grid-cols-4">
         <SummaryTile label="Usuarios" value={summary.total} icon={UsersRound} tone="bg-[#EAF2FF] text-[#145CFF]" />
         <SummaryTile label="Activos" value={summary.active} icon={CheckCircle2} tone="bg-[#E2F8EC] text-[#047857]" />
         <SummaryTile label="Gestores" value={summary.managers} icon={ShieldCheck} tone="bg-[#FFE9E8] text-[#E63737]" />
         <SummaryTile label="Permisos" value={summary.publishers} icon={Megaphone} tone="bg-[#FFF1DC] text-[#D46D00]" />
-      </section>
+      </section> : null}
 
+      <MinorValidationPanel
+        requests={minorRequests}
+        loading={minorRequestsLoading}
+        error={minorRequestsError}
+        busyId={minorReviewBusyId}
+        onReview={handleReviewMinorRequest}
+      />
+
+      {canManage ? (
+        <>
       <label className="block">
         <span className="mb-1.5 block text-[10px] font-black text-[#52637C]">Buscar usuario</span>
         <span className="flex h-12 items-center gap-2 rounded-[14px] border border-[#DCE6F5] bg-white px-3 text-sm font-bold text-[#0B1F5B] shadow-[0_12px_26px_rgba(15,23,42,0.06)] focus-within:border-[#145CFF] focus-within:ring-4 focus-within:ring-blue-100">
@@ -284,8 +366,120 @@ export function UsersManagementScreen({ session, onBack, onSessionUpdated, onMod
           }}
         />
       ) : null}
+        </>
+      ) : null}
     </motion.section>
   );
+}
+
+function MinorValidationPanel({
+  requests,
+  loading,
+  error,
+  busyId,
+  onReview,
+}: {
+  requests: MinorValidationRequest[];
+  loading: boolean;
+  error: string;
+  busyId: string;
+  onReview: (request: MinorValidationRequest, decision: 'approved' | 'rejected') => void;
+}) {
+  const pendingIba = requests.filter((request) => request.status === 'iba_pending');
+
+  return (
+    <section className="space-y-3 rounded-[18px] border border-[#DCE6F5] bg-white p-3 shadow-[0_14px_32px_rgba(15,23,42,0.06)]">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="text-base font-black text-[#0B1F5B]">Validación de menores</h2>
+          <p className="mt-0.5 text-[11px] font-bold leading-4 text-[#637295]">Representante legal, revisión IBA y activación final.</p>
+        </div>
+        <span className="shrink-0 rounded-full bg-[#FFF1DC] px-3 py-1 text-[10px] font-black text-[#D46D00]">{pendingIba.length} por revisar</span>
+      </div>
+
+      {error ? <p className="rounded-[12px] border border-rose-100 bg-rose-50 px-3 py-2 text-[11px] font-bold leading-4 text-rose-700">{error}</p> : null}
+
+      {loading ? (
+        <div className="flex h-24 items-center justify-center rounded-[14px] border border-[#DCE6F5] bg-[#F8FBFF] text-[#145CFF]">
+          <LoaderCircle size={22} className="animate-spin" />
+        </div>
+      ) : null}
+
+      {!loading && !requests.length ? (
+        <article className="rounded-[14px] border border-dashed border-[#B8C9E7] bg-[#F8FBFF] p-4 text-center">
+          <p className="text-sm font-black text-[#0B1F5B]">No hay solicitudes de menores.</p>
+        </article>
+      ) : null}
+
+      {!loading
+        ? requests.map((request) => {
+            const canReview = request.status === 'iba_pending';
+            const busy = busyId === request.id;
+
+            return (
+              <article key={request.id} className="rounded-[14px] border border-[#E7EDF8] bg-[#F8FBFF] p-3">
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <h3 className="break-words text-sm font-black text-[#0B1F5B]">{request.userName || request.userEmail}</h3>
+                    <p className="mt-0.5 text-[11px] font-bold text-[#64748B]">{request.userEmail}</p>
+                    <p className="mt-1 text-[11px] font-bold text-[#52637C]">Nacimiento: {request.fechaNacimiento || 'Sin fecha'}</p>
+                  </div>
+                  <MinorStatusBadge status={request.status} />
+                </div>
+                <div className="mt-3 grid gap-2 text-[11px] font-bold text-[#52637C] sm:grid-cols-2">
+                  <span>Representante: {request.guardianName || 'Sin nombre'}</span>
+                  <span>Correo: {request.guardianEmail || 'Sin correo'}</span>
+                  <span>Celular menor: {request.userPhone || 'Sin celular'}</span>
+                  <span>Celular representante: {request.guardianPhone || 'Sin celular'}</span>
+                </div>
+                {request.guardianApprovedAt ? <p className="mt-2 text-[11px] font-black text-emerald-700">Representante aprobó: {formatDateTime(request.guardianApprovedAt)}</p> : null}
+                {request.validatedAt ? <p className="mt-2 text-[11px] font-black text-[#52637C]">Revisado por {request.validatedByEmail || 'IBA'}: {formatDateTime(request.validatedAt)}</p> : null}
+                {request.rejectionReason ? <p className="mt-2 text-[11px] font-bold text-rose-700">Motivo: {request.rejectionReason}</p> : null}
+                {canReview ? (
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => onReview(request, 'approved')}
+                      className="inline-flex h-10 items-center justify-center gap-2 rounded-[11px] bg-[#047857] px-3 text-xs font-black text-white disabled:bg-slate-300"
+                    >
+                      {busy ? <LoaderCircle size={16} className="animate-spin" /> : <CheckCircle2 size={16} />}
+                      Activar cuenta
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => onReview(request, 'rejected')}
+                      className="inline-flex h-10 items-center justify-center gap-2 rounded-[11px] bg-[#B42318] px-3 text-xs font-black text-white disabled:bg-slate-300"
+                    >
+                      <X size={16} />
+                      Rechazar
+                    </button>
+                  </div>
+                ) : null}
+              </article>
+            );
+          })
+        : null}
+    </section>
+  );
+}
+
+function MinorStatusBadge({ status }: { status: MinorValidationRequest['status'] }) {
+  const labelByStatus: Record<MinorValidationRequest['status'], string> = {
+    guardian_pending: 'Pendiente representante',
+    iba_pending: 'Pendiente IBA',
+    approved: 'Aprobado',
+    rejected: 'Rechazado',
+  };
+  const className =
+    status === 'approved'
+      ? 'bg-[#DDF8EA] text-[#037A46] ring-[#7BD6AA]/50'
+      : status === 'rejected'
+        ? 'bg-[#FFE8E8] text-[#B42318] ring-[#FFB6B2]/50'
+        : 'bg-[#FFF1DC] text-[#D46D00] ring-[#FFD39A]';
+
+  return <span className={`rounded-full px-2.5 py-1 text-[10px] font-black ring-1 ${className}`}>{labelByStatus[status]}</span>;
 }
 
 function SummaryTile({ label, value, icon: Icon, tone }: { label: string; value: number; icon: LucideIcon; tone: string }) {
@@ -749,6 +943,26 @@ function normalizeAccessText(value: unknown) {
 
 function isManager(user: Pick<SoyibaUser, 'rolSistema' | 'role'>) {
   return ['admin', 'moderador'].includes(String(user.rolSistema || user.role || '').trim().toLowerCase());
+}
+
+function isMinorValidator(user: SoyibaUser) {
+  return user.minorValidator === true || ['true', '1', 'si', 'sí', 'yes'].includes(String(user.minorValidator || '').trim().toLowerCase());
+}
+
+function formatDateTime(value: string) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat('es-CO', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
 }
 
 function isActiveUser(user: Pick<ManagedUser, 'active' | 'estadoUsuario'>) {

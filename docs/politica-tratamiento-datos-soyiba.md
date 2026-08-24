@@ -43,7 +43,7 @@ El correo electronico no se publica en el directorio de miembros.
 
 ## 5. Menores de edad
 
-La aplicacion utiliza la fecha de nacimiento para determinar si una persona es menor de edad y aplicar restricciones de contenido. El registro de menores de edad requiere confirmacion de autorizacion del representante legal. La iglesia debera manejar estos datos respetando el interes superior del menor, sus derechos fundamentales y la minimizacion de informacion publicada.
+La aplicacion utiliza la fecha de nacimiento para determinar si una persona es menor de edad y aplicar restricciones de contenido. El registro de menores de edad solicita datos del representante legal, envia un correo de aprobacion, deja la cuenta inactiva mientras se valida y requiere revision interna de IBA antes de la activacion definitiva. La iglesia debera manejar estos datos respetando el interes superior del menor, sus derechos fundamentales y la minimizacion de informacion publicada.
 
 ## 6. Derechos de los titulares
 
