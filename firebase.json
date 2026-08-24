@@ -1,0 +1,8 @@
+{
+  "firestore": [
+    {
+      "database": "soyibadb",
+      "rules": "firestore.rules"
+    }
+  ]
+}
