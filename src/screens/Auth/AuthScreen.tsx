@@ -20,6 +20,7 @@ import {
 import loginHero from '../../../PrimaryAssets/Login.jpg';
 import iglesiaFooterLogo from '../../../PrimaryAssets/logo-iglesia-letras.png';
 import {
+  approveMinorRegistrationByGuardian,
   completePasswordReset,
   getPasswordResetEmailFromFirebaseCode,
   registerWithEmailPassword,
@@ -35,7 +36,7 @@ type AuthScreenProps = {
 };
 
 type LoginRegisterMode = 'login' | 'register';
-type AuthMode = LoginRegisterMode | 'forgot' | 'reset';
+type AuthMode = LoginRegisterMode | 'forgot' | 'reset' | 'approve-minor';
 type LegalModalId = 'privacy' | 'terms' | null;
 type PendingAccountModalState = {
   title: string;
@@ -60,6 +61,11 @@ type PasswordResetConfirmState = {
   token: string;
   password: string;
   confirmPassword: string;
+};
+
+type MinorApprovalState = {
+  requestId: string;
+  token: string;
 };
 
 const emptyLoginForm: LoginFormState = {
@@ -114,6 +120,7 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
   const passwordRules = useMemo(() => getPasswordRules(registerForm.password), [registerForm.password]);
   const resetPasswordRules = useMemo(() => getPasswordRules(passwordResetConfirmForm.password), [passwordResetConfirmForm.password]);
   const registerAgeGroup = useMemo(() => getAgeGroupFromBirthDate(registerForm.fechaNacimiento), [registerForm.fechaNacimiento]);
+  const minorApprovalState = useMemo(() => (mode === 'approve-minor' ? getMinorApprovalStateFromHash() : null), [mode]);
   const maxBirthDate = useMemo(() => getTodayDateInputValue(), []);
   const isRegister = mode === 'register';
 
@@ -335,6 +342,39 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
     }
   }
 
+  async function handleMinorApproval(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError('');
+    setStatusMessage('');
+    setPendingAccountModal(null);
+
+    if (!minorApprovalState) {
+      setError('El enlace de aprobación no está completo.');
+      return;
+    }
+
+    setIsSubmitting(true);
+
+    try {
+      const result = await approveMinorRegistrationByGuardian(minorApprovalState.requestId, minorApprovalState.token);
+
+      if (result.ok) {
+        setPendingAccountModal({
+          title: 'Autorización registrada',
+          message: result.message,
+        });
+        window.history.replaceState(null, '', getUrlForMode('login'));
+        setMode('login');
+      } else {
+        setError(result.error);
+      }
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : 'No fue posible registrar la autorización.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
   return (
     <main className="soyiba-app-backdrop h-[100dvh] overflow-x-hidden overflow-y-auto overscroll-contain text-[#06245c]">
       <div className="mx-auto min-h-full w-full max-w-3xl bg-[#061c4a]/88 pb-5 shadow-2xl shadow-slate-950/30 backdrop-blur-[1px]">
@@ -538,6 +578,35 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
               <AuthError message={error} />
 
               <PrimaryAuthButton label="Actualizar contraseña" isLoading={isSubmitting} />
+              <AuthFooter />
+            </form>
+          ) : mode === 'approve-minor' ? (
+            <form onSubmit={handleMinorApproval} className="mx-auto w-full max-w-md">
+              <div className="flex items-start gap-3">
+                <button
+                  type="button"
+                  onClick={() => switchMode('login')}
+                  aria-label="Volver al inicio de sesión"
+                  className="mt-1 grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#1459d4]/10 text-[#1459d4] transition hover:bg-blue-50"
+                >
+                  <ArrowLeft size={18} aria-hidden="true" />
+                </button>
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-[#1459d4]/10 text-[#1459d4] ring-1 ring-[#1459d4]/10" aria-hidden="true">
+                  <CheckCircle2 size={18} strokeWidth={2} />
+                </span>
+                <div className="min-w-0">
+                  <h1 className="text-[19px] font-bold leading-tight tracking-normal text-[#06245c]">Aprobar registro</h1>
+                  <p className="mt-1 text-[12px] leading-4 text-[#5b6a8f]">Autoriza que IBA revise el registro del menor.</p>
+                </div>
+              </div>
+
+              <div className="mt-4 rounded-xl border border-[#DCE6F5] bg-[#F8FBFF] px-4 py-3 text-sm font-semibold leading-6 text-[#52637C]">
+                Al continuar, confirmas que autorizas que IBA revise esta solicitud y active la cuenta si corresponde.
+              </div>
+
+              <AuthError message={error} />
+
+              <PrimaryAuthButton label="Autorizar revisión por IBA" isLoading={isSubmitting} />
               <AuthFooter />
             </form>
           ) : (
@@ -774,6 +843,10 @@ function getInitialMode(): AuthMode {
     return 'reset';
   }
 
+  if (hash.includes('aprobar-menor')) {
+    return 'approve-minor';
+  }
+
   if (hash.includes('recuperar')) {
     return 'forgot';
   }
@@ -962,6 +1035,10 @@ function getHashForMode(mode: AuthMode) {
     return '#restablecer';
   }
 
+  if (mode === 'approve-minor') {
+    return '#aprobar-menor';
+  }
+
   return '#login';
 }
 
@@ -1020,6 +1097,29 @@ function getPasswordResetStateFromHash(): PasswordResetConfirmState | null {
     password: '',
     confirmPassword: '',
   };
+}
+
+function getMinorApprovalStateFromHash(): MinorApprovalState | null {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  const hash = window.location.hash || '';
+  const queryStart = hash.indexOf('?');
+
+  if (queryStart < 0) {
+    return null;
+  }
+
+  const params = new URLSearchParams(hash.slice(queryStart + 1));
+  const requestId = params.get('requestId') || params.get('request_id') || '';
+  const token = params.get('token') || '';
+
+  if (!requestId || !token) {
+    return null;
+  }
+
+  return { requestId, token };
 }
 
 function InlineLink({ children, onClick }: { children: ReactNode; onClick: () => void }) {

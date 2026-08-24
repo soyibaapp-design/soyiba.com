@@ -194,6 +194,10 @@ function doPost(e) {
       return soyibaAuthJson_(soyibaAuthGetMinorValidationRequestStatus_(data));
     }
 
+    if (action === 'approveMinorByGuardian') {
+      return soyibaAuthJson_(soyibaAuthApproveMinorByGuardian_(data));
+    }
+
     if (action === 'reviewMinorValidationRequest') {
       return soyibaAuthJson_(soyibaAuthReviewMinorValidationRequest_(data));
     }
@@ -720,7 +724,7 @@ function soyibaAuthCreateMinorValidationRequest_(data) {
   var token = soyibaAuthCreateResetToken_();
   var tokenSalt = Utilities.getUuid();
   var tokenHash = soyibaAuthHashPassword_(token, tokenSalt);
-  var approvalLink = soyibaAuthBuildMinorApprovalLink_(requestId, token, data.approvalBaseUrl || data.approval_base_url || data.authUrl || data.auth_url);
+  var approvalLink = soyibaAuthBuildMinorApprovalLink_(requestId, token, data.appUrl || data.app_url, data.approvalBaseUrl || data.approval_base_url || data.authUrl || data.auth_url);
   var row = [
     requestId,
     userId,
@@ -2089,7 +2093,13 @@ function soyibaAuthBuildResetLink_(appUrl, email, token) {
   return baseUrl + '#restablecer?email=' + encodeURIComponent(email) + '&token=' + encodeURIComponent(token);
 }
 
-function soyibaAuthBuildMinorApprovalLink_(requestId, token, approvalBaseUrl) {
+function soyibaAuthBuildMinorApprovalLink_(requestId, token, appUrl, approvalBaseUrl) {
+  var appBaseUrl = soyibaAuthNormalizeAppUrl_(appUrl);
+
+  if (appBaseUrl) {
+    return appBaseUrl + '#aprobar-menor?requestId=' + encodeURIComponent(requestId) + '&token=' + encodeURIComponent(token);
+  }
+
   var serviceUrl = soyibaAuthNormalizeWebAppUrl_(approvalBaseUrl) || soyibaAuthNormalizeWebAppUrl_(ScriptApp.getService().getUrl());
 
   if (!serviceUrl) {
@@ -2097,6 +2107,16 @@ function soyibaAuthBuildMinorApprovalLink_(requestId, token, approvalBaseUrl) {
   }
 
   return serviceUrl + '?action=approveMinor&requestId=' + encodeURIComponent(requestId) + '&token=' + encodeURIComponent(token);
+}
+
+function soyibaAuthNormalizeAppUrl_(url) {
+  var normalized = String(url || '').trim();
+
+  if (!normalized) {
+    return '';
+  }
+
+  return normalized.replace(/[#?].*$/, '');
 }
 
 function soyibaAuthNormalizeWebAppUrl_(url) {

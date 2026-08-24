@@ -1182,6 +1182,28 @@ export async function getPasswordResetEmailFromFirebaseCode(token: string) {
   }
 }
 
+export async function approveMinorRegistrationByGuardian(requestId: string, token: string): Promise<BasicAuthResult> {
+  const normalizedRequestId = normalizeText(requestId);
+  const normalizedToken = normalizeText(token);
+
+  if (!normalizedRequestId || !normalizedToken) {
+    return { ok: false, error: 'El enlace de aprobación no está completo.' };
+  }
+
+  const response = await callAppsScript<BasicAuthResponse>(
+    'Auth',
+    'approveMinorByGuardian',
+    {
+      requestId: normalizedRequestId,
+      token: normalizedToken,
+    },
+    () => ({ ok: false, error: 'La aprobación del menor requiere conexión con SOY IBA.' }),
+    { timeoutMs: 16000 },
+  );
+
+  return normalizeBasicAuthResponse(response, 'No fue posible registrar la autorización.');
+}
+
 async function requestFirebasePasswordReset(email: string, appUrl: string): Promise<BasicAuthResult> {
   const app = getFirebaseApp();
 
