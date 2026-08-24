@@ -755,11 +755,11 @@ function soyibaAuthCreateMinorValidationRequest_(data) {
 
   MailApp.sendEmail({
     to: guardianEmail,
-    subject: 'Aprobacion de registro de menor en SOY IBA',
+    subject: 'Aprobación de registro de menor en SOY IBA',
     name: 'SOY IBA',
     body:
       'Hola ' + guardianName + ',\n\n' +
-      userName + ' solicito registrarse en SOY IBA como menor de edad.\n\n' +
+      userName + ' solicitó registrarse en SOY IBA como menor de edad.\n\n' +
       'Para autorizar que IBA revise y active esta cuenta, abre este enlace:\n' +
       approvalLink + '\n\n' +
       'Si no reconoces esta solicitud, ignora este correo.',
@@ -2165,10 +2165,10 @@ function soyibaAuthBuildMinorApprovalEmailHtml_(guardianName, userName, approval
 
   return [
     '<div style="font-family:Arial,sans-serif;color:#06245c;line-height:1.5">',
-    '<h2 style="margin:0 0 12px">Aprobacion de registro de menor</h2>',
-    '<p>Hola ' + safeGuardian + ', ' + safeUser + ' solicito registrarse en SOY IBA como menor de edad.</p>',
-    '<p>Si autorizas que IBA revise esta solicitud y active la cuenta si corresponde, usa este boton:</p>',
-    '<p><a href="' + safeLink + '" style="display:inline-block;background:#062b70;color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:10px;font-weight:700">Autorizar revision por IBA</a></p>',
+    '<h2 style="margin:0 0 12px">Aprobación de registro de menor</h2>',
+    '<p>Hola ' + safeGuardian + ', ' + safeUser + ' solicitó registrarse en SOY IBA como menor de edad.</p>',
+    '<p>Si autorizas que IBA revise esta solicitud y active la cuenta si corresponde, usa este botón:</p>',
+    '<p><a href="' + safeLink + '" style="display:inline-block;background:#062b70;color:#ffffff;text-decoration:none;padding:12px 18px;border-radius:10px;font-weight:700">Autorizar revisión por IBA</a></p>',
     '<p>Si no reconoces esta solicitud, ignora este correo.</p>',
     '</div>'
   ].join('');
