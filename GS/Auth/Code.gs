@@ -720,7 +720,7 @@ function soyibaAuthCreateMinorValidationRequest_(data) {
   var token = soyibaAuthCreateResetToken_();
   var tokenSalt = Utilities.getUuid();
   var tokenHash = soyibaAuthHashPassword_(token, tokenSalt);
-  var approvalLink = soyibaAuthBuildMinorApprovalLink_(requestId, token);
+  var approvalLink = soyibaAuthBuildMinorApprovalLink_(requestId, token, data.approvalBaseUrl || data.approval_base_url || data.authUrl || data.auth_url);
   var row = [
     requestId,
     userId,
@@ -2089,14 +2089,28 @@ function soyibaAuthBuildResetLink_(appUrl, email, token) {
   return baseUrl + '#restablecer?email=' + encodeURIComponent(email) + '&token=' + encodeURIComponent(token);
 }
 
-function soyibaAuthBuildMinorApprovalLink_(requestId, token) {
-  var serviceUrl = ScriptApp.getService().getUrl();
+function soyibaAuthBuildMinorApprovalLink_(requestId, token, approvalBaseUrl) {
+  var serviceUrl = soyibaAuthNormalizeWebAppUrl_(approvalBaseUrl) || soyibaAuthNormalizeWebAppUrl_(ScriptApp.getService().getUrl());
 
   if (!serviceUrl) {
     throw new Error('Falta desplegar el Web App de Apps Script para generar el enlace del representante.');
   }
 
   return serviceUrl + '?action=approveMinor&requestId=' + encodeURIComponent(requestId) + '&token=' + encodeURIComponent(token);
+}
+
+function soyibaAuthNormalizeWebAppUrl_(url) {
+  var normalized = String(url || '').trim();
+
+  if (!normalized) {
+    return '';
+  }
+
+  normalized = normalized.replace(/\/macros\/u\/\d+\/s\//, '/macros/s/');
+  normalized = normalized.replace(/\/dev(\?.*)?$/, '/exec');
+  normalized = normalized.replace(/\?.*$/, '');
+
+  return normalized;
 }
 
 function soyibaAuthGetFirstName_(user) {

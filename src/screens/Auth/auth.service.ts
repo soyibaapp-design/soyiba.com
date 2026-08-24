@@ -1,4 +1,4 @@
-import { callAppsScript } from '../../services/appsScriptClient';
+import { callAppsScript, getAppsScriptEndpoint } from '../../services/appsScriptClient';
 import { getFirebaseApp } from '../../services/firebase';
 import { isFirebaseAuthEnabled, refreshFirebaseSession, signInWithFirebaseEmailPassword } from '../../services/firebaseAuth';
 
@@ -604,6 +604,7 @@ async function requestGuardianApprovalEmail(payload: GuardianApprovalEmailPayloa
     {
       ...payload,
       appUrl: getAppBaseUrl(),
+      approvalBaseUrl: getAppsScriptEndpoint('Auth'),
     },
     () => ({ ok: true }),
     { timeoutMs: 16000 },
