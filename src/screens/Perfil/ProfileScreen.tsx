@@ -600,6 +600,30 @@ export function ProfileScreen({
         Cerrar sesión
       </button>
 
+      <div className="rounded-[16px] border border-[#D8E5F7] bg-white px-4 py-3 text-center shadow-[0_14px_32px_rgba(15,23,42,0.06)]">
+        <p className="text-[11px] font-bold leading-4 text-[#637295]">Documentos legales de SOY IBA</p>
+        <div className="mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
+          <a
+            href="politica-tratamiento-datos.html"
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 text-[11px] font-black text-[#145CFF] underline-offset-4 hover:underline"
+          >
+            <FileText size={13} />
+            Política de Tratamiento de Datos
+          </a>
+          <a
+            href="terminos-uso.html"
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 text-[11px] font-black text-[#145CFF] underline-offset-4 hover:underline"
+          >
+            <FileText size={13} />
+            Términos de Uso
+          </a>
+        </div>
+      </div>
+
       {editOpen ? (
         <EditProfileModal
           session={session}
