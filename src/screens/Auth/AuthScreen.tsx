@@ -14,7 +14,6 @@ import {
   Smartphone,
   UserPlus,
   UserRound,
-  X,
   type LucideIcon,
 } from 'lucide-react';
 import loginHero from '../../../PrimaryAssets/Login.jpg';
@@ -38,7 +37,6 @@ type AuthScreenProps = {
 type LoginRegisterMode = 'login' | 'register';
 type AuthMode = LoginRegisterMode | 'forgot' | 'reset' | 'approve-minor';
 type BirthDateAgeGroup = 'adult' | 'minor' | 'too-young';
-type LegalModalId = 'privacy' | 'terms' | null;
 type PendingAccountModalState = {
   title: string;
   message: string;
@@ -109,7 +107,8 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
   const [registerForm, setRegisterForm] = useState<RegisterFormState>(emptyRegisterForm);
   const [passwordResetRequestForm, setPasswordResetRequestForm] = useState<PasswordResetRequestState>(emptyPasswordResetRequestForm);
   const [passwordResetConfirmForm, setPasswordResetConfirmForm] = useState<PasswordResetConfirmState>(() => getPasswordResetStateFromHash() || emptyPasswordResetConfirmForm);
-  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [acceptedDataPolicy, setAcceptedDataPolicy] = useState(false);
+  const [acceptedTermsOfUse, setAcceptedTermsOfUse] = useState(false);
   const [minorApprovalAcceptedDataPolicy, setMinorApprovalAcceptedDataPolicy] = useState(false);
   const [minorApprovalAcceptedPrivacyPolicy, setMinorApprovalAcceptedPrivacyPolicy] = useState(false);
   const [error, setError] = useState('');
@@ -121,7 +120,6 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [showResetPassword, setShowResetPassword] = useState(false);
   const [showResetConfirmPassword, setShowResetConfirmPassword] = useState(false);
-  const [activeLegalModal, setActiveLegalModal] = useState<LegalModalId>(null);
 
   const passwordRules = useMemo(() => getPasswordRules(registerForm.password), [registerForm.password]);
   const resetPasswordRules = useMemo(() => getPasswordRules(passwordResetConfirmForm.password), [passwordResetConfirmForm.password]);
@@ -236,8 +234,8 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
       return;
     }
 
-    if (!acceptedTerms) {
-      setError('Debes aceptar la política de datos y los términos de uso.');
+    if (!acceptedDataPolicy || !acceptedTermsOfUse) {
+      setError('Debes aceptar la Política de Tratamiento de Datos y los Términos de Uso.');
       return;
     }
 
@@ -286,7 +284,8 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
         });
         setStatusMessage('');
         setRegisterForm(emptyRegisterForm);
-        setAcceptedTerms(false);
+        setAcceptedDataPolicy(false);
+        setAcceptedTermsOfUse(false);
       } else {
         setError(result.error);
       }
@@ -864,30 +863,50 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
                 ) : null}
               </fieldset>
 
-              <label className="mt-3 flex items-start gap-2.5 text-[11px] leading-4 text-[#06245c]">
-                <input
-                  type="checkbox"
-                  checked={acceptedTerms}
-                  onChange={(event) => setAcceptedTerms(event.target.checked)}
-                  className="mt-0.5 h-4 w-4 shrink-0 rounded border-2 border-slate-300 text-[#1459d4] accent-[#1459d4]"
-                />
-                <span>
-                  Acepto la <InlineLink onClick={() => setActiveLegalModal('privacy')}>Política de Tratamiento de Datos</InlineLink> y los{' '}
-                  <InlineLink onClick={() => setActiveLegalModal('terms')}>Términos de Uso.</InlineLink>
-                </span>
-              </label>
+              <div className="mt-3 space-y-2">
+                <label className="flex items-start gap-2.5 text-[11px] leading-4 text-[#06245c]">
+                  <input
+                    type="checkbox"
+                    checked={acceptedDataPolicy}
+                    onChange={(event) => setAcceptedDataPolicy(event.target.checked)}
+                    className="mt-0.5 h-4 w-4 shrink-0 rounded border-2 border-slate-300 text-[#1459d4] accent-[#1459d4]"
+                  />
+                  <span>
+                    Declaro que leí y acepto la{' '}
+                    <a href="politica-tratamiento-datos.html" target="_blank" rel="noreferrer" className="font-bold text-[#115bd8] underline-offset-4 hover:underline">
+                      Política de Tratamiento de Datos Personales y Privacidad
+                    </a>
+                    .
+                  </span>
+                </label>
+
+                <label className="flex items-start gap-2.5 text-[11px] leading-4 text-[#06245c]">
+                  <input
+                    type="checkbox"
+                    checked={acceptedTermsOfUse}
+                    onChange={(event) => setAcceptedTermsOfUse(event.target.checked)}
+                    className="mt-0.5 h-4 w-4 shrink-0 rounded border-2 border-slate-300 text-[#1459d4] accent-[#1459d4]"
+                  />
+                  <span>
+                    Declaro que leí y acepto los{' '}
+                    <a href="terminos-uso.html" target="_blank" rel="noreferrer" className="font-bold text-[#115bd8] underline-offset-4 hover:underline">
+                      Términos de Uso
+                    </a>
+                    .
+                  </span>
+                </label>
+              </div>
 
               <AuthStatus message={statusMessage} />
               <AuthError message={error} />
 
-              <PrimaryAuthButton label="Crear cuenta" isLoading={isSubmitting} />
+              <PrimaryAuthButton label="Crear cuenta" isLoading={isSubmitting} disabled={!acceptedDataPolicy || !acceptedTermsOfUse} />
 
               <AuthFooter />
             </form>
           )}
         </motion.section>
         <PendingAccountModal modal={pendingAccountModal} onClose={() => setPendingAccountModal(null)} />
-        <LegalModal activeModal={activeLegalModal} onClose={() => setActiveLegalModal(null)} />
       </div>
     </main>
   );
@@ -1199,117 +1218,6 @@ function getMinorApprovalStateFromHash(): MinorApprovalState | null {
   return { requestId, token };
 }
 
-function InlineLink({ children, onClick }: { children: ReactNode; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        onClick();
-      }}
-      className="font-medium text-[#115bd8] underline-offset-4 transition hover:text-[#06245c] hover:underline"
-    >
-      {children}
-    </button>
-  );
-}
-
-function LegalModal({ activeModal, onClose }: { activeModal: LegalModalId; onClose: () => void }) {
-  if (!activeModal) {
-    return null;
-  }
-
-  const content = activeModal === 'privacy' ? legalContent.privacy : legalContent.terms;
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#061c4a]/70 px-4 py-6 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="legal-modal-title">
-      <section className="max-h-[82svh] w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl shadow-slate-950/30">
-        <header className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
-          <h2 id="legal-modal-title" className="text-lg font-extrabold leading-tight text-[#06245c]">{content.title}</h2>
-          <button
-            type="button"
-            aria-label="Cerrar"
-            onClick={onClose}
-            className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-[#06245c]"
-          >
-            <X size={18} aria-hidden="true" />
-          </button>
-        </header>
-        <div className="max-h-[58svh] space-y-3 overflow-y-auto px-5 py-4 text-sm leading-6 text-slate-600">
-          {content.sections.map((section) => (
-            <section key={section.title}>
-              <h3 className="text-sm font-black text-[#06245c]">{section.title}</h3>
-              <p className="mt-1">{section.body}</p>
-            </section>
-          ))}
-        </div>
-        <footer className="border-t border-slate-200 px-5 py-4">
-          <button
-            type="button"
-            onClick={onClose}
-            className="h-11 w-full rounded-xl bg-[#062b70] text-sm font-bold text-white transition hover:bg-[#041f55]"
-          >
-            Entendido
-          </button>
-        </footer>
-      </section>
-    </div>
-  );
-}
-
-const legalContent = {
-  privacy: {
-    title: 'Política de Tratamiento de Datos',
-    sections: [
-      {
-        title: 'Responsable y finalidad',
-        body:
-          'La Iglesia Bíblica Antioquía trata tus datos para crear y administrar tu cuenta, validar membresía, facilitar comunicación interna, eventos, grupos ECO, publicaciones, notificaciones y servicios de la comunidad.',
-      },
-      {
-        title: 'Datos tratados',
-        body:
-          'La app puede tratar nombre, apellidos, correo, celular, foto, tiempo en la IBA, estado de membresía, roles, permisos, actividad dentro de la app y datos técnicos mínimos de seguridad como sesión, dispositivo, IP reportada y registros de uso.',
-      },
-      {
-        title: 'Visibilidad',
-        body:
-          'El directorio de miembros solo está disponible para usuarios autenticados y validados. Desde tu perfil puedes decidir si apareces en el directorio y si muestras foto, teléfono o WhatsApp.',
-      },
-      {
-        title: 'Menores de edad',
-        body:
-          'El registro de menores requiere autorización del padre o madre y se manejará bajo el interés superior del menor, evitando publicar información no necesaria.',
-      },
-      {
-        title: 'Derechos',
-        body:
-          'Puedes solicitar acceso, actualización, corrección, revocatoria o eliminación de tus datos por los canales oficiales de la iglesia. La autorización se registra de forma consultable para cumplir la normativa colombiana de protección de datos personales.',
-      },
-    ],
-  },
-  terms: {
-    title: 'Términos de Uso',
-    sections: [
-      {
-        title: 'Uso autorizado',
-        body:
-          'SOY IBA es una plataforma privada de apoyo a la vida de la Iglesia Bíblica Antioquía. Debes usarla de manera respetuosa, responsable y conforme al propósito de la comunidad.',
-      },
-      {
-        title: 'Acceso',
-        body:
-          'Tener el enlace o código QR no garantiza acceso a información interna. La iglesia puede activar, validar, limitar o bloquear cuentas según roles, membresía, seguridad y uso adecuado.',
-      },
-      {
-        title: 'Contenido y seguridad',
-        body:
-          'No debes publicar información falsa, ofensiva, confidencial o de terceros sin autorización. El uso indebido puede generar restricciones de acceso y revisión administrativa.',
-      },
-    ],
-  },
-} as const;
 function AuthFooter() {
   return (
     <footer className="mt-2.5">
@@ -1323,7 +1231,7 @@ function AuthFooter() {
         />
         <span className="h-px flex-1 bg-slate-300" aria-hidden="true" />
       </div>
-      <div className="mt-2 text-center">
+      <div className="mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-center">
         <a
           href="politica-tratamiento-datos.html"
           target="_blank"
@@ -1331,6 +1239,14 @@ function AuthFooter() {
           className="text-[10px] font-bold text-[#115bd8] underline-offset-4 hover:underline"
         >
           Política de Tratamiento de Datos y Privacidad
+        </a>
+        <a
+          href="terminos-uso.html"
+          target="_blank"
+          rel="noreferrer"
+          className="text-[10px] font-bold text-[#115bd8] underline-offset-4 hover:underline"
+        >
+          Términos de Uso
         </a>
       </div>
     </footer>
