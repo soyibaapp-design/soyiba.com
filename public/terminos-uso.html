@@ -5,98 +5,615 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Términos de Uso - SOY IBA</title>
     <style>
+
+      :root {
+        color-scheme: light;
+        --ink: #0b1f5b;
+        --muted: #40516f;
+        --soft: #637295;
+        --line: #dce6f5;
+        --accent: #145cff;
+        --paper: #ffffff;
+        --backdrop: #f8fbff;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
       body {
         margin: 0;
-        background: #f8fbff;
-        color: #0b1f5b;
+        background: var(--backdrop);
+        color: var(--ink);
         font-family: Arial, sans-serif;
-        line-height: 1.55;
+        line-height: 1.6;
       }
 
       main {
-        box-sizing: border-box;
-        width: min(880px, 100%);
+        width: min(920px, 100%);
         margin: 0 auto;
-        padding: 28px 18px 48px;
+        padding: 28px 18px 52px;
       }
 
       article {
-        border: 1px solid #dce6f5;
+        border: 1px solid var(--line);
         border-radius: 18px;
-        background: #ffffff;
-        padding: 24px;
+        background: var(--paper);
+        padding: clamp(20px, 4vw, 34px);
         box-shadow: 0 18px 42px rgba(15, 23, 42, 0.07);
       }
 
       h1 {
         margin: 0 0 8px;
-        font-size: 28px;
-        line-height: 1.1;
+        font-size: clamp(24px, 5vw, 34px);
+        line-height: 1.12;
+        letter-spacing: 0;
+      }
+
+      .subtitle {
+        margin: 0;
+        color: var(--ink);
+        font-size: 14px;
+        font-weight: 800;
+        letter-spacing: 0;
+      }
+
+      .date {
+        margin: 4px 0 24px;
+        color: var(--soft);
+        font-size: 13px;
+        font-weight: 700;
       }
 
       h2 {
-        margin: 26px 0 8px;
-        font-size: 18px;
+        margin: 30px 0 10px;
+        border-top: 1px solid var(--line);
+        padding-top: 22px;
+        color: var(--ink);
+        font-size: 19px;
+        line-height: 1.28;
+        letter-spacing: 0;
+      }
+
+      h3 {
+        margin: 20px 0 8px;
+        color: var(--ink);
+        font-size: 15px;
+        line-height: 1.35;
+        letter-spacing: 0;
       }
 
       p,
       li {
-        color: #40516f;
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      p {
+        margin: 9px 0;
       }
 
       ul {
-        padding-left: 20px;
+        margin: 8px 0 14px;
+        padding-left: 22px;
       }
 
-      .date {
-        margin: 0 0 20px;
-        color: #637295;
+      li {
+        margin: 5px 0;
+      }
+
+      .checkline {
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: #f8fbff;
+        padding: 10px 12px;
+        color: var(--ink);
         font-weight: 700;
       }
 
+      .signature {
+        margin-top: 26px;
+        border-top: 1px solid var(--line);
+        padding-top: 16px;
+        color: var(--ink);
+        font-weight: 800;
+      }
+
       a {
-        color: #145cff;
+        color: var(--accent);
       }
     </style>
   </head>
   <body>
     <main>
       <article>
-        <h1>Términos de Uso - SOY IBA</h1>
-        <p class="date">Fecha de versión: 2026-08-25</p>
-
-        <h2>1. Naturaleza de la aplicación</h2>
-        <p>SOY IBA es una aplicación privada de apoyo a la vida comunitaria, administrativa y ministerial de la Iglesia Bíblica Antioquía. Su uso está dirigido a personas autorizadas por la iglesia.</p>
-
-        <h2>2. Acceso y validación</h2>
-        <p>Tener el enlace, código QR o archivo de instalación no garantiza acceso a la información interna. La iglesia puede validar, activar, limitar, suspender o bloquear cuentas según identidad, membresía, edad, roles, permisos, seguridad y uso adecuado.</p>
-
-        <h2>3. Responsabilidades del usuario</h2>
+        <h1>TÉRMINOS DE USO</h1>
+        <p class="subtitle">IGLESIA BÍBLICA ANTIOQUÍA — SOYIBA</p>
+        <p class="date">Versión: 1.0 Fecha de entrada en vigencia: 25 de agosto de 2026</p>
+        <h2>1. IDENTIFICACIÓN DEL TITULAR Y RESPONSABLE DE SOYIBA</h2>
+        <p>La aplicación SOYIBA es administrada por:</p>
+        <p>Razón social: IGLESIA BÍBLICA ANTIOQUÍA NIT: 9016924665 Domicilio: Envigado, Antioquia, Colombia Dirección: Calle 38 A Sur # 38-34 Teléfono: 321 811 4396 Correo electrónico: iglesiaibaenvigado@gmail.com</p>
+        <p>En adelante, la IGLESIA BÍBLICA ANTIOQUÍA podrá ser denominada “IBA”.</p>
+        <h2>2. OBJETO DE LOS TÉRMINOS DE USO</h2>
+        <p>Los presentes Términos de Uso regulan las condiciones de acceso, registro, utilización, participación y permanencia de los usuarios dentro de SOYIBA.</p>
+        <p>Su finalidad es establecer reglas claras que permitan utilizar la aplicación de manera segura, respetuosa y coherente con:</p>
         <ul>
-          <li>Registrar información verdadera, actualizada y propia.</li>
-          <li>Mantener la confidencialidad de sus credenciales de acceso.</li>
-          <li>Usar la aplicación de forma respetuosa y conforme al propósito de la comunidad.</li>
-          <li>No compartir información interna de la congregación por fuera de la aplicación sin autorización.</li>
-          <li>No intentar acceder, modificar, copiar o divulgar información para la cual no tenga permiso.</li>
+          <li>La naturaleza eclesial de IBA.</li>
+          <li>Los fines comunitarios de SOYIBA.</li>
+          <li>Los derechos de los demás usuarios.</li>
+          <li>La protección de niños, niñas y adolescentes.</li>
+          <li>La seguridad de la información.</li>
+          <li>La propiedad intelectual.</li>
+          <li>La legislación colombiana aplicable.</li>
         </ul>
-
-        <h2>4. Contenido y comunicaciones</h2>
-        <p>Los usuarios autorizados para publicar contenido deben cuidar que la información sea pertinente, veraz, respetuosa y alineada con los fines de SOY IBA. La iglesia puede revisar, editar, retirar o restringir publicaciones, eventos, enlaces, recursos o comunicaciones cuando sea necesario.</p>
-
-        <h2>5. Menores de edad</h2>
-        <p>El registro de menores de edad requiere autorización del padre o madre y revisión posterior de IBA antes de la activación definitiva. Las cuentas de menores tendrán restricciones especiales de privacidad y visualización de información.</p>
-
-        <h2>6. Uso de datos personales</h2>
-        <p>El uso de SOY IBA implica la aceptación de la Política de Tratamiento de Datos Personales y Privacidad, en la cual se explican las finalidades, datos tratados, derechos de los titulares y medidas de seguridad aplicadas.</p>
-
-        <h2>7. Seguridad</h2>
-        <p>El usuario debe reportar cualquier acceso no autorizado, error de seguridad, suplantación, pérdida de credenciales o uso indebido de la aplicación por los canales oficiales de la Iglesia Bíblica Antioquía.</p>
-
-        <h2>8. Cambios en los términos</h2>
-        <p>La Iglesia Bíblica Antioquía podrá actualizar estos términos cuando cambien las funcionalidades, riesgos, normas aplicables o necesidades de la comunidad. Cuando corresponda, la aplicación podrá solicitar una nueva aceptación.</p>
-
-        <h2>9. Contacto</h2>
-        <p>Las solicitudes, dudas o reportes relacionados con estos términos deben presentarse por los canales oficiales definidos por la Iglesia Bíblica Antioquía.</p>
+        <p>El acceso o utilización de SOYIBA deberá realizarse conforme a estos Términos, a la Política de Tratamiento de Datos Personales, a las demás reglas internas aplicables y a la legislación vigente.</p>
+        <h2>3. NATURALEZA DE SOYIBA</h2>
+        <p>SOYIBA es una plataforma tecnológica privada de naturaleza eclesial, desarrollada para apoyar las actividades comunitarias, administrativas, informativas y ministeriales de la IGLESIA BÍBLICA ANTIOQUÍA.</p>
+        <p>La aplicación podrá incluir funcionalidades relacionadas, entre otras, con:</p>
+        <ul>
+          <li>Perfiles de usuarios.</li>
+          <li>Directorio de miembros.</li>
+          <li>Publicaciones.</li>
+          <li>Eventos.</li>
+          <li>Inscripciones.</li>
+          <li>Grupos ECO.</li>
+          <li>Comunicaciones internas.</li>
+          <li>Notificaciones.</li>
+          <li>Recursos de la iglesia.</li>
+          <li>Información congregacional.</li>
+          <li>Gestión de miembros.</li>
+          <li>Roles y permisos.</li>
+          <li>Otras funcionalidades vinculadas a la vida comunitaria de IBA.</li>
+        </ul>
+        <p>SOYIBA no constituye una red social pública de libre acceso.</p>
+        <p>La existencia de un enlace, código QR, archivo de instalación, dirección web o cualquier mecanismo técnico de acceso no otorga automáticamente el derecho a utilizar las funcionalidades internas de la plataforma.</p>
+        <p>IBA podrá establecer procedimientos de validación de identidad, vinculación, membresía, edad, estado de cuenta, roles y permisos antes de habilitar determinadas funcionalidades.</p>
+        <h2>4. ACEPTACIÓN DE LOS TÉRMINOS</h2>
+        <p>El usuario deberá aceptar expresamente los presentes Términos de Uso mediante el mecanismo electrónico dispuesto por SOYIBA.</p>
+        <p>La aceptación podrá registrarse mediante información como:</p>
+        <ul>
+          <li>Identificador del usuario.</li>
+          <li>Fecha y hora.</li>
+          <li>Versión de los Términos aceptada.</li>
+          <li>Medio electrónico utilizado.</li>
+          <li>Registro técnico de la aceptación.</li>
+        </ul>
+        <p>La aceptación electrónica podrá conservarse como evidencia de la manifestación de voluntad del usuario.</p>
+        <p>La Ley 527 de 1999 reconoce efectos jurídicos a los mensajes de datos y establece que no podrá negarse validez o fuerza obligatoria a una manifestación de voluntad por el solo hecho de realizarse electrónicamente.</p>
+        <p>La aceptación de estos Términos será independiente de la autorización para el Tratamiento de Datos Personales.</p>
+        <p>Por ello, SOYIBA podrá solicitar separadamente:</p>
+        <p class="checkline">☐ Acepto los Términos de Uso de SOYIBA.</p>
+        <p>y</p>
+        <p class="checkline">☐ Autorizo el Tratamiento de mis Datos Personales conforme a la Política de Tratamiento de Datos Personales.</p>
+        <h2>5. REQUISITOS PARA EL ACCESO</h2>
+        <p>Para acceder a SOYIBA, el usuario deberá cumplir las condiciones que IBA establezca según el tipo de cuenta.</p>
+        <p>IBA podrá requerir, entre otros:</p>
+        <ul>
+          <li>Registro previo.</li>
+          <li>Verificación de correo electrónico.</li>
+          <li>Validación de identidad.</li>
+          <li>Confirmación de vinculación con IBA.</li>
+          <li>Aprobación administrativa.</li>
+          <li>Autorización de representante legal para menores.</li>
+          <li>Cumplimiento de requisitos específicos según el rol.</li>
+        </ul>
+        <p>La creación de una cuenta no implica que todas las funcionalidades deban quedar habilitadas automáticamente.</p>
+        <p>IBA podrá establecer diferentes niveles de acceso según:</p>
+        <ul>
+          <li>Tipo de usuario.</li>
+          <li>Membresía.</li>
+          <li>Edad.</li>
+          <li>Estado de validación.</li>
+          <li>Rol.</li>
+          <li>Permisos.</li>
+          <li>Responsabilidades administrativas.</li>
+          <li>Necesidades de seguridad.</li>
+        </ul>
+        <h2>6. CUENTA PERSONAL E INTRANSFERIBLE</h2>
+        <p>Las cuentas de SOYIBA son personales.</p>
+        <p>El usuario se compromete a:</p>
+        <ul>
+          <li>Utilizar únicamente su propia cuenta.</li>
+          <li>No prestar sus credenciales.</li>
+          <li>No permitir que terceros utilicen su sesión.</li>
+          <li>Mantener bajo reserva sus mecanismos de autenticación.</li>
+          <li>Informar a IBA cuando sospeche que su cuenta ha sido comprometida.</li>
+        </ul>
+        <p>Queda prohibido:</p>
+        <ul>
+          <li>Suplantar a otra persona.</li>
+          <li>Crear cuentas utilizando información falsa.</li>
+          <li>Acceder mediante credenciales ajenas.</li>
+          <li>Facilitar intencionalmente el acceso de una persona no autorizada.</li>
+          <li>Intentar eludir restricciones de seguridad o validación.</li>
+        </ul>
+        <p>El acceso no autorizado a sistemas informáticos puede generar consecuencias legales. La Ley 1273 de 2009 incorporó al Código Penal colombiano disposiciones destinadas a proteger la información y los datos, incluyendo conductas relacionadas con acceso abusivo a sistemas informáticos.</p>
+        <h2>7. INFORMACIÓN SUMINISTRADA POR EL USUARIO</h2>
+        <p>El usuario se obliga a suministrar información:</p>
+        <ul>
+          <li>Verdadera.</li>
+          <li>Propia.</li>
+          <li>Actualizada.</li>
+          <li>Completa cuando sea necesaria.</li>
+          <li>No engañosa.</li>
+        </ul>
+        <p>No deberá registrar información perteneciente a terceros sin autorización cuando esta sea necesaria.</p>
+        <p>Si IBA detecta inconsistencias relevantes, podrá:</p>
+        <ul>
+          <li>Solicitar corrección.</li>
+          <li>Limitar temporalmente una cuenta.</li>
+          <li>Solicitar una verificación.</li>
+          <li>Suspender determinadas funcionalidades.</li>
+          <li>Rechazar una solicitud de registro cuando existan razones legítimas.</li>
+        </ul>
+        <p>La detección de información incorrecta no implicará automáticamente mala fe; IBA procurará permitir su corrección cuando resulte razonable.</p>
+        <h2>8. USUARIOS MENORES DE EDAD</h2>
+        <p>SOYIBA podrá permitir el registro de niños, niñas y adolescentes bajo condiciones especiales de protección.</p>
+        <p>IBA reconoce la prevalencia de los derechos de los menores y el principio de interés superior previsto en la legislación colombiana, incluyendo la Ley 1098 de 2006 — Código de la Infancia y la Adolescencia.</p>
+        <p>Cuando corresponda, el registro de un menor podrá requerir:</p>
+        <ul>
+          <li>Identificación de su condición de menor de edad.</li>
+          <li>Presentación de información comprensible sobre el funcionamiento de SOYIBA.</li>
+          <li>Datos de su padre, madre o representante legal.</li>
+          <li>Autorización del representante.</li>
+          <li>Verificación posterior por parte de IBA.</li>
+          <li>Activación definitiva una vez cumplido el procedimiento correspondiente.</li>
+        </ul>
+        <p>El simple registro inicial no obliga a IBA a activar inmediatamente la cuenta.</p>
+        <p>Mientras exista una validación pendiente, IBA podrá mantener la cuenta:</p>
+        <ul>
+          <li>Pendiente.</li>
+          <li>Parcialmente restringida.</li>
+          <li>Inactiva.</li>
+        </ul>
+        <p>Las cuentas de menores podrán estar sujetas a medidas adicionales, incluyendo:</p>
+        <ul>
+          <li>Restricciones en el directorio.</li>
+          <li>Protección de números telefónicos y otros datos de contacto.</li>
+          <li>Limitaciones de visibilidad.</li>
+          <li>Filtros de publicaciones.</li>
+          <li>Restricciones sobre determinadas funcionalidades.</li>
+          <li>Controles administrativos adicionales.</li>
+        </ul>
+        <p>IBA podrá impedir que el usuario menor modifique directamente información utilizada para determinar su condición de menor de edad cuando ello pueda permitir evadir las medidas de protección.</p>
+        <h2>9. CONTENIDO DISPONIBLE PARA MENORES</h2>
+        <p>SOYIBA podrá clasificar publicaciones y otros contenidos según su disponibilidad para usuarios menores de edad.</p>
+        <p>Los responsables de crear o administrar publicaciones deberán determinar de manera responsable si el contenido puede mostrarse a menores.</p>
+        <p>Las publicaciones que no hayan sido expresamente habilitadas para dicha audiencia podrán permanecer ocultas para los usuarios menores.</p>
+        <p>IBA podrá modificar o restringir la clasificación de contenido cuando considere razonablemente que ello es necesario para proteger a menores.</p>
+        <p>Esta clasificación es una medida preventiva y no reemplaza la responsabilidad de quienes crean, administran o publican contenido.</p>
+        <h2>10. NORMAS GENERALES DE CONDUCTA</h2>
+        <p>El uso de SOYIBA deberá realizarse de manera respetuosa y coherente con el propósito de la aplicación y la convivencia dentro de la comunidad.</p>
+        <p>No se permitirá utilizar SOYIBA para:</p>
+        <ul>
+          <li>Amenazar.</li>
+          <li>Hostigar.</li>
+          <li>Acosar.</li>
+          <li>Intimidar.</li>
+          <li>Discriminar.</li>
+          <li>Suplantar a otras personas.</li>
+          <li>Divulgar información privada sin autorización.</li>
+          <li>Publicar contenido ilegal.</li>
+          <li>Difamar o afectar ilegítimamente la honra de terceros.</li>
+          <li>Distribuir malware o código malicioso.</li>
+          <li>Intentar vulnerar sistemas de seguridad.</li>
+          <li>Realizar actividades comerciales no autorizadas.</li>
+          <li>Ejecutar spam.</li>
+          <li>Automatizar masivamente interacciones sin autorización.</li>
+          <li>Extraer información de otros usuarios.</li>
+          <li>Interferir con el funcionamiento normal de la plataforma.</li>
+          <li>Utilizar SOYIBA para finalidades incompatibles con la naturaleza eclesial de la aplicación.</li>
+        </ul>
+        <p>IBA podrá adoptar medidas proporcionales cuando se incumplan estas reglas.</p>
+        <h2>11. PUBLICACIONES Y CONTENIDO GENERADO POR USUARIOS</h2>
+        <p>Los usuarios que dispongan de permisos para crear publicaciones, eventos, recursos, imágenes, textos, enlaces u otros contenidos son responsables del material que incorporen a SOYIBA.</p>
+        <p>Al publicar contenido, el usuario declara razonablemente que:</p>
+        <ul>
+          <li>Está autorizado para compartirlo.</li>
+          <li>No vulnera derechos de terceros.</li>
+          <li>No infringe derechos de autor.</li>
+          <li>No divulga indebidamente información personal.</li>
+          <li>No contiene material ilícito.</li>
+          <li>Es adecuado para las funciones de SOYIBA.</li>
+          <li>Ha considerado si el contenido resulta apropiado para menores cuando exista esa opción.</li>
+        </ul>
+        <p>IBA podrá revisar el contenido con fines de:</p>
+        <ul>
+          <li>Moderación.</li>
+          <li>Seguridad.</li>
+          <li>Organización.</li>
+          <li>Protección de usuarios.</li>
+          <li>Cumplimiento legal.</li>
+          <li>Corrección de errores operativos.</li>
+          <li>Cumplimiento de los fines institucionales.</li>
+        </ul>
+        <h2>12. MODERACIÓN DE CONTENIDO</h2>
+        <p>IBA podrá, cuando exista una razón legítima:</p>
+        <ul>
+          <li>Retirar publicaciones.</li>
+          <li>Desactivar enlaces.</li>
+          <li>Corregir información administrativa.</li>
+          <li>Restringir contenido.</li>
+          <li>Limitar su audiencia.</li>
+          <li>Cambiar su disponibilidad para menores.</li>
+          <li>Archivar contenido.</li>
+          <li>Suspender temporalmente su visualización.</li>
+        </ul>
+        <p>Entre las razones que pueden justificar estas acciones se encuentran:</p>
+        <ul>
+          <li>Información falsa o engañosa.</li>
+          <li>Vulneración de privacidad.</li>
+          <li>Información sensible publicada sin autorización.</li>
+          <li>Riesgos para menores.</li>
+          <li>Contenido ofensivo o discriminatorio.</li>
+          <li>Contenido incompatible con las finalidades de SOYIBA.</li>
+          <li>Infracciones de derechos de autor.</li>
+          <li>Riesgos de seguridad.</li>
+          <li>Incumplimiento de estos Términos.</li>
+        </ul>
+        <p>La facultad de moderación no convierte a IBA en garante absoluto de la veracidad de cada contenido publicado por terceros.</p>
+        <h2>13. PROPIEDAD INTELECTUAL DE SOYIBA</h2>
+        <p>Los derechos sobre elementos propios de SOYIBA, incluyendo cuando corresponda:</p>
+        <ul>
+          <li>Diseño.</li>
+          <li>Código fuente.</li>
+          <li>Interfaces.</li>
+          <li>Identidad gráfica.</li>
+          <li>Logotipos.</li>
+          <li>Material institucional.</li>
+          <li>Textos.</li>
+          <li>Fotografías.</li>
+          <li>Recursos audiovisuales.</li>
+          <li>Bases de datos.</li>
+          <li>Estructuras y elementos protegibles de la plataforma.</li>
+        </ul>
+        <p>pertenecerán a IBA, a sus respectivos autores, licenciantes o titulares, según corresponda.</p>
+        <p>El usuario recibe únicamente un derecho limitado de acceso y uso conforme a estos Términos.</p>
+        <p>No se autoriza:</p>
+        <ul>
+          <li>Copiar integralmente la plataforma.</li>
+          <li>Distribuir su código.</li>
+          <li>Realizar ingeniería inversa cuando esté prohibida legalmente.</li>
+          <li>Reutilizar recursos protegidos sin autorización.</li>
+          <li>Explotar comercialmente contenidos institucionales sin permiso.</li>
+          <li>Utilizar marcas, nombres o logotipos de IBA de manera que pueda generar confusión sobre autorización o representación.</li>
+        </ul>
+        <p>Los derechos de autor se regirán, entre otras disposiciones, por la Ley 23 de 1982, sus modificaciones y el régimen comunitario establecido mediante la Decisión Andina 351 de 1993.</p>
+        <h2>14. CONTENIDO APORTADO POR LOS USUARIOS</h2>
+        <p>El usuario conservará los derechos que legalmente le correspondan sobre contenido original de su autoría.</p>
+        <p>Cuando publique voluntariamente contenido en SOYIBA, concede a IBA, en la medida necesaria para operar la funcionalidad correspondiente, una autorización no exclusiva para:</p>
+        <ul>
+          <li>Almacenarlo.</li>
+          <li>Procesarlo técnicamente.</li>
+          <li>Mostrarlo dentro de SOYIBA.</li>
+          <li>Adaptarlo técnicamente a tamaños o formatos necesarios.</li>
+          <li>Distribuirlo dentro de la audiencia autorizada de la aplicación.</li>
+        </ul>
+        <p>Esta autorización se limita a las finalidades propias del funcionamiento de SOYIBA y no constituye una cesión general de los derechos patrimoniales del autor.</p>
+        <p>Cuando el contenido sea retirado, IBA podrá conservar copias técnicas o registros durante el período razonablemente necesario para respaldos, seguridad, auditoría o cumplimiento legal, cuando corresponda.</p>
+        <h2>15. USO DE FOTOGRAFÍAS, VIDEOS Y MATERIAL DE TERCEROS</h2>
+        <p>Los usuarios deberán abstenerse de publicar fotografías, videos u otros materiales pertenecientes a terceros cuando no cuenten con autorización o fundamento legítimo para hacerlo.</p>
+        <p>Se deberá tener especial cuidado con imágenes o información de niños, niñas y adolescentes.</p>
+        <p>La posibilidad técnica de cargar un archivo no significa que exista autorización legal para publicarlo.</p>
+        <p>IBA podrá retirar material cuando reciba una reclamación razonable relacionada con:</p>
+        <ul>
+          <li>Privacidad.</li>
+          <li>Imagen.</li>
+          <li>Derechos de autor.</li>
+          <li>Información de menores.</li>
+          <li>Derechos de terceros.</li>
+        </ul>
+        <h2>16. DIRECTORIO DE MIEMBROS</h2>
+        <p>El directorio de SOYIBA es una funcionalidad interna y no una base de datos pública.</p>
+        <p>La información disponible en él solo deberá utilizarse para finalidades legítimas relacionadas con la comunidad de IBA.</p>
+        <p>Queda prohibido:</p>
+        <ul>
+          <li>Extraer contactos masivamente.</li>
+          <li>Crear bases de datos paralelas.</li>
+          <li>Utilizar información para campañas comerciales.</li>
+          <li>Vender información.</li>
+          <li>Compartir información con terceros no autorizados.</li>
+          <li>Publicar contactos en redes sociales o sitios externos sin autorización.</li>
+          <li>Utilizar la información para hostigamiento.</li>
+          <li>Realizar scraping o recolección automatizada.</li>
+        </ul>
+        <p>El incumplimiento podrá generar restricciones o suspensión de la cuenta.</p>
+        <h2>17. DATOS PERSONALES Y POLÍTICA DE TRATAMIENTO</h2>
+        <p>El Tratamiento de Datos Personales realizado mediante SOYIBA se regirá por la Política de Tratamiento de Datos Personales de la IGLESIA BÍBLICA ANTIOQUÍA — SOYIBA, adoptada en cumplimiento de la Ley Estatutaria 1581 de 2012 y su reglamentación.</p>
+        <p>La aceptación de estos Términos de Uso no sustituye la autorización para el Tratamiento de Datos Personales cuando dicha autorización resulte necesaria.</p>
+        <p>SOYIBA deberá permitir que ambos actos puedan distinguirse y registrarse separadamente.</p>
+        <h2>18. INFORMACIÓN RELIGIOSA Y NATURALEZA DE LA APLICACIÓN</h2>
+        <p>El usuario reconoce que SOYIBA es una aplicación exclusivamente vinculada a una organización eclesial.</p>
+        <p>Por su propia naturaleza, la utilización de determinadas funcionalidades puede revelar o permitir inferir información relacionada con la vinculación del usuario con una comunidad religiosa.</p>
+        <p>Las condiciones relativas al Tratamiento de esta información, incluyendo su carácter potencialmente sensible, se encuentran desarrolladas en la Política de Tratamiento de Datos Personales.</p>
+        <p>Los presentes Términos no constituyen por sí mismos autorización para un Tratamiento de datos sensibles que legalmente requiera una manifestación específica del titular.</p>
+        <h2>19. SEGURIDAD DE LA CUENTA Y DE LA PLATAFORMA</h2>
+        <p>El usuario deberá adoptar medidas razonables para proteger su cuenta.</p>
+        <p>En particular deberá:</p>
+        <ul>
+          <li>Mantener sus credenciales confidenciales.</li>
+          <li>No compartir códigos de acceso.</li>
+          <li>Cerrar sesiones en dispositivos que no controla.</li>
+          <li>Reportar accesos sospechosos.</li>
+          <li>Mantener actualizados los medios de recuperación cuando corresponda.</li>
+        </ul>
+        <p>IBA podrá implementar controles de:</p>
+        <ul>
+          <li>Autenticación.</li>
+          <li>Roles.</li>
+          <li>Permisos.</li>
+          <li>Bloqueos.</li>
+          <li>Validaciones.</li>
+          <li>Registros de seguridad.</li>
+          <li>Protección de archivos.</li>
+          <li>Restricciones de operaciones administrativas.</li>
+        </ul>
+        <p>El usuario no podrá intentar:</p>
+        <ul>
+          <li>Evadir controles.</li>
+          <li>Manipular permisos.</li>
+          <li>Modificar roles sin autorización.</li>
+          <li>Alterar su condición de edad.</li>
+          <li>Acceder a información de otros usuarios.</li>
+          <li>Explorar vulnerabilidades con fines no autorizados.</li>
+          <li>Interferir con los servicios tecnológicos.</li>
+        </ul>
+        <h2>20. REPORTE DE INCIDENTES</h2>
+        <p>Los usuarios deberán informar a IBA cuando tengan conocimiento de:</p>
+        <ul>
+          <li>Suplantación.</li>
+          <li>Pérdida de credenciales.</li>
+          <li>Acceso no autorizado.</li>
+          <li>Divulgación indebida de información.</li>
+          <li>Vulnerabilidades.</li>
+          <li>Contenido peligroso.</li>
+          <li>Uso indebido de datos.</li>
+          <li>Incidentes que involucren menores.</li>
+        </ul>
+        <p>Los reportes podrán presentarse mediante:</p>
+        <p>Correo: iglesiaibaenvigado@gmail.com Teléfono: 321 811 4396</p>
+        <p>IBA evaluará los reportes y adoptará las medidas que considere razonables conforme a la naturaleza del incidente.</p>
+        <h2>21. SUSPENSIÓN, LIMITACIÓN Y TERMINACIÓN DE CUENTAS</h2>
+        <p>IBA podrá limitar, suspender o desactivar temporal o definitivamente una cuenta cuando exista una causa legítima relacionada con:</p>
+        <ul>
+          <li>Incumplimiento de estos Términos.</li>
+          <li>Suplantación.</li>
+          <li>Riesgo de seguridad.</li>
+          <li>Acceso no autorizado.</li>
+          <li>Uso indebido del directorio.</li>
+          <li>Divulgación indebida de Datos Personales.</li>
+          <li>Conductas contra menores.</li>
+          <li>Publicación reiterada de contenido contrario a las reglas.</li>
+          <li>Fraude.</li>
+          <li>Manipulación de permisos.</li>
+          <li>Pérdida de las condiciones de acceso aplicables.</li>
+          <li>Requerimiento legal o de autoridad competente.</li>
+        </ul>
+        <p>Cuando resulte razonable y no exista un riesgo inmediato, IBA podrá permitir al usuario aclarar o corregir la situación.</p>
+        <p>En casos graves de seguridad o protección de terceros, IBA podrá restringir inmediatamente la cuenta.</p>
+        <h2>22. ROLES Y PERMISOS ADMINISTRATIVOS</h2>
+        <p>Algunas cuentas podrán recibir permisos especiales para administrar funcionalidades de SOYIBA.</p>
+        <p>Estos permisos no otorgan propiedad sobre la información ni autorización para utilizarla fuera de las tareas asignadas.</p>
+        <p>Los usuarios con funciones administrativas deberán:</p>
+        <ul>
+          <li>Acceder únicamente a la información necesaria.</li>
+          <li>Mantener confidencialidad.</li>
+          <li>No utilizar datos para fines personales.</li>
+          <li>Registrar de manera responsable las actuaciones que correspondan.</li>
+          <li>Proteger especialmente los datos de menores.</li>
+          <li>No conceder permisos sin autorización.</li>
+          <li>Informar errores o vulnerabilidades.</li>
+        </ul>
+        <p>IBA podrá retirar permisos en cualquier momento cuando cambien las responsabilidades del usuario o exista un riesgo de seguridad.</p>
+        <h2>23. SERVICIOS Y ENLACES DE TERCEROS</h2>
+        <p>SOYIBA podrá incluir enlaces o integraciones con servicios externos.</p>
+        <p>La existencia de un enlace no significa necesariamente que IBA:</p>
+        <ul>
+          <li>Sea propietaria del servicio.</li>
+          <li>Controle sus contenidos.</li>
+          <li>Garantice su disponibilidad.</li>
+          <li>Respalde todas las opiniones o información publicada allí.</li>
+        </ul>
+        <p>Cuando el usuario abandone SOYIBA e ingrese a un servicio externo, podrán aplicar los términos y políticas del tercero correspondiente.</p>
+        <p>IBA procurará utilizar proveedores confiables, pero no controla integralmente infraestructuras externas.</p>
+        <h2>24. DISPONIBILIDAD Y MANTENIMIENTO</h2>
+        <p>IBA procurará mantener SOYIBA disponible y funcional, pero no garantiza operación ininterrumpida.</p>
+        <p>La plataforma podrá experimentar interrupciones por:</p>
+        <ul>
+          <li>Mantenimiento.</li>
+          <li>Actualizaciones.</li>
+          <li>Fallos tecnológicos.</li>
+          <li>Interrupciones de Internet.</li>
+          <li>Fallos de proveedores.</li>
+          <li>Eventos de fuerza mayor.</li>
+          <li>Incidentes de seguridad.</li>
+          <li>Cambios en infraestructura.</li>
+        </ul>
+        <p>IBA podrá modificar, suspender o retirar funcionalidades cuando sea razonablemente necesario para mejorar, proteger o administrar la plataforma.</p>
+        <h2>25. LIMITACIÓN RAZONABLE DE RESPONSABILIDAD</h2>
+        <p>SOYIBA es una herramienta tecnológica de apoyo a las actividades de IBA.</p>
+        <p>IBA procurará mantener información institucional correcta y adoptar medidas razonables de seguridad; sin embargo, no podrá garantizar:</p>
+        <ul>
+          <li>Disponibilidad absoluta del servicio.</li>
+          <li>Ausencia total de errores tecnológicos.</li>
+          <li>Que todo contenido aportado por usuarios sea correcto.</li>
+          <li>Que servicios externos permanezcan siempre disponibles.</li>
+        </ul>
+        <p>Nada de lo dispuesto en estos Términos pretende excluir o limitar responsabilidades que legalmente no puedan ser excluidas o limitadas conforme a la legislación colombiana.</p>
+        <p>IBA responderá en los eventos en que legalmente corresponda de acuerdo con la naturaleza de la conducta y las normas aplicables.</p>
+        <h2>26. COMUNICACIONES INSTITUCIONALES</h2>
+        <p>SOYIBA podrá utilizar notificaciones internas, correos electrónicos u otros mecanismos habilitados para comunicar:</p>
+        <ul>
+          <li>Información sobre la cuenta.</li>
+          <li>Cambios relevantes.</li>
+          <li>Alertas de seguridad.</li>
+          <li>Eventos.</li>
+          <li>Actividades.</li>
+          <li>Notificaciones administrativas.</li>
+          <li>Información institucional.</li>
+        </ul>
+        <p>Las comunicaciones sujetas a reglas específicas de protección de datos o autorización se realizarán conforme a la Política de Tratamiento de Datos Personales.</p>
+        <h2>27. CAMBIOS EN SOYIBA</h2>
+        <p>IBA podrá:</p>
+        <ul>
+          <li>Incorporar funcionalidades.</li>
+          <li>Modificar funcionalidades existentes.</li>
+          <li>Reorganizar interfaces.</li>
+          <li>Modificar sistemas de permisos.</li>
+          <li>Implementar nuevas medidas de seguridad.</li>
+          <li>Retirar funcionalidades que dejen de ser necesarias.</li>
+        </ul>
+        <p>Los cambios tecnológicos que no alteren sustancialmente las condiciones jurídicas del usuario no requerirán necesariamente una nueva aceptación de los Términos.</p>
+        <h2>28. MODIFICACIONES DE LOS TÉRMINOS</h2>
+        <p>IBA podrá modificar los presentes Términos cuando resulte necesario por:</p>
+        <ul>
+          <li>Cambios normativos.</li>
+          <li>Modificaciones de SOYIBA.</li>
+          <li>Nuevas funcionalidades.</li>
+          <li>Cambios de seguridad.</li>
+          <li>Nuevos riesgos.</li>
+          <li>Necesidades institucionales.</li>
+        </ul>
+        <p>Cuando las modificaciones sean sustanciales, SOYIBA podrá informar al usuario y solicitar una nueva aceptación.</p>
+        <p>IBA podrá conservar registro de:</p>
+        <ul>
+          <li>Versión aceptada.</li>
+          <li>Fecha.</li>
+          <li>Usuario.</li>
+          <li>Evidencia electrónica correspondiente.</li>
+        </ul>
+        <h2>29. TERMINACIÓN VOLUNTARIA DEL USO</h2>
+        <p>El usuario podrá dejar de utilizar SOYIBA.</p>
+        <p>Cuando solicite además eliminación o supresión de sus Datos Personales, dicha solicitud será gestionada de acuerdo con la Política de Tratamiento de Datos Personales y la legislación aplicable.</p>
+        <p>La desactivación de una cuenta no significa necesariamente la eliminación inmediata de todos los registros cuando exista una obligación o fundamento legítimo para conservar determinada información.</p>
+        <h2>30. LEGISLACIÓN APLICABLE</h2>
+        <p>Los presentes Términos se regirán e interpretarán conforme al ordenamiento jurídico de la República de Colombia.</p>
+        <p>Dependiendo de la materia, podrán resultar aplicables, entre otras:</p>
+        <ul>
+          <li>La Constitución Política de Colombia.</li>
+          <li>La Ley 527 de 1999, relativa a mensajes de datos y manifestaciones electrónicas.</li>
+          <li>La Ley Estatutaria 1581 de 2012, respecto de protección de Datos Personales.</li>
+          <li>El Decreto 1074 de 2015, en materia de protección de datos.</li>
+          <li>La Ley 1098 de 2006 — Código de la Infancia y la Adolescencia, respecto de la protección integral e interés superior de niños, niñas y adolescentes.</li>
+          <li>La Ley 1273 de 2009, relacionada con la protección de la información y los datos y determinadas conductas contra sistemas informáticos.</li>
+          <li>La Ley 23 de 1982, sus modificaciones y demás normas colombianas sobre derechos de autor.</li>
+          <li>La Decisión Andina 351 de 1993, relativa al Régimen Común sobre Derecho de Autor y Derechos Conexos.</li>
+          <li>Las demás disposiciones que modifiquen, complementen o sustituyan las anteriores.</li>
+        </ul>
+        <h2>31. INDEPENDENCIA DE LAS DISPOSICIONES</h2>
+        <p>Si una disposición de estos Términos llegara a ser declarada inválida, ineficaz o inaplicable por autoridad competente, las demás disposiciones conservarán su vigencia en la medida en que puedan operar independientemente.</p>
+        <h2>32. NO RENUNCIA A DERECHOS</h2>
+        <p>La falta de ejercicio inmediato por parte de IBA de alguna facultad prevista en estos Términos no deberá interpretarse automáticamente como renuncia definitiva a ejercerla posteriormente cuando corresponda.</p>
+        <p>Este apartado no podrá interpretarse de forma que limite derechos inderogables de los usuarios reconocidos por la legislación colombiana.</p>
+        <h2>33. CONTACTO</h2>
+        <p>Para consultas, reportes o asuntos relacionados con los presentes Términos de Uso:</p>
+        <p class="signature">IGLESIA BÍBLICA ANTIOQUÍA Dirección: Calle 38 A Sur # 38-34 Envigado, Antioquia, Colombia Teléfono: 321 811 4396 Correo electrónico: iglesiaibaenvigado@gmail.com</p>
+        <h2>34. VIGENCIA</h2>
+        <p>Los presentes Términos de Uso de la IGLESIA BÍBLICA ANTIOQUÍA — SOYIBA entran en vigencia a partir del:</p>
+        <p>25 de agosto de 2026</p>
+        <p>Versión: 1.0</p>
+        <p>SOYIBA podrá conservar evidencia electrónica de la versión aceptada por cada usuario para efectos de trazabilidad.</p>
+        <p class="signature">IGLESIA BÍBLICA ANTIOQUÍA NIT: 9016924665 Calle 38 A Sur # 38-34 Envigado, Antioquia, Colombia Teléfono: 321 811 4396 Correo: iglesiaibaenvigado@gmail.com</p>
       </article>
     </main>
   </body>
