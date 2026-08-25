@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import loginHero from '../../../PrimaryAssets/Login.jpg';
 import iglesiaFooterLogo from '../../../PrimaryAssets/logo-iglesia-letras.png';
+import { LegalDocumentButton } from '../../components/LegalDocumentModal';
 import {
   approveMinorRegistrationByGuardian,
   completePasswordReset,
@@ -631,13 +632,13 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
               <div className="mt-3 rounded-xl border border-[#DCE6F5] bg-white px-4 py-3">
                 <p className="text-[12px] font-semibold leading-5 text-[#52637C]">
                   Antes de autorizar, remítete a la{' '}
-                  <a href="politica-tratamiento-datos.html" target="_blank" rel="noreferrer" className="font-bold text-[#115bd8] underline-offset-4 hover:underline">
+                  <LegalDocumentButton documentId="data-policy" className="font-bold text-[#115bd8] underline-offset-4 hover:underline">
                     Política de Tratamiento de Datos
-                  </a>{' '}
+                  </LegalDocumentButton>{' '}
                   y a la{' '}
-                  <a href="politica-privacidad.html" target="_blank" rel="noreferrer" className="font-bold text-[#115bd8] underline-offset-4 hover:underline">
+                  <LegalDocumentButton documentId="privacy" className="font-bold text-[#115bd8] underline-offset-4 hover:underline">
                     Política de Privacidad
-                  </a>
+                  </LegalDocumentButton>
                   .
                 </p>
 
@@ -873,9 +874,9 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
                   />
                   <span>
                     Declaro que leí y acepto la{' '}
-                    <a href="politica-tratamiento-datos.html" target="_blank" rel="noreferrer" className="font-bold text-[#115bd8] underline-offset-4 hover:underline">
+                    <LegalDocumentButton documentId="data-policy" className="font-bold text-[#115bd8] underline-offset-4 hover:underline">
                       Política de Tratamiento de Datos Personales y Privacidad
-                    </a>
+                    </LegalDocumentButton>
                     .
                   </span>
                 </label>
@@ -889,9 +890,9 @@ export function AuthScreen({ onSignedIn, initialMode }: AuthScreenProps) {
                   />
                   <span>
                     Declaro que leí y acepto los{' '}
-                    <a href="terminos-uso.html" target="_blank" rel="noreferrer" className="font-bold text-[#115bd8] underline-offset-4 hover:underline">
+                    <LegalDocumentButton documentId="terms" className="font-bold text-[#115bd8] underline-offset-4 hover:underline">
                       Términos de Uso
-                    </a>
+                    </LegalDocumentButton>
                     .
                   </span>
                 </label>
@@ -1232,22 +1233,12 @@ function AuthFooter() {
         <span className="h-px flex-1 bg-slate-300" aria-hidden="true" />
       </div>
       <div className="mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-center">
-        <a
-          href="politica-tratamiento-datos.html"
-          target="_blank"
-          rel="noreferrer"
-          className="text-[10px] font-bold text-[#115bd8] underline-offset-4 hover:underline"
-        >
+        <LegalDocumentButton documentId="data-policy" className="text-[10px] font-bold text-[#115bd8] underline-offset-4 hover:underline">
           Política de Tratamiento de Datos y Privacidad
-        </a>
-        <a
-          href="terminos-uso.html"
-          target="_blank"
-          rel="noreferrer"
-          className="text-[10px] font-bold text-[#115bd8] underline-offset-4 hover:underline"
-        >
+        </LegalDocumentButton>
+        <LegalDocumentButton documentId="terms" className="text-[10px] font-bold text-[#115bd8] underline-offset-4 hover:underline">
           Términos de Uso
-        </a>
+        </LegalDocumentButton>
       </div>
     </footer>
   );

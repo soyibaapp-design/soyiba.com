@@ -96,6 +96,93 @@ input {
   transform-origin: center;
 }
 
+.legal-document-content {
+  color: #40516f;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.legal-document-content h1 {
+  margin: 0 0 8px;
+  color: #0b1f5b;
+  font-size: clamp(21px, 5vw, 30px);
+  font-weight: 950;
+  line-height: 1.12;
+  letter-spacing: 0;
+}
+
+.legal-document-content .subtitle {
+  margin: 0;
+  color: #0b1f5b;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1.4;
+}
+
+.legal-document-content .date {
+  margin: 4px 0 18px;
+  color: #637295;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.legal-document-content h2 {
+  margin: 24px 0 9px;
+  border-top: 1px solid #dce6f5;
+  padding-top: 18px;
+  color: #0b1f5b;
+  font-size: 16px;
+  font-weight: 950;
+  line-height: 1.3;
+  letter-spacing: 0;
+}
+
+.legal-document-content h3 {
+  margin: 16px 0 7px;
+  color: #0b1f5b;
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 1.35;
+  letter-spacing: 0;
+}
+
+.legal-document-content p,
+.legal-document-content li {
+  color: #40516f;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.legal-document-content p {
+  margin: 8px 0;
+}
+
+.legal-document-content ul {
+  margin: 8px 0 14px;
+  padding-left: 20px;
+}
+
+.legal-document-content li {
+  margin: 4px 0;
+}
+
+.legal-document-content .checkline {
+  border: 1px solid #dce6f5;
+  border-radius: 12px;
+  background: #f8fbff;
+  padding: 10px 12px;
+  color: #0b1f5b;
+  font-weight: 800;
+}
+
+.legal-document-content .signature {
+  margin-top: 22px;
+  border-top: 1px solid #dce6f5;
+  padding-top: 14px;
+  color: #0b1f5b;
+  font-weight: 900;
+}
+
 .iba-slides-scroll {
   position: relative;
   height: 100dvh;
