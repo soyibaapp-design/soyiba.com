@@ -70,7 +70,7 @@ type MinorValidationStatusResponse = {
 
 export async function getManagedUsers(session: SoyibaSession): Promise<ManagedUser[]> {
   if (isFirebaseAuthEnabled()) {
-    return getFirebaseManagedUsers();
+    return getFirebaseManagedUsers(session);
   }
 
   const response = await callAppsScript<ManagedUsersResponse>(
@@ -240,7 +240,7 @@ export async function reviewMinorValidationRequest(
   ).catch(() => undefined);
 }
 
-async function getFirebaseManagedUsers(): Promise<ManagedUser[]> {
+async function getFirebaseManagedUsers(session: SoyibaSession): Promise<ManagedUser[]> {
   const app = getFirebaseApp();
 
   if (!app) {
@@ -248,15 +248,58 @@ async function getFirebaseManagedUsers(): Promise<ManagedUser[]> {
   }
 
   try {
+    await ensureFirebaseUserSession(session);
     const { collection, getDocs, getFirestore } = await import('firebase/firestore');
     const databaseId = getFirebaseUsersDatabaseId();
     const snapshot = await getDocs(collection(getFirestore(app, databaseId), 'users'));
     return snapshot.docs
       .map((item) => normalizeManagedUser({ id: item.id, ...item.data() }))
       .sort((left, right) => getDisplaySortValue(left).localeCompare(getDisplaySortValue(right), 'es'));
-  } catch {
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '';
+
+    if (/sesion activa de Firebase|Firebase no esta configurado/i.test(message)) {
+      throw new Error(message);
+    }
+
     throw new Error('No fue posible cargar usuarios desde Firebase. Revisa las reglas de Firestore.');
   }
+}
+
+async function ensureFirebaseUserSession(session: SoyibaSession) {
+  const app = getFirebaseApp();
+
+  if (!app) {
+    throw new Error('Firebase no esta configurado.');
+  }
+
+  const { getAuth, onAuthStateChanged } = await import('firebase/auth');
+  const auth = getAuth(app);
+  const firebaseUser = auth.currentUser || (await waitForFirebaseUser(auth, onAuthStateChanged));
+  const expectedEmail = stringValue(session.user.email).toLowerCase();
+
+  if (!firebaseUser || (expectedEmail && firebaseUser.email?.toLowerCase() !== expectedEmail)) {
+    throw new Error('No encontramos una sesion activa de Firebase para cargar usuarios.');
+  }
+
+  await firebaseUser.getIdToken(false);
+}
+
+function waitForFirebaseUser(
+  auth: import('firebase/auth').Auth,
+  onAuthStateChanged: typeof import('firebase/auth').onAuthStateChanged,
+) {
+  return new Promise<import('firebase/auth').User | null>((resolve) => {
+    const timeoutId = globalThis.setTimeout(() => {
+      unsubscribe();
+      resolve(null);
+    }, 6000);
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      globalThis.clearTimeout(timeoutId);
+      unsubscribe();
+      resolve(user);
+    });
+  });
 }
 
 async function updateFirebaseManagedUser(
